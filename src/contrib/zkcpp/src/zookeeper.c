@@ -124,11 +124,11 @@ const int ZOO_PERM_CREATE = 1 << 2;
 const int ZOO_PERM_DELETE = 1 << 3;
 const int ZOO_PERM_ADMIN = 1 << 4;
 const int ZOO_PERM_ALL = 0x1f;
-struct Id ZOO_ANYONE_ID_UNSAFE = {"world", "anyone"};
-struct Id ZOO_AUTH_IDS = {"auth", ""};
-static struct ACL _OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {"world", "anyone"}}};
-static struct ACL _READ_ACL_UNSAFE_ACL[] = {{0x01, {"world", "anyone"}}};
-static struct ACL _CREATOR_ALL_ACL_ACL[] = {{0x1f, {"auth", ""}}};
+struct Id ZOO_ANYONE_ID_UNSAFE = {(char*)"world", (char*)"anyone"};
+struct Id ZOO_AUTH_IDS = {(char*)"auth", (char*)""};
+static struct ACL _OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
+static struct ACL _READ_ACL_UNSAFE_ACL[] = {{0x01, {(char*)"world", (char*)"anyone"}}};
+static struct ACL _CREATOR_ALL_ACL_ACL[] = {{0x1f, {(char*)"auth", (char*)""}}};
 struct ACL_vector ZOO_OPEN_ACL_UNSAFE = { 1, _OPEN_ACL_UNSAFE_ACL};
 struct ACL_vector ZOO_READ_ACL_UNSAFE = { 1, _READ_ACL_UNSAFE_ACL};
 struct ACL_vector ZOO_CREATOR_ALL_ACL = { 1, _CREATOR_ALL_ACL_ACL};
@@ -617,7 +617,7 @@ int getaddrs(zhandle_t *zh)
                     rc=ZSYSTEMERROR;
                     goto fail;
                 }
-                zh->addrs=tmpaddr;
+                zh->addrs=(sockaddr_storage*)tmpaddr;
             }
 
             // Copy addrinfo into address list
@@ -787,7 +787,7 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
               context,
               flags));
 
-    zh = calloc(1, sizeof(*zh));
+    zh = (zhandle_t*)calloc(1, sizeof(*zh));
     if (!zh) {
         return 0;
     }
@@ -807,7 +807,7 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     }
     //parse the host to get the chroot if
     //available
-    index_chroot = strchr(host, '/');
+    index_chroot = (char*)strchr(host, '/');
     if (index_chroot) {
         zh->chroot = strdup(index_chroot);
         if (zh->chroot == NULL) {
@@ -919,7 +919,7 @@ char* sub_string(zhandle_t *zh, const char* server_path) {
 
 static buffer_list_t *allocate_buffer(char *buff, int len)
 {
-    buffer_list_t *buffer = calloc(1, sizeof(*buffer));
+    buffer_list_t *buffer = (buffer_list_t*)calloc(1, sizeof(*buffer));
     if (buffer == 0)
         return 0;
 
@@ -1070,7 +1070,7 @@ static int send_buffer(int fd, buffer_list_t *buff)
             buff->curr_offset += rc;
         }
     }
-    return buff->curr_offset == len + sizeof(buff->len);
+    return buff->curr_offset == len + (int)sizeof(buff->len);
 }
 
 /* returns:
@@ -1111,7 +1111,7 @@ static int recv_buffer(int fd, buffer_list_t *buff)
         off = buff->curr_offset;
         if (buff->curr_offset == sizeof(buff->len)) {
             buff->len = ntohl(buff->len);
-            buff->buffer = calloc(1, buff->len);
+            buff->buffer = (char*)calloc(1, buff->len);
         }
     }
     if (buff->buffer) {
@@ -1135,7 +1135,7 @@ static int recv_buffer(int fd, buffer_list_t *buff)
             buff->curr_offset += rc;
         }
     }
-    return buff->curr_offset == buff->len + sizeof(buff->len);
+    return buff->curr_offset == buff->len + (int)sizeof(buff->len);
 }
 
 void free_buffers(buffer_head_t *list)
@@ -1180,7 +1180,7 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
                 h.err = reason;
                 oa = create_buffer_oarchive();
                 serialize_ReplyHeader(oa, "header", &h);
-                bptr = calloc(sizeof(*bptr), 1);
+                bptr = (buffer_list_t*)calloc(sizeof(*bptr), 1);
                 assert(bptr);
                 bptr->len = get_buffer_len(oa);
                 bptr->buffer = get_buffer(oa);
@@ -1807,7 +1807,7 @@ static __attribute__((unused)) void print_completion_queue(zhandle_t *zh)
 static int queue_session_event(zhandle_t *zh, int state)
 {
     int rc;
-    struct WatcherEvent evt = { ZOO_SESSION_EVENT, state, "" };
+    struct WatcherEvent evt = { ZOO_SESSION_EVENT, state, (char*)"" };
     struct ReplyHeader hdr = { WATCHER_EVENT_XID, 0, 0 };
     struct oarchive *oa;
     completion_list_t *cptr;
@@ -1832,7 +1832,7 @@ static int queue_session_event(zhandle_t *zh, int state)
     }
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
-    cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, "");
+    cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, (char*)"");
     queue_completion(&zh->completions_to_process, cptr, 0);
     if (process_async(zh->outstanding_sync)) {
         process_completions(zh);
@@ -2305,7 +2305,7 @@ static watcher_registration_t* create_watcher_registration(const char* path,
     watcher_registration_t* wo;
     if(watcher==0)
         return 0;
-    wo=calloc(1,sizeof(watcher_registration_t));
+    wo=(watcher_registration_t*)calloc(1,sizeof(watcher_registration_t));
     wo->path=strdup(path);
     wo->watcher=watcher;
     wo->context=ctx;
@@ -2323,7 +2323,7 @@ static void destroy_watcher_registration(watcher_registration_t* wo){
 static completion_list_t* create_completion_entry(int xid, int completion_type,
         const void *dc, const void *data,watcher_registration_t* wo, completion_head_t *clist)
 {
-    completion_list_t *c = calloc(1,sizeof(completion_list_t));
+    completion_list_t *c = (completion_list_t*)calloc(1,sizeof(completion_list_t));
     if (!c) {
         LOG_ERROR(("out of memory"));
         return 0;
@@ -2433,49 +2433,49 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
 static int add_data_completion(zhandle_t *zh, int xid, data_completion_t dc,
         const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_DATA, dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_DATA, (const void*)dc, data, 0, wo, 0);
 }
 
 static int add_stat_completion(zhandle_t *zh, int xid, stat_completion_t dc,
         const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STAT, dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STAT, (const void*)dc, data, 0, wo, 0);
 }
 
 static int add_strings_completion(zhandle_t *zh, int xid,
         strings_completion_t dc, const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STRINGLIST, dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STRINGLIST, (const void*)dc, data, 0, wo, 0);
 }
 
 static int add_strings_stat_completion(zhandle_t *zh, int xid,
         strings_stat_completion_t dc, const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, (const void*)dc, data, 0, wo, 0);
 }
 
 static int add_acl_completion(zhandle_t *zh, int xid, acl_completion_t dc,
         const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_ACLLIST, dc, data, 0, 0, 0);
+    return add_completion(zh, xid, COMPLETION_ACLLIST, (const void*)dc, data, 0, 0, 0);
 }
 
 static int add_void_completion(zhandle_t *zh, int xid, void_completion_t dc,
         const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_VOID, dc, data, 0, 0, 0);
+    return add_completion(zh, xid, COMPLETION_VOID, (const void*)dc, data, 0, 0, 0);
 }
 
 static int add_string_completion(zhandle_t *zh, int xid,
         string_completion_t dc, const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_STRING, dc, data, 0, 0, 0);
+    return add_completion(zh, xid, COMPLETION_STRING, (const void*)dc, data, 0, 0, 0);
 }
 
 static int add_multi_completion(zhandle_t *zh, int xid, void_completion_t dc,
         const void *data, completion_head_t *clist)
 {
-    return add_completion(zh, xid, COMPLETION_MULTI, dc, data, 0,0, clist);
+    return add_completion(zh, xid, COMPLETION_MULTI, (const void*)dc, data, 0,0, clist);
 }
 
 int zookeeper_close(zhandle_t *zh)
@@ -3115,7 +3115,7 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
 				result->valuelen = op->create_op.buflen;
 
                 enter_critical(zh);
-                entry = create_completion_entry(h.xid, COMPLETION_STRING, op_result_string_completion, result, 0, 0); 
+                entry = create_completion_entry(h.xid, COMPLETION_STRING, (const void*)op_result_string_completion, result, 0, 0); 
                 leave_critical(zh);
                 free_duplicate_path(req.path, op->create_op.path);
                 break;
@@ -3127,7 +3127,7 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
                 rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
 
                 enter_critical(zh);
-                entry = create_completion_entry(h.xid, COMPLETION_VOID, op_result_void_completion, result, 0, 0); 
+                entry = create_completion_entry(h.xid, COMPLETION_VOID, (const void*)op_result_void_completion, result, 0, 0); 
                 leave_critical(zh);
                 free_duplicate_path(req.path, op->delete_op.path);
                 break;
@@ -3142,7 +3142,7 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
                 result->stat = op->set_op.stat;
 
                 enter_critical(zh);
-                entry = create_completion_entry(h.xid, COMPLETION_STAT, op_result_stat_completion, result, 0, 0); 
+                entry = create_completion_entry(h.xid, COMPLETION_STAT, (const void*)op_result_stat_completion, result, 0, 0); 
                 leave_critical(zh);
                 free_duplicate_path(req.path, op->set_op.path);
                 break;
@@ -3155,7 +3155,7 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
                 rc = rc < 0 ? rc : serialize_CheckVersionRequest(oa, "req", &req);
 
                 enter_critical(zh);
-                entry = create_completion_entry(h.xid, COMPLETION_VOID, op_result_void_completion, result, 0, 0); 
+                entry = create_completion_entry(h.xid, COMPLETION_VOID, (const void*)op_result_void_completion, result, 0, 0); 
                 leave_critical(zh);
                 free_duplicate_path(req.path, op->check_op.path);
                 break;
@@ -3241,7 +3241,7 @@ int zoo_multi(zhandle_t *zh, int count, const zoo_op_t *ops, zoo_op_result_t *re
         return ZSYSTEMERROR;
     }
    
-    rc = zoo_amulti(zh, count, ops, results, SYNCHRONOUS_MARKER, sc);
+    rc = zoo_amulti(zh, count, ops, results, (void (*)(int, const void*))SYNCHRONOUS_MARKER, sc);
     if (rc == ZOK) {
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3394,7 +3394,7 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
     }
 
     if(cert!=NULL && certLen!=0){
-        auth.buff=calloc(1,certLen);
+        auth.buff=(char*)calloc(1,certLen);
         if(auth.buff==0) {
             return ZSYSTEMERROR;
         }
@@ -3410,7 +3410,7 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
     authinfo->scheme=strdup(scheme);
     authinfo->auth=auth;
     authinfo->completion=completion;
-    authinfo->data=data;
+    authinfo->data=(const char*)data;
     authinfo->next = NULL;
     add_last_auth(&zh->auth_h, authinfo);
     zoo_unlock_auth(zh);
@@ -3478,7 +3478,7 @@ int zoo_create(zhandle_t *zh, const char *path, const char *value,
     }
     sc->u.str.str = path_buffer;
     sc->u.str.str_len = path_buffer_len;
-    rc=zoo_acreate(zh, path, value, valuelen, acl, flags, SYNCHRONOUS_MARKER, sc);
+    rc=zoo_acreate(zh, path, value, valuelen, acl, flags, (void (*)(int, const char*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3494,7 +3494,7 @@ int zoo_delete(zhandle_t *zh, const char *path, int version)
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    rc=zoo_adelete(zh, path, version, SYNCHRONOUS_MARKER, sc);
+    rc=zoo_adelete(zh, path, version, (void (*)(int, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3516,7 +3516,7 @@ int zoo_wexists(zhandle_t *zh, const char *path,
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    rc=zoo_awexists(zh,path,watcher,watcherCtx,SYNCHRONOUS_MARKER, sc);
+    rc=zoo_awexists(zh,path,watcher,watcherCtx,(void (*)(int, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3549,7 +3549,7 @@ int zoo_wget(zhandle_t *zh, const char *path,
 
     sc->u.data.buffer = buffer;
     sc->u.data.buff_len = *buffer_len;
-    rc=zoo_awget(zh, path, watcher, watcherCtx, SYNCHRONOUS_MARKER, sc);
+    rc=zoo_awget(zh, path, watcher, watcherCtx, (void (*)(int, const char*, int, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3577,7 +3577,7 @@ int zoo_set2(zhandle_t *zh, const char *path, const char *buffer, int buflen,
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    rc=zoo_aset(zh, path, buffer, buflen, version, SYNCHRONOUS_MARKER, sc);
+    rc=zoo_aset(zh, path, buffer, buflen, version, (void (*)(int, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3598,7 +3598,7 @@ static int zoo_wget_children_(zhandle_t *zh, const char *path,
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    rc= zoo_awget_children (zh, path, watcher, watcherCtx, SYNCHRONOUS_MARKER, sc);
+    rc= zoo_awget_children (zh, path, watcher, watcherCtx, (void (*)(int, const String_vector*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3623,7 +3623,7 @@ static int zoo_wget_children2_(zhandle_t *zh, const char *path,
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    rc= zoo_awget_children2(zh, path, watcher, watcherCtx, SYNCHRONOUS_MARKER, sc);
+    rc= zoo_awget_children2(zh, path, watcher, watcherCtx, (void (*)(int, const String_vector*, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
 
     if(rc==ZOK){
         wait_sync_completion(sc);
@@ -3675,7 +3675,7 @@ int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    rc=zoo_aget_acl(zh, path, SYNCHRONOUS_MARKER, sc);
+    rc=zoo_aget_acl(zh, path, (void (*)(int, ACL_vector*, Stat*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
@@ -3703,7 +3703,7 @@ int zoo_set_acl(zhandle_t *zh, const char *path, int version,
         return ZSYSTEMERROR;
     }
     rc=zoo_aset_acl(zh, path, version, (struct ACL_vector*)acl,
-            SYNCHRONOUS_MARKER, sc);
+            (void (*)(int, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;

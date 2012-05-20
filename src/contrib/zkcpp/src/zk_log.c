@@ -51,10 +51,10 @@ __attribute__((constructor)) void prepareTSDKeys() {
 }
 
 char* getTSData(pthread_key_t key,int size){
-    char* p=pthread_getspecific(key);
+    char* p=(char*)pthread_getspecific(key);
     if(p==0){
         int res;
-        p=calloc(1,size);
+        p=(char*)calloc(1,size);
         res=pthread_setspecific(key,p);
         if(res!=0){
             fprintf(stderr,"Failed to set TSD key: %d",res);

@@ -188,7 +188,7 @@ static int set_nonblock(int fd){
 
 void wait_for_others(zhandle_t* zh)
 {
-    struct adaptor_threads* adaptor=zh->adaptor_priv;
+    struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
     pthread_mutex_lock(&adaptor->lock);
     while(adaptor->threadsToWait>0) 
         pthread_cond_wait(&adaptor->cond,&adaptor->lock);
@@ -197,7 +197,7 @@ void wait_for_others(zhandle_t* zh)
 
 void notify_thread_ready(zhandle_t* zh)
 {
-    struct adaptor_threads* adaptor=zh->adaptor_priv;
+    struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
     pthread_mutex_lock(&adaptor->lock);
     adaptor->threadsToWait--;
     pthread_cond_broadcast(&adaptor->cond);
@@ -210,7 +210,7 @@ void notify_thread_ready(zhandle_t* zh)
 void start_threads(zhandle_t* zh)
 {
     int rc = 0;
-    struct adaptor_threads* adaptor=zh->adaptor_priv;
+    struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
     pthread_cond_init(&adaptor->cond,0);
     pthread_mutex_init(&adaptor->lock,0);
     adaptor->threadsToWait=2;  // wait for 2 threads before opening the barrier
@@ -230,7 +230,7 @@ void start_threads(zhandle_t* zh)
 int adaptor_init(zhandle_t *zh)
 {
     pthread_mutexattr_t recursive_mx_attr;
-    struct adaptor_threads *adaptor_threads = calloc(1, sizeof(*adaptor_threads));
+    struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)calloc(1, sizeof(*adaptor_threads));
     if (!adaptor_threads) {
         LOG_ERROR(("Out of memory"));
         return -1;
@@ -274,7 +274,7 @@ void adaptor_finish(zhandle_t *zh)
     struct adaptor_threads *adaptor_threads;
     // make sure zh doesn't get destroyed until after we're done here
     api_prolog(zh); 
-    adaptor_threads = zh->adaptor_priv;
+    adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
     if(adaptor_threads==0) {
         api_epilog(zh,0);
         return;
@@ -299,7 +299,7 @@ void adaptor_finish(zhandle_t *zh)
 
 void adaptor_destroy(zhandle_t *zh)
 {
-    struct adaptor_threads *adaptor = zh->adaptor_priv;
+    struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
     if(adaptor==0) return;
     
     pthread_cond_destroy(&adaptor->cond);
@@ -322,7 +322,7 @@ void adaptor_destroy(zhandle_t *zh)
 
 int wakeup_io_thread(zhandle_t *zh)
 {
-    struct adaptor_threads *adaptor_threads = zh->adaptor_priv;
+    struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
     char c=0;
 #ifndef WIN32
     return write(adaptor_threads->self_pipe[1],&c,1)==1? ZOK: ZSYSTEMERROR;    
@@ -360,7 +360,7 @@ void *do_io(void *v)
     zhandle_t *zh = (zhandle_t*)v;
 #ifndef WIN32
     struct pollfd fds[2];
-    struct adaptor_threads *adaptor_threads = zh->adaptor_priv;
+    struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
 
     api_prolog(zh);
     notify_thread_ready(zh);
@@ -453,7 +453,7 @@ unsigned __stdcall do_completion( void * v)
 void *do_completion(void *v)
 #endif
 {
-    zhandle_t *zh = v;
+    zhandle_t *zh = (zhandle_t*)v;
     api_prolog(zh);
     notify_thread_ready(zh);
     LOG_DEBUG(("started completion thread"));
@@ -517,14 +517,14 @@ __attribute__((constructor)) int32_t get_xid()
 
 void enter_critical(zhandle_t* zh)
 {
-    struct adaptor_threads *adaptor = zh->adaptor_priv;
+    struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
     if(adaptor)
         pthread_mutex_lock(&adaptor->zh_lock);
 }
 
 void leave_critical(zhandle_t* zh)
 {
-    struct adaptor_threads *adaptor = zh->adaptor_priv;
+    struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
     if(adaptor)
         pthread_mutex_unlock(&adaptor->zh_lock);    
 }

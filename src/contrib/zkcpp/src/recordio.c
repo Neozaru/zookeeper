@@ -70,9 +70,9 @@ int oa_end_record(struct oarchive *oa, const char *tag)
 }
 int oa_serialize_int(struct oarchive *oa, const char *tag, const int32_t *d)
 {
-    struct buff_struct *priv = oa->priv;
+    struct buff_struct *priv = (buff_struct*)oa->priv;
     int32_t i = htonl(*d);
-    if ((priv->len - priv->off) < sizeof(i)) {
+    if ((priv->len - priv->off) < (int)sizeof(i)) {
         int rc = resize_buffer(priv, priv->len + sizeof(i));
         if (rc < 0) return rc;
     }
@@ -99,8 +99,8 @@ int64_t htonll(int64_t v)
 int oa_serialize_long(struct oarchive *oa, const char *tag, const int64_t *d)
 {
     const int64_t i = htonll(*d);
-    struct buff_struct *priv = oa->priv;
-    if ((priv->len - priv->off) < sizeof(i)) {
+    struct buff_struct *priv = (buff_struct*)oa->priv;
+    if ((priv->len - priv->off) < (int)sizeof(i)) {
         int rc = resize_buffer(priv, priv->len + sizeof(i));
         if (rc < 0) return rc;
     }
@@ -119,7 +119,7 @@ int oa_end_vector(struct oarchive *oa, const char *tag)
 int oa_serialize_bool(struct oarchive *oa, const char *name, const int32_t *i)
 {
     //return oa_serialize_int(oa, name, i);
-    struct buff_struct *priv = oa->priv;
+    struct buff_struct *priv = (buff_struct*)oa->priv;
     if ((priv->len - priv->off) < 1) {
         int rc = resize_buffer(priv, priv->len + 1);
         if (rc < 0)
@@ -133,7 +133,7 @@ static const int32_t negone = -1;
 int oa_serialize_buffer(struct oarchive *oa, const char *name,
         const struct buffer *b)
 {
-    struct buff_struct *priv = oa->priv;
+    struct buff_struct *priv = (buff_struct*)oa->priv;
     int rc;
     if (!b) {
         return oa_serialize_int(oa, "len", &negone);
@@ -158,7 +158,7 @@ int oa_serialize_buffer(struct oarchive *oa, const char *name,
 }
 int oa_serialize_string(struct oarchive *oa, const char *name, char **s)
 {
-    struct buff_struct *priv = oa->priv;
+    struct buff_struct *priv = (buff_struct*)oa->priv;
     int32_t len;
     int rc;
     if (!*s) {
@@ -188,8 +188,8 @@ int ia_end_record(struct iarchive *ia, const char *tag)
 }
 int ia_deserialize_int(struct iarchive *ia, const char *tag, int32_t *count)
 {
-    struct buff_struct *priv = ia->priv;
-    if ((priv->len - priv->off) < sizeof(*count)) {
+    struct buff_struct *priv = (buff_struct*)ia->priv;
+    if ((priv->len - priv->off) < (int)sizeof(*count)) {
         return -E2BIG;
     }
     memcpy(count, priv->buffer+priv->off, sizeof(*count));
@@ -200,9 +200,9 @@ int ia_deserialize_int(struct iarchive *ia, const char *tag, int32_t *count)
 
 int ia_deserialize_long(struct iarchive *ia, const char *tag, int64_t *count)
 {
-    struct buff_struct *priv = ia->priv;
+    struct buff_struct *priv = (buff_struct*)ia->priv;
     int64_t v = 0;
-    if ((priv->len - priv->off) < sizeof(*count)) {
+    if ((priv->len - priv->off) < (int)sizeof(*count)) {
         return -E2BIG;
     }
     memcpy(count, priv->buffer+priv->off, sizeof(*count));
@@ -221,7 +221,7 @@ int ia_end_vector(struct iarchive *ia, const char *tag)
 }
 int ia_deserialize_bool(struct iarchive *ia, const char *name, int32_t *v)
 {
-    struct buff_struct *priv = ia->priv;
+    struct buff_struct *priv = (buff_struct*)ia->priv;
     //fprintf(stderr, "Deserializing bool %d\n", priv->off);
     //return ia_deserialize_int(ia, name, v);
     if ((priv->len - priv->off) < 1) {
@@ -235,7 +235,7 @@ int ia_deserialize_bool(struct iarchive *ia, const char *name, int32_t *v)
 int ia_deserialize_buffer(struct iarchive *ia, const char *name,
         struct buffer *b)
 {
-    struct buff_struct *priv = ia->priv;
+    struct buff_struct *priv = (buff_struct*)ia->priv;
     int rc = ia_deserialize_int(ia, "len", &b->len);
     if (rc < 0)
         return rc;
@@ -247,7 +247,7 @@ int ia_deserialize_buffer(struct iarchive *ia, const char *name,
        b->buff = NULL;
        return rc;
     }
-    b->buff = malloc(b->len);
+    b->buff = (char*)malloc(b->len);
     if (!b->buff) {
         return -ENOMEM;
     }
@@ -257,7 +257,7 @@ int ia_deserialize_buffer(struct iarchive *ia, const char *name,
 }
 int ia_deserialize_string(struct iarchive *ia, const char *name, char **s)
 {
-    struct buff_struct *priv = ia->priv;
+    struct buff_struct *priv = (buff_struct*)ia->priv;
     int32_t len;
     int rc = ia_deserialize_int(ia, "len", &len);
     if (rc < 0)
@@ -268,7 +268,7 @@ int ia_deserialize_string(struct iarchive *ia, const char *name, char **s)
     if (len < 0) {
         return -EINVAL;
     }
-    *s = malloc(len+1);
+    *s = (char*)malloc(len+1);
     if (!*s) {
         return -ENOMEM;
     }
@@ -296,8 +296,8 @@ static struct oarchive oa_default = { STRUCT_INITIALIZER (start_record , oa_star
 
 struct iarchive *create_buffer_iarchive(char *buffer, int len)
 {
-    struct iarchive *ia = malloc(sizeof(*ia));
-    struct buff_struct *buff = malloc(sizeof(struct buff_struct));
+    struct iarchive *ia = (iarchive*)malloc(sizeof(*ia));
+    struct buff_struct *buff = (buff_struct*)malloc(sizeof(struct buff_struct));
     if (!ia) return 0;
     if (!buff) {
         free(ia);
@@ -313,8 +313,8 @@ struct iarchive *create_buffer_iarchive(char *buffer, int len)
 
 struct oarchive *create_buffer_oarchive()
 {
-    struct oarchive *oa = malloc(sizeof(*oa));
-    struct buff_struct *buff = malloc(sizeof(struct buff_struct));
+    struct oarchive *oa = (oarchive*)malloc(sizeof(*oa));
+    struct buff_struct *buff = (buff_struct*)malloc(sizeof(struct buff_struct));
     if (!oa) return 0;
     if (!buff) {
         free(oa);
@@ -322,7 +322,7 @@ struct oarchive *create_buffer_oarchive()
     }
     *oa = oa_default;
     buff->off = 0;
-    buff->buffer = malloc(128);
+    buff->buffer = (char*)malloc(128);
     buff->len = 128;
     oa->priv = buff;
     return oa;
@@ -350,11 +350,11 @@ void close_buffer_oarchive(struct oarchive **oa, int free_buffer)
 
 char *get_buffer(struct oarchive *oa)
 {
-    struct buff_struct *buff = oa->priv;
+    struct buff_struct *buff = (buff_struct*)oa->priv;
     return buff->buffer;
 }
 int get_buffer_len(struct oarchive *oa)
 {
-    struct buff_struct *buff = oa->priv;
+    struct buff_struct *buff = (buff_struct*)oa->priv;
     return buff->off;
 }

@@ -180,7 +180,7 @@ int allocate_String_vector(struct String_vector *v, int32_t len) {
         v->data = 0;
     } else {
         v->count = len;
-        v->data = calloc(sizeof(*v->data), len);
+        v->data = (char**)calloc(sizeof(*v->data), len);
     }
     return 0;
 }
@@ -212,7 +212,7 @@ int deserialize_String_vector(struct iarchive *in, const char *tag, struct Strin
     int rc = 0;
     int32_t i;
     rc = in->start_vector(in, tag, &v->count);
-    v->data = calloc(v->count, sizeof(*v->data));
+    v->data = (char**)calloc(v->count, sizeof(*v->data));
     for(i=0;i<v->count;i++) {
     rc = rc ? rc : in->deserialize_String(in, "value", &v->data[i]);
     }
@@ -439,7 +439,7 @@ int allocate_ACL_vector(struct ACL_vector *v, int32_t len) {
         v->data = 0;
     } else {
         v->count = len;
-        v->data = calloc(sizeof(*v->data), len);
+        v->data = (ACL*)calloc(sizeof(*v->data), len);
     }
     return 0;
 }
@@ -471,7 +471,7 @@ int deserialize_ACL_vector(struct iarchive *in, const char *tag, struct ACL_vect
     int rc = 0;
     int32_t i;
     rc = in->start_vector(in, tag, &v->count);
-    v->data = calloc(v->count, sizeof(*v->data));
+    v->data = (ACL*)calloc(v->count, sizeof(*v->data));
     for(i=0;i<v->count;i++) {
     rc = rc ? rc : deserialize_ACL(in, "value", &v->data[i]);
     }
@@ -912,7 +912,7 @@ int allocate_Id_vector(struct Id_vector *v, int32_t len) {
         v->data = 0;
     } else {
         v->count = len;
-        v->data = calloc(sizeof(*v->data), len);
+        v->data = (Id*)calloc(sizeof(*v->data), len);
     }
     return 0;
 }
@@ -944,7 +944,7 @@ int deserialize_Id_vector(struct iarchive *in, const char *tag, struct Id_vector
     int rc = 0;
     int32_t i;
     rc = in->start_vector(in, tag, &v->count);
-    v->data = calloc(v->count, sizeof(*v->data));
+    v->data = (Id*)calloc(v->count, sizeof(*v->data));
     for(i=0;i<v->count;i++) {
     rc = rc ? rc : deserialize_Id(in, "value", &v->data[i]);
     }
@@ -1227,7 +1227,7 @@ int allocate_Txn_vector(struct Txn_vector *v, int32_t len) {
         v->data = 0;
     } else {
         v->count = len;
-        v->data = calloc(sizeof(*v->data), len);
+        v->data = (Txn*)calloc(sizeof(*v->data), len);
     }
     return 0;
 }
@@ -1259,7 +1259,7 @@ int deserialize_Txn_vector(struct iarchive *in, const char *tag, struct Txn_vect
     int rc = 0;
     int32_t i;
     rc = in->start_vector(in, tag, &v->count);
-    v->data = calloc(v->count, sizeof(*v->data));
+    v->data = (Txn*)calloc(v->count, sizeof(*v->data));
     for(i=0;i<v->count;i++) {
     rc = rc ? rc : deserialize_Txn(in, "value", &v->data[i]);
     }

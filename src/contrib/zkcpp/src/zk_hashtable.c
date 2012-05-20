@@ -48,7 +48,7 @@ hashtable_impl* getImpl(zk_hashtable* ht){
 
 watcher_object_t* getFirstWatcher(zk_hashtable* ht,const char* path)
 {
-    watcher_object_list_t* wl=hashtable_search(ht->ht,(void*)path);
+    watcher_object_list_t* wl=(watcher_object_list_t*)hashtable_search(ht->ht,(void*)path);
     if(wl!=0)
         return wl->head;
     return 0;
@@ -57,7 +57,7 @@ watcher_object_t* getFirstWatcher(zk_hashtable* ht,const char* path)
 
 watcher_object_t* clone_watcher_object(watcher_object_t* wo)
 {
-    watcher_object_t* res=calloc(1,sizeof(watcher_object_t));
+    watcher_object_t* res=(watcher_object_t*)calloc(1,sizeof(watcher_object_t));
     assert(res);
     res->watcher=wo->watcher;
     res->context=wo->context;
@@ -82,7 +82,7 @@ static int string_equal(void *key1,void *key2)
 
 static watcher_object_t* create_watcher_object(watcher_fn watcher,void* ctx)
 {
-    watcher_object_t* wo=calloc(1,sizeof(watcher_object_t));
+    watcher_object_t* wo=(watcher_object_t*)calloc(1,sizeof(watcher_object_t));
     assert(wo);
     wo->watcher=watcher;
     wo->context=ctx;
@@ -91,7 +91,7 @@ static watcher_object_t* create_watcher_object(watcher_fn watcher,void* ctx)
 
 static watcher_object_list_t* create_watcher_object_list(watcher_object_t* head) 
 {
-    watcher_object_list_t* wl=calloc(1,sizeof(watcher_object_list_t));
+    watcher_object_list_t* wl=(watcher_object_list_t*)calloc(1,sizeof(watcher_object_list_t));
     assert(wl);
     wl->head=head;
     return wl;
@@ -105,16 +105,16 @@ static void destroy_watcher_object_list(watcher_object_list_t* list)
         return;
     e=list->head;
     while(e!=0){
-        watcher_object_t* this=e;
+        watcher_object_t* temp=e;
         e=e->next;
-        free(this);
+        free(temp);
     }
     free(list);
 }
 
 zk_hashtable* create_zk_hashtable()
 {
-    struct _zk_hashtable *ht=calloc(1,sizeof(struct _zk_hashtable));
+    struct _zk_hashtable *ht=(_zk_hashtable*)calloc(1,sizeof(struct _zk_hashtable));
     assert(ht);
     ht->ht=create_hashtable(32,string_hash_djb2,string_equal);
     return ht;
@@ -128,7 +128,7 @@ static void do_clean_hashtable(zk_hashtable* ht)
         return;
     it=hashtable_iterator(ht->ht);
     do {
-        watcher_object_list_t* w=hashtable_iterator_value(it);
+        watcher_object_list_t* w=(watcher_object_list_t*)hashtable_iterator_value(it);
         destroy_watcher_object_list(w);
         hasMore=hashtable_iterator_remove(it);
     } while(hasMore);
@@ -182,7 +182,7 @@ static int do_insert_watcher_object(zk_hashtable *ht, const char *path, watcher_
     int res=1;
     watcher_object_list_t* wl;
 
-    wl=hashtable_search(ht->ht,(void*)path);
+    wl=(watcher_object_list_t*)hashtable_search(ht->ht,(void*)path);
     if(wl==0){
         int res;
         /* inserting a new path element */
@@ -203,10 +203,10 @@ char **collect_keys(zk_hashtable *ht, int *count)
     int i;
 
     *count = hashtable_count(ht->ht);
-    list = calloc(*count, sizeof(char*));
+    list = (char**)calloc(*count, sizeof(char*));
     it=hashtable_iterator(ht->ht);
     for(i = 0; i < *count; i++) {
-        list[i] = strdup(hashtable_iterator_key(it));
+        list[i] = (char*)strdup((const char*)hashtable_iterator_key(it));
         hashtable_iterator_advance(it);
     }
     free(it);
@@ -238,7 +238,7 @@ static void copy_table(zk_hashtable *from, watcher_object_list_t *to) {
         return;
     it=hashtable_iterator(from->ht);
     do {
-        watcher_object_list_t *w = hashtable_iterator_value(it);
+        watcher_object_list_t *w = (watcher_object_list_t*)hashtable_iterator_value(it);
         copy_watchers(w, to, 1);
         hasMore=hashtable_iterator_advance(it);
     } while(hasMore);
