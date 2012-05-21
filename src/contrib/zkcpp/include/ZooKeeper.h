@@ -20,21 +20,74 @@
 
 #include <stdint.h>
 #include <string>
+#include <boost/shared_ptr.hpp>
 
 namespace org { namespace apache { namespace zookeeper {
 
 class ZooKeeperImpl;
+
+/** zookeeper return constants **/
+
+enum ReturnCode {
+  OK = 0, /*!< Everything is OK */
+
+  /** System and server-side errors.
+   * This is never thrown by the server, it shouldn't be used other than
+   * to indicate a range. Specifically error codes greater than this
+   * value, but lesser than {@link #ZAPIERROR}, are system errors. */
+  SYSTEM_ERROR = -1,
+  RUNTIME_INCONSISTENCY = -2, /*!< A runtime inconsistency was found */
+  DATA_INCONSISTENCY = -3, /*!< A data inconsistency was found */
+  CONNECTION_LOSS = -4, /*!< Connection to the server has been lost */
+  MARSHALLING_ERROR = -5, /*!< Error while marshalling or unmarshalling data */
+  UNIMPLEMENTED = -6, /*!< Operation is unimplemented */
+  OPERATION_TIMEOUT = -7, /*!< Operation timeout */
+  BAD_ARGUMENTS = -8, /*!< Invalid arguments */
+  INVALID_STATE = -9, /*!< Invliad zhandle state */
+
+  /** API errors.
+   * This is never thrown by the server, it shouldn't be used other than
+   * to indicate a range. Specifically error codes greater than this
+   * value are API errors (while values less than this indicate a
+   * {@link #ZSYSTEMERROR}).
+   */
+  API_ERROR = -100,
+  NO_NODE = -101, /*!< Node does not exist */
+  NO_AUTH = -102, /*!< Not authenticated */
+  BAD_VERSION = -103, /*!< Version conflict */
+  NO_CHILDREN_FOR_EPHEMERALS = -108, /*!< Ephemeral nodes may not have
+                                          children */
+  NODE_EXISTS = -110, /*!< The node already exists */
+  NOT_EMPTY = -111, /*!< The node has children */
+  SESSION_EXPIRED = -112, /*!< The session has been expired by the server */
+  INVALID_CALLBACK = -113, /*!< Invalid callback specified */
+  INVALID_ACL = -114, /*!< Invalid ACL specified */
+  AUTH_FAILED = -115, /*!< Client authentication failed */
+  CLOSING = -116, /*!< ZooKeeper is closing */
+  NOTHING = -117, /*!< (not error) no server responses to process */
+  SESSION_MOVED = -118, /*!<session moved to another server, so operation is
+                            ignored */
+
+  /** Client errors.
+   * This is never thrown by the server, it shouldn't be used other than
+   * to indicate a range. Specifically error codes greater than this
+   * value are client errors (while values less than this indicate a
+   * {@link #ZSYSTEMERROR}).
+   */
+  CLIENT_ERROR = -200,
+  INIT_FAILED = -201,
+};
 
 /*
  * These constants represent the states of a zookeeper connection. They are
  * possible parameters of the watcher callback.
  */
 enum State {
-  SESSION_EXPIRED = -112,
-  AUTH_FAILED = -113,
-  CONNECTING = 1,
-  ASSOCIATING = 2,
-  CONNECTED = 3,
+  SESSION_EXPIRED_STATE = -112,
+  AUTH_FAILED_STATE = -113,
+  CONNECTING_STATE = 1,
+  ASSOCIATING_STATE = 2,
+  CONNECTED_STATE = 3,
 };
 
 /**
@@ -86,11 +139,19 @@ enum Event {
   NOT_WATCHING = -2
 };
 
+typedef void (*watcher_fn)(Event event, State state, const char *path);
+class Watch {
+  public:
+    virtual void process(Event event, State state, const std::string& path) = 0;
+};
 
 class ZooKeeper {
   public:
     ZooKeeper();
     ~ZooKeeper();
+    ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs, watcher_fn fn);
+    ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs,
+                    boost::shared_ptr<Watch> watch);
     int64_t getSessionId();
     std::string getSessionPassword();
 

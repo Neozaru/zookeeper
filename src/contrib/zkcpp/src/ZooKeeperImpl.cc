@@ -15,13 +15,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cerrno>
 #include "ZooKeeperImpl.h"
 
 namespace org { namespace apache { namespace zookeeper {
 
-ZooKeeperImpl::
-ZooKeeperImpl() {
+void ZooKeeperImpl::
+callback(zhandle_t *zh, int type, int state, const char *path,
+         void *watcherCtx) {
+  watcher_fn cb = (watcher_fn)watcherCtx;
+  cb((Event)type, (State)state, path);
 }
+
+ZooKeeperImpl::
+ZooKeeperImpl() : handle_(NULL) {
+}
+
+ReturnCode ZooKeeperImpl::
+init(const std::string& hosts, int32_t sessionTimeoutMs, watcher_fn fn) {
+  handle_ = zookeeper_init(hosts.c_str(), &callback, sessionTimeoutMs,
+                           NULL, (void*)fn, 0);
+  if (handle_ == NULL) {
+    return INIT_FAILED;
+  }
+  return OK;
+}
+
 
 ZooKeeperImpl::
 ~ZooKeeperImpl() {

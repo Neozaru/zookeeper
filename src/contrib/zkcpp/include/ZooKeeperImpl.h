@@ -20,6 +20,8 @@
 
 #include <stdint.h>
 #include <string>
+#include "ZooKeeper.h"
+#include "zookeeper.h"
 
 namespace org { namespace apache { namespace zookeeper {
 
@@ -27,8 +29,14 @@ class ZooKeeperImpl {
   public:
     ZooKeeperImpl();
     ~ZooKeeperImpl();
+    ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs, watcher_fn fn);
     int64_t getSessionId();
     std::string getSessionPassword();
+
+  private:
+    static void callback(zhandle_t *zh, int type, int state, const char *path,
+                         void *watcherCtx);
+    zhandle_t* handle_;
 };
 }}}
 

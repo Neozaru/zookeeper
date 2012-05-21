@@ -24,6 +24,11 @@ ZooKeeper::
 ZooKeeper() : impl_(new ZooKeeperImpl()) {
 }
 
+ReturnCode ZooKeeper::
+init(const std::string& hosts, int32_t sessionTimeoutMs, watcher_fn fn) {
+  return impl_->init(hosts, sessionTimeoutMs, fn);
+}
+
 ZooKeeper::
 ~ZooKeeper() {
   delete impl_;
