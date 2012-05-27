@@ -36,6 +36,83 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
 }
 
 ReturnCode ZooKeeper::
+addAuthInfo(const std::string& scheme, const std::string& cert,
+                       boost::shared_ptr<VoidCallback> callback) {
+  return impl_->addAuthInfo(scheme, cert, callback);
+}
+
+ReturnCode ZooKeeper::
+create(const std::string& path, const std::string& data,
+       const struct ACL_vector *acl, CreateMode mode,
+       boost::shared_ptr<StringCallback> callback) {
+  return impl_->create(path, data, acl, mode, callback);
+}
+
+ReturnCode ZooKeeper::
+remove(const std::string& path, int version,
+       boost::shared_ptr<VoidCallback> callback) {
+  return impl_->remove(path, version, callback);
+}
+
+ReturnCode ZooKeeper::
+exists(const std::string& path, boost::shared_ptr<Watch> watch,
+       boost::shared_ptr<StatCallback> callback) {
+  return impl_->exists(path, watch, callback);
+}
+
+ReturnCode ZooKeeper::
+get(const std::string& path, boost::shared_ptr<Watch> watch,
+    boost::shared_ptr<DataCallback> callback) {
+  return impl_->get(path, watch, callback);
+}
+
+ReturnCode ZooKeeper::
+set(const std::string& path, const std::string& data,
+    int version, boost::shared_ptr<StatCallback> callback) {
+  return impl_->set(path, data, version, callback);
+}
+
+ReturnCode ZooKeeper::
+getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
+            boost::shared_ptr<ChildrenCallback> callback) {
+  return impl_->getChildren(path, watch, callback);
+}
+
+ReturnCode ZooKeeper::
+getAcl(const std::string& path, boost::shared_ptr<AclCallback> callback) {
+  return impl_->getAcl(path, callback);
+}
+
+ReturnCode ZooKeeper::
+setAcl(const std::string& path, int version, struct ACL_vector *acl,
+       boost::shared_ptr<VoidCallback> callback) {
+  return impl_->setAcl(path, version, acl, callback);
+}
+
+ReturnCode ZooKeeper::
+sync(const std::string& path, boost::shared_ptr<StringCallback> callback) {
+  return impl_->sync(path, callback);
+}
+
+//ReturnCode ZooKeeper::
+//multi(int count, const zoo_op_t *ops,
+//        zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
+
+//ReturnCode ZooKeeper::
+//multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
+
+ReturnCode ZooKeeper::
+setDebugLevel(LogLevel logLevel) {
+  return ZooKeeperImpl::setDebugLevel(logLevel);
+}
+
+ReturnCode ZooKeeper::
+setLogStream(FILE* logStream) {
+  return ZooKeeperImpl::setLogStream(logStream);
+}
+
+ReturnCode ZooKeeper::
+ZooKeeper::
 close() {
   return impl_->close();
 }

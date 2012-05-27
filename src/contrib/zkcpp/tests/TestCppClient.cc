@@ -73,10 +73,42 @@ class TestInitWatch : public Watch {
     bool connected;
 };
 
+class CreateCallback : public StringCallback {
+  public:
+    void processResult(ReturnCode rc, std::string path, std::string name) {
+      printf("%d %s %s\n", rc, path.c_str(), name.c_str());
+      if (rc == Ok) {
+        {
+          boost::lock_guard<boost::mutex> lock(mutex);
+          created = true;
+        }
+        cond.notify_all();
+      }
+    }
+
+    bool waitForCreated(uint32_t timeoutMs) {
+        boost::system_time const timeout=boost::get_system_time() +
+            boost::posix_time::milliseconds(timeoutMs);
+
+        boost::mutex::scoped_lock lock(mutex);
+        while (!created) {
+            if(!cond.timed_wait(lock,timeout)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    boost::condition_variable cond;
+    boost::mutex mutex;
+    bool created;
+};
+
 class TestCppClient : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(TestCppClient);
     CPPUNIT_TEST(testInit);
+    CPPUNIT_TEST(testCreate);
     CPPUNIT_TEST_SUITE_END();
     FILE *logfile;
     const std::string HOST_PORT;
@@ -100,7 +132,6 @@ public:
         zoo_set_log_stream(logfile);
     }
 
-
     void startServer() {
         char cmd[1024];
         sprintf(cmd, "%s start %s", ZKSERVER_CMD, HOST_PORT.c_str());
@@ -121,10 +152,24 @@ public:
         startServer();
         ZooKeeper zk;
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
-        CPPUNIT_ASSERT_EQUAL(OK, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
         CPPUNIT_ASSERT(watch->waitForConnected(1000));
         stopServer();
     }
+
+    void testCreate() {
+        startServer();
+        ZooKeeper zk;
+        shared_ptr<TestInitWatch> watch(new TestInitWatch());
+        CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT(watch->waitForConnected(1000));
+        shared_ptr<CreateCallback> callback(new CreateCallback());
+        zk.create("/hello", "world",  (const ACL_vector*)&OPEN_ACL_UNSAFE,
+                  Persistent, callback);
+        CPPUNIT_ASSERT(callback->waitForCreated(1000));
+        stopServer();
+    }
+
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCppClient);

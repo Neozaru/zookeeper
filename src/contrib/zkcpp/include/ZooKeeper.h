@@ -177,6 +177,24 @@ enum CreateMode {
     EphemeralSequential = 3,
 };
 
+/**
+ * Debug levels
+ * TODO deprecate
+ */
+typedef enum {
+  ZOO_LOG_LEVEL_ERROR = 1,
+  ZOO_LOG_LEVEL_WARN = 2,
+  ZOO_LOG_LEVEL_INFO = 3,
+  ZOO_LOG_LEVEL_DEBUG = 4
+} LogLevel;
+
+static struct ACL __OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
+static struct ACL __READ_ACL_UNSAFE_ACL[] = {{0x01, {(char*)"world", (char*)"anyone"}}};
+static struct ACL __CREATOR_ALL_ACL_ACL[] = {{0x1f, {(char*)"auth", (char*)""}}};
+static struct ACL_vector OPEN_ACL_UNSAFE = { 1, __OPEN_ACL_UNSAFE_ACL};
+static struct ACL_vector READ_ACL_UNSAFE = { 1, __READ_ACL_UNSAFE_ACL};
+static struct ACL_vector CREATOR_ALL_ACL = { 1, __CREATOR_ALL_ACL_ACL};
+
 class Watch : boost::noncopyable {
   public:
     virtual void process(Event event, State state, const std::string& path) = 0;
@@ -184,10 +202,10 @@ class Watch : boost::noncopyable {
     void* getContext();
 
   protected:
-    Watch();
+    Watch() : context_(NULL) {};
 
   private:
-    void* context;
+    void* context_;
 };
 
 class Callback : boost::noncopyable {
@@ -196,10 +214,10 @@ class Callback : boost::noncopyable {
     void* getContext();
 
   protected:
-    Callback();
+    Callback() : context_(NULL) {};
 
   private:
-    void* context;
+    void* context_;
 };
 
 class StatCallback : public Callback {
@@ -223,8 +241,8 @@ class AclCallback : public Callback {
 class ChildrenCallback : public Callback {
   public:
     virtual void processResult(ReturnCode rc, std::string path,
-                               std::vector<std::string> children,
-                               Stat stat) = 0;
+                               const std::vector<std::string>& children,
+                               struct Stat* stat) = 0;
 };
 
 class StringCallback : public Callback {
@@ -311,47 +329,6 @@ class ZooKeeper : boost::noncopyable {
                       boost::shared_ptr<StringCallback> callback);
 
     /**
-     * \brief create a node synchronously.
-     * 
-     * This method will create a node in ZooKeeper. A node can only be created if
-     * it does not already exists. The Create Flags affect the creation of nodes.
-     * If ZOO_EPHEMERAL flag is set, the node will automatically get removed if the
-     * client session goes away. If the ZOO_SEQUENCE flag is set, a unique
-     * monotonically increasing sequence number is appended to the path name.
-     * 
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path The name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param value The data to be stored in the node.
-     * \param valuelen The number of bytes in data. To set the data to be NULL use
-     * value as NULL and valuelen as -1.
-     * \param acl The initial ACL of the node. The ACL must not be null or empty.
-     * \param flags this parameter can be set to 0 for normal create or an OR
-     *    of the Create Flags
-     * \param path_buffer Buffer which will be filled with the path of the
-     *    new node (this might be different than the supplied path
-     *    because of the ZOO_SEQUENCE flag).  The path string will always be
-     *    null-terminated. This parameter may be NULL if path_buffer_len = 0.
-     * \param path_buffer_len Size of path buffer; if the path of the new
-     *    node (including space for the null terminator) exceeds the buffer size,
-     *    the path string will be truncated to fit.  The actual path of the
-     *    new node in the server will not be affected by the truncation.
-     *    The path string will always be null-terminated.
-     * \return  one of the following codes are returned:
-     * ZOK operation completed successfully
-     * ZNONODE the parent node does not exist.
-     * ZNODEEXISTS the node already exists
-     * ZNOAUTH the client does not have permission.
-     * ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
-     * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     */
-    ReturnCode create(const std::string& path, const std::string& data,
-            const struct ACL_vector *acl, CreateMode mode,
-            std::string& pathCreated);
-
-    /**
      * Removes a znode asynchronously.
      *
      * @param path the name of the znode.
@@ -375,49 +352,6 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode remove(const std::string& path, int version,
                       boost::shared_ptr<VoidCallback> callback);
-
-    /**
-     * Removes a znode synchronously.
-     *
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param version the expected version of the node. The function will fail if the
-     *    actual version of the node does not match the expected version.
-     *  If -1 is used the version check will not take place. 
-     * \return one of the following values is returned.
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * ZBADVERSION expected version does not match actual version.
-     * ZNOTEMPTY children are present; node cannot be deleted.
-     * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     */
-    ReturnCode remove(const std::string& path, int version);
-
-    /**
-     * Checks the existence of a znode.
-     *
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watch if nonzero, a watch will be set at the server to notify the 
-     * client if the node changes. The watch will be set even if the node does not 
-     * exist. This allows clients to watch for nodes to appear.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when the 
-     * function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     */
-    ReturnCode exists(const std::string& path, bool watch,
-                      boost::shared_ptr<StatCallback> callback);
 
     /**
      * Checks the existence of a node in zookeeper.
@@ -453,76 +387,6 @@ class ZooKeeper : boost::noncopyable {
             boost::shared_ptr<StatCallback> callback);
 
     /**
-     * \brief checks the existence of a node in zookeeper synchronously.
-     *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watch if nonzero, a watch will be set at the server to notify the 
-     * client if the node changes. The watch will be set even if the node does not 
-     * exist. This allows clients to watch for nodes to appear.
-     * \param the return stat value of the node.
-     * \return  return code of the function call.
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     */
-    ReturnCode exists(const std::string& path, int watch, struct Stat *stat);
-
-    /**
-     * \brief checks the existence of a node in zookeeper synchronously.
-     * 
-     * This function is similar to \ref zoo_exists except it allows one specify 
-     * a watcher object rather than a boolean watch flag.
-     * 
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watcher if non-null a watch will set on the specified znode on the server.
-     * The watch will be set even if the node does not exist. This allows clients 
-     * to watch for nodes to appear.
-     * \param watcherCtx user specific data, will be passed to the watcher callback.
-     * Unlike the global context set by \ref zookeeper_init, this watcher context
-     * is associated with the given instance of the watcher only.
-     * \param the return stat value of the node.
-     * \return  return code of the function call.
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     */
-    ReturnCode exists(const std::string& path,
-                      boost::shared_ptr<Watch> watch, struct Stat *stat);
-
-    /**
-     * Gets the data associated with a znode.
-     *
-     * @param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watch if nonzero, a watch will be set at the server to notify 
-     * the client if the node changes.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either in ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     */
-    ReturnCode get(const std::string& path, bool watch,
-                   boost::shared_ptr<DataCallback> callback);
-
-
-    /**
      * Gets the data associated with a node.
      *
      * This function is similar to \ref zoo_aget except it allows one specify 
@@ -549,7 +413,7 @@ class ZooKeeper : boost::noncopyable {
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode get(const std::string& path,
-                   boost::shared_ptr<Watch>, void* watcherCtx,
+                   boost::shared_ptr<Watch>,
                    boost::shared_ptr<DataCallback> callback);
 
     /**
@@ -580,28 +444,6 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode set(const std::string& path, const std::string& data,
                    int version, boost::shared_ptr<StatCallback> callback);
-
-    /**
-     * Gets the children and the stat of a znode
-     *
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watch if nonzero, a watch will be set at the server to notify 
-     * the client if the node changes.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     */
-    ReturnCode getChildren(const std::string& path, int watch,
-            boost::shared_ptr<ChildrenCallback> callback);
 
     /**
      * \brief lists the children of a node, and get the parent stat.
@@ -675,293 +517,79 @@ class ZooKeeper : boost::noncopyable {
      * ZBADARGUMENTS - invalid input parameters
      * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * TODO use C++ jute
      */
     ReturnCode setAcl(const std::string& path, int version,
             struct ACL_vector *acl, boost::shared_ptr<VoidCallback> callback);
 
-#if 0
-/**
- * \brief Flush leader channel.
- *
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes
- * separating ancestors of the node.
- * \param completion the routine to invoke when the request completes. The completion
- * will be triggered with one of the following codes passed in as the rc argument:
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * \param data the data that will be passed to the completion routine when
- * the function completes.
- * \return ZOK on success or one of the following errcodes on failure:
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
+    /**
+     * \brief Flush leader channel.
+     *
+     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+     * \param path the name of the node. Expressed as a file name with slashes
+     * separating ancestors of the node.
+     * \param completion the routine to invoke when the request completes. The completion
+     * will be triggered with one of the following codes passed in as the rc argument:
+     * ZOK operation completed successfully
+     * ZNONODE the node does not exist.
+     * ZNOAUTH the client does not have permission.
+     * \param data the data that will be passed to the completion routine when
+     * the function completes.
+     * \return ZOK on success or one of the following errcodes on failure:
+     * ZBADARGUMENTS - invalid input parameters
+     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     */
+    ReturnCode sync(const std::string& path,
+                    boost::shared_ptr<StringCallback> callback);
 
-ZOOAPI int zoo_async(zhandle_t *zh, const char *path, 
-        string_completion_t completion, const void *data);
+    /**
+     * \brief atomically commits multiple zookeeper operations.
+     *
+     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+     * \param count the number of operations
+     * \param ops an array of operations to commit
+     * \param results an array to hold the results of the operations
+     * \param completion the routine to invoke when the request completes. The completion
+     * will be triggered with any of the error codes that can that can be returned by the 
+     * ops supported by a multi op (see \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
+     * \param data the data that will be passed to the completion routine when
+     * the function completes.
+     * \return the return code for the function call. This can be any of the
+     * values that can be returned by the ops supported by a multi op (see
+     * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
+    ReturnCode multi(int count, const zoo_op_t *ops,
+            zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
+     */
 
+    /**
+     * \brief atomically commits multiple zookeeper operations synchronously.
+     *
+     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+     * \param count the number of operations
+     * \param ops an array of operations to commit
+     * \param results an array to hold the results of the operations
+     * \return the return code for the function call. This can be any of the
+     * values that can be returned by the ops supported by a multi op (see
+     * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
+    ReturnCode multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
+     */
 
-/**
- * \brief atomically commits multiple zookeeper operations.
- *
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param count the number of operations
- * \param ops an array of operations to commit
- * \param results an array to hold the results of the operations
- * \param completion the routine to invoke when the request completes. The completion
- * will be triggered with any of the error codes that can that can be returned by the 
- * ops supported by a multi op (see \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
- * \param data the data that will be passed to the completion routine when
- * the function completes.
- * \return the return code for the function call. This can be any of the
- * values that can be returned by the ops supported by a multi op (see
- * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
- */
-ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops, 
-        zoo_op_result_t *results, void_completion_t, const void *data);
+    /**
+     * Sets the debugging level for the library.
+     * TODO: deprecate
+     */
+    static ReturnCode setDebugLevel(LogLevel logLevel);
 
-/**
- * \brief sets the debugging level for the library 
- */
-ZOOAPI void zoo_set_debug_level(ZooLogLevel logLevel);
-
-/**
- * \brief sets the stream to be used by the library for logging 
- * 
- * The zookeeper library uses stderr as its default log stream. Application
- * must make sure the stream is writable. Passing in NULL resets the stream 
- * to its default value (stderr).
- */
-ZOOAPI void zoo_set_log_stream(FILE* logStream);
-
-/**
- * \brief enable/disable quorum endpoint order randomization
- * 
- * Note: typically this method should NOT be used outside of testing.
- *
- * If passed a non-zero value, will make the client connect to quorum peers
- * in the order as specified in the zookeeper_init() call.
- * A zero value causes zookeeper_init() to permute the peer endpoints
- * which is good for more even client connection distribution among the 
- * quorum peers.
- */
-ZOOAPI void zoo_deterministic_conn_order(int yesOrNo);
-
-/**
- * \brief gets the data associated with a node synchronously.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watch if nonzero, a watch will be set at the server to notify 
- * the client if the node changes.
- * \param buffer the buffer holding the node data returned by the server
- * \param buffer_len is the size of the buffer pointed to by the buffer parameter.
- * It'll be set to the actual data length upon return. If the data is NULL, length is -1.
- * \param stat if not NULL, will hold the value of stat for the path on return.
- * \return return value of the function call.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either in ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_get(zhandle_t *zh, const char *path, int watch, char *buffer,   
-                   int* buffer_len, struct Stat *stat);
-
-/**
- * \brief gets the data associated with a node synchronously.
- * 
- * This function is similar to \ref zoo_get except it allows one specify 
- * a watcher object rather than a boolean watch flag.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watcher if non-null, a watch will be set at the server to notify 
- * the client if the node changes.
- * \param watcherCtx user specific data, will be passed to the watcher callback.
- * Unlike the global context set by \ref zookeeper_init, this watcher context
- * is associated with the given instance of the watcher only.
- * \param buffer the buffer holding the node data returned by the server
- * \param buffer_len is the size of the buffer pointed to by the buffer parameter.
- * It'll be set to the actual data length upon return. If the data is NULL, length is -1.
- * \param stat if not NULL, will hold the value of stat for the path on return.
- * \return return value of the function call.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either in ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_wget(zhandle_t *zh, const char *path, 
-        watcher_fn watcher, void* watcherCtx, 
-        char *buffer, int* buffer_len, struct Stat *stat);
-
-/**
- * \brief sets the data associated with a node. See zoo_set2 function if
- * you require access to the stat information associated with the znode.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param buffer the buffer holding data to be written to the node.
- * \param buflen the number of bytes from buffer to write. To set NULL as data 
- * use buffer as NULL and buflen as -1.
- * \param version the expected version of the node. The function will fail if 
- * the actual version of the node does not match the expected version. If -1 is 
- * used the version check will not take place. 
- * \return the return code for the function call.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADVERSION expected version does not match actual version.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_set(zhandle_t *zh, const char *path, const char *buffer,
-                   int buflen, int version);
-
-/**
- * \brief sets the data associated with a node. This function is the same
- * as zoo_set except that it also provides access to stat information
- * associated with the znode.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param buffer the buffer holding data to be written to the node.
- * \param buflen the number of bytes from buffer to write. To set NULL as data
- * use buffer as NULL and buflen as -1.
- * \param version the expected version of the node. The function will fail if 
- * the actual version of the node does not match the expected version. If -1 is 
- * used the version check will not take place. 
- * \param stat if not NULL, will hold the value of stat for the path on return.
- * \return the return code for the function call.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADVERSION expected version does not match actual version.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_set2(zhandle_t *zh, const char *path, const char *buffer,
-                   int buflen, int version, struct Stat *stat);
-
-/**
- * \brief lists the children of a node and get its stat synchronously.
- * 
- * This function is new in version 3.3.0
- *
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watch if nonzero, a watch will be set at the server to notify 
- * the client if the node changes.
- * \param strings return value of children paths.
- * \param stat return value of node stat.
- * \return the return code of the function.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_get_children2(zhandle_t *zh, const char *path, int watch,
-                            struct String_vector *strings, struct Stat *stat);
-
-/**
- * \brief lists the children of a node and get its stat synchronously.
- * 
- * This function is similar to \ref zoo_get_children except it allows one specify 
- * a watcher object rather than a boolean watch flag.
- * 
- * This function is new in version 3.3.0
- *
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watcher if non-null, a watch will be set at the server to notify 
- * the client if the node changes.
- * \param watcherCtx user specific data, will be passed to the watcher callback.
- * Unlike the global context set by \ref zookeeper_init, this watcher context
- * is associated with the given instance of the watcher only.
- * \param strings return value of children paths.
- * \param stat return value of node stat.
- * \return the return code of the function.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_wget_children2(zhandle_t *zh, const char *path, 
-        watcher_fn watcher, void* watcherCtx,
-        struct String_vector *strings, struct Stat *stat);
-
-/**
- * \brief gets the acl associated with a node synchronously.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param acl the return value of acls on the path.
- * \param stat returns the stat of the path specified.
- * \return the return code for the function call.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
-                       struct Stat *stat);
-
-/**
- * \brief sets the acl associated with a node synchronously.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param version the expected version of the path.
- * \param acl the acl to be set on the path. 
- * \return the return code for the function call.
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZINVALIDACL invalid ACL specified
- * ZBADVERSION expected version does not match actual version.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
-                           const struct ACL_vector *acl);
-
-/**
- * \brief atomically commits multiple zookeeper operations synchronously.
- *
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param count the number of operations
- * \param ops an array of operations to commit
- * \param results an array to hold the results of the operations
- * \return the return code for the function call. This can be any of the
- * values that can be returned by the ops supported by a multi op (see
- * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
- */ 
-ZOOAPI int zoo_multi(zhandle_t *zh, int count, const zoo_op_t *ops, zoo_op_result_t *results);
-#endif
-
-
+    /**
+     * Sets the stream to be used by the library for logging
+     *
+     * The zookeeper library uses stderr as its default log stream. Application
+     * must make sure the stream is writable. Passing in NULL resets the stream
+     * to its default value (stderr).
+     * TODO: deprecate
+     */
+    static ReturnCode setLogStream(FILE* logStream);
 
     /**
      * Closes this ZooKeeper session.
