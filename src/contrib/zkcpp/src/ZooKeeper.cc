@@ -24,14 +24,20 @@ ZooKeeper::
 ZooKeeper() : impl_(new ZooKeeperImpl()) {
 }
 
+ZooKeeper::
+~ZooKeeper() {
+  delete impl_;
+}
+
 ReturnCode ZooKeeper::
 init(const std::string& hosts, int32_t sessionTimeoutMs,
      boost::shared_ptr<Watch> watch) {
   return impl_->init(hosts, sessionTimeoutMs, watch);
 }
 
-ZooKeeper::
-~ZooKeeper() {
-  delete impl_;
+ReturnCode ZooKeeper::
+close() {
+  return impl_->close();
 }
-}}}
+
+}}}  // namespace org::apache::zookeeper

@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 
+#include <boost/thread/condition.hpp>
 #include <cppunit/extensions/HelperMacros.h>
 #include "CppAssertHelper.h"
 
@@ -42,9 +43,34 @@ using namespace boost;
 using namespace org::apache::zookeeper;
 
 class TestInitWatch : public Watch {
+  public:
     void process(Event event, State state, const std::string& path) {
-        printf("event %d, state %d\n");
+        printf("event %d, state %d path '%s'\n", event, state, path.c_str());
+        if (event == Session && state == CONNECTED_STATE) {
+            {
+                boost::lock_guard<boost::mutex> lock(mutex);
+                connected = true;
+            }
+            cond.notify_all();
+        }
     }
+
+    bool waitForConnected(uint32_t timeoutMs) {
+        boost::system_time const timeout=boost::get_system_time() +
+            boost::posix_time::milliseconds(timeoutMs);
+
+        boost::mutex::scoped_lock lock(mutex);
+        while (!connected) {
+            if(!cond.timed_wait(lock,timeout)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    boost::condition_variable cond;
+    boost::mutex mutex;
+    bool connected;
 };
 
 class TestCppClient : public CPPUNIT_NS::TestFixture
@@ -96,6 +122,7 @@ public:
         ZooKeeper zk;
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(OK, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT(watch->waitForConnected(1000));
         stopServer();
     }
 };

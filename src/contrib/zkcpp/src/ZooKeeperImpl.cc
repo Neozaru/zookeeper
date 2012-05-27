@@ -30,7 +30,12 @@ callback(zhandle_t *zh, int type, int state, const char *path,
 }
 
 ZooKeeperImpl::
-ZooKeeperImpl() : handle_(NULL) {
+ZooKeeperImpl() : handle_(NULL), inited_(false) {
+}
+
+ZooKeeperImpl::
+~ZooKeeperImpl() {
+  close();
 }
 
 ReturnCode ZooKeeperImpl::
@@ -43,13 +48,22 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
   handle_ = zookeeper_init(hosts.c_str(), &callback, sessionTimeoutMs,
                            NULL, (void*)callbackWatch, 0);
   if (handle_ == NULL) {
-    return INIT_FAILED;
+    return Error;
   }
-  return OK;
+  inited_ = true;
+  return Ok;
 }
 
-
-ZooKeeperImpl::
-~ZooKeeperImpl() {
+ReturnCode ZooKeeperImpl::
+close() {
+  if (!inited_) {
+    return Error;
+  }
+  inited_ = false;
+  // XXX handle return codes.
+  zookeeper_close(handle_);
+  handle_ = NULL;
+  return Ok;
 }
-}}}
+
+}}} // namespace org::apache::zookeeper
