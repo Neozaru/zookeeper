@@ -29,7 +29,8 @@ class ZooKeeperImpl {
   public:
     ZooKeeperImpl();
     ~ZooKeeperImpl();
-    ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs, watcher_fn fn);
+    ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs,
+                    boost::shared_ptr<Watch> watch);
     int64_t getSessionId();
     std::string getSessionPassword();
 

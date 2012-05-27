@@ -75,7 +75,8 @@ TEST_SOURCES = tests/TestDriver.cc tests/LibCMocks.cc tests/LibCSymTable.cc \
     tests/TestClientRetry.cc \
     tests/TestOperations.cc tests/TestZookeeperInit.cc \
     tests/TestZookeeperClose.cc tests/TestClient.cc \
-    tests/TestMulti.cc tests/TestWatchers.cc
+    tests/TestMulti.cc tests/TestWatchers.cc \
+    tests/TestCppClient.cc
 
 
 SYMBOL_WRAPPERS=$(shell cat ${srcdir}/tests/wrappers.opt)

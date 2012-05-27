@@ -139,7 +139,6 @@ enum Event {
   NOT_WATCHING = -2
 };
 
-typedef void (*watcher_fn)(Event event, State state, const char *path);
 class Watch {
   public:
     virtual void process(Event event, State state, const std::string& path) = 0;
@@ -149,7 +148,6 @@ class ZooKeeper {
   public:
     ZooKeeper();
     ~ZooKeeper();
-    ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs, watcher_fn fn);
     ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs,
                     boost::shared_ptr<Watch> watch);
     int64_t getSessionId();

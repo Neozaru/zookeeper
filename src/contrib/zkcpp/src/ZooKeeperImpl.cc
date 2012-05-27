@@ -23,8 +23,10 @@ namespace org { namespace apache { namespace zookeeper {
 void ZooKeeperImpl::
 callback(zhandle_t *zh, int type, int state, const char *path,
          void *watcherCtx) {
-  watcher_fn cb = (watcher_fn)watcherCtx;
-  cb((Event)type, (State)state, path);
+  assert(watcherCtx);
+  printf("%d, %d\n", type, state);
+  boost::shared_ptr<Watch>* watch = (boost::shared_ptr<Watch>*)watcherCtx;
+  watch->get()->process((Event)type, (State)state, path);
 }
 
 ZooKeeperImpl::
@@ -32,9 +34,14 @@ ZooKeeperImpl() : handle_(NULL) {
 }
 
 ReturnCode ZooKeeperImpl::
-init(const std::string& hosts, int32_t sessionTimeoutMs, watcher_fn fn) {
+init(const std::string& hosts, int32_t sessionTimeoutMs,
+     boost::shared_ptr<Watch> watch) {
+
+  // XXX HACK - heap allocate a copy of the watch and save it in zookeeper
+  // handle
+  boost::shared_ptr<Watch>* callbackWatch = new boost::shared_ptr<Watch>(watch);
   handle_ = zookeeper_init(hosts.c_str(), &callback, sessionTimeoutMs,
-                           NULL, (void*)fn, 0);
+                           NULL, (void*)callbackWatch, 0);
   if (handle_ == NULL) {
     return INIT_FAILED;
   }
