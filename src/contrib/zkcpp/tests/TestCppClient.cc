@@ -46,7 +46,7 @@ class TestInitWatch : public Watch {
   public:
     void process(Event event, State state, const std::string& path) {
         printf("event %d, state %d path '%s'\n", event, state, path.c_str());
-        if (event == Session && state == CONNECTED_STATE) {
+        if (event == Session && state == Connected) {
             {
                 boost::lock_guard<boost::mutex> lock(mutex);
                 connected = true;

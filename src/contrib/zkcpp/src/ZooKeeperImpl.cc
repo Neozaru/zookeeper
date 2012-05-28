@@ -20,19 +20,32 @@
 
 namespace org { namespace apache { namespace zookeeper {
 
+class WatchContext {
+public:
+  WatchContext(boost::shared_ptr<Watch> watch, bool deleteAfterCallback) :
+      watch_(watch), deleteAfterCallback_(deleteAfterCallback) {};
+  boost::shared_ptr<Watch> watch_;
+  bool deleteAfterCallback_;
+};
+
 void ZooKeeperImpl::
-callback(zhandle_t *zh, int type, int state, const char *path,
+watchCallback(zhandle_t *zh, int type, int state, const char *path,
          void *watcherCtx) {
   assert(watcherCtx);
   printf("%d, %d\n", type, state);
-  boost::shared_ptr<Watch>* watch = (boost::shared_ptr<Watch>*)watcherCtx;
-  watch->get()->process((Event)type, (State)state, path);
-  delete watch;
+  WatchContext* context = (WatchContext*)watcherCtx;
+  Watch* watch = context->watch_.get();
+  if (watch) {
+    watch->process((Event)type, (State)state, path);
+  }
+  if (context->deleteAfterCallback_) {
+    delete context;
+  }
 }
 
-class CallbackContext {
+class CompletionContext {
 public:
-  CallbackContext(boost::shared_ptr<Callback> callback,
+  CompletionContext(boost::shared_ptr<Callback> callback,
                   std::string path) : callback_(callback), path_(path) {};
   boost::shared_ptr<Callback> callback_;
   std::string path_;
@@ -41,7 +54,7 @@ public:
 
 void ZooKeeperImpl::
 stringCompletion(int rc, const char* value, const void* data) {
-  CallbackContext* context = (CallbackContext*)data;
+  CompletionContext* context = (CompletionContext*)data;
   std::string result;
   if (rc == Ok) {
     assert(value != NULL);
@@ -54,7 +67,7 @@ stringCompletion(int rc, const char* value, const void* data) {
 
 void ZooKeeperImpl::
 voidCompletion(int rc, const void* data) {
-  CallbackContext* context = (CallbackContext*)data;
+  CompletionContext* context = (CompletionContext*)data;
   ((VoidCallback*)(context->callback_.get()))->processResult((ReturnCode)rc,
                     context->path_);
   delete context;
@@ -63,7 +76,7 @@ voidCompletion(int rc, const void* data) {
 void ZooKeeperImpl::
 statCompletion(int rc, const struct Stat* stat,
                            const void* data) {
-  CallbackContext* context = (CallbackContext*)data;
+  CompletionContext* context = (CompletionContext*)data;
   ((StatCallback*)(context->callback_.get()))->processResult((ReturnCode)rc,
                     context->path_, (struct Stat*)stat);
   delete context;
@@ -72,7 +85,7 @@ statCompletion(int rc, const struct Stat* stat,
 void ZooKeeperImpl::
 dataCompletion(int rc, const char *value, int value_len,
                            const struct Stat *stat, const void *data) {
-  CallbackContext* context = (CallbackContext*)data;
+  CompletionContext* context = (CompletionContext*)data;
   std::string result;
   if (rc == Ok) {
     assert(value);
@@ -88,7 +101,7 @@ dataCompletion(int rc, const char *value, int value_len,
 void ZooKeeperImpl::
 childrenCompletion(int rc, const struct String_vector *strings,
                    const struct Stat *stat, const void *data) {
-  CallbackContext* context = (CallbackContext*)data;
+  CompletionContext* context = (CompletionContext*)data;
   std::vector<std::string> children;
   if (rc == Ok) {
     for (int i = 0; i < strings->count; i++) {
@@ -104,7 +117,7 @@ childrenCompletion(int rc, const struct String_vector *strings,
 void ZooKeeperImpl::
 aclCompletion(int rc, struct ACL_vector *acl,
               struct Stat *stat, const void *data) {
-  CallbackContext* context = (CallbackContext*)data;
+  CompletionContext* context = (CompletionContext*)data;
   ((AclCallback*)(context->callback_.get()))->processResult((ReturnCode)rc,
                     context->path_, acl, (struct Stat*)stat);
   delete context;
@@ -123,16 +136,13 @@ ReturnCode ZooKeeperImpl::
 init(const std::string& hosts, int32_t sessionTimeoutMs,
      boost::shared_ptr<Watch> watch) {
 
-  // XXX HACK - heap allocate a copy of the watch and save it in zookeeper
-  // handle
-  boost::shared_ptr<Watch>* callbackWatch = new boost::shared_ptr<Watch>(watch);
-  handle_ = zookeeper_init(hosts.c_str(), &callback, sessionTimeoutMs,
-                           NULL, (void*)callbackWatch, 0);
+  WatchContext* context = new WatchContext(watch, false);
+  handle_ = zookeeper_init(hosts.c_str(), &watchCallback, sessionTimeoutMs,
+                           NULL, (void*)context, 0);
   if (handle_ == NULL) {
     return Error;
   }
   inited_ = true;
-  defaultWatch_ = watch;
   return Ok;
 }
 
@@ -147,7 +157,7 @@ ReturnCode ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
                   const struct ACL_vector *acl, CreateMode mode,
                   boost::shared_ptr<StringCallback> callback) {
-  CallbackContext* context = new CallbackContext(callback, path);
+  CompletionContext* context = new CompletionContext(callback, path);
   return (ReturnCode)zoo_acreate(handle_, path.c_str(),
                                  data.c_str(), data.size(),
                                  acl, mode, &stringCompletion, (void*)context);
@@ -156,7 +166,7 @@ create(const std::string& path, const std::string& data,
 ReturnCode ZooKeeperImpl::
 remove(const std::string& path, int version,
        boost::shared_ptr<VoidCallback> callback) {
-  CallbackContext* context = new CallbackContext(callback, path);
+  CompletionContext* context = new CompletionContext(callback, path);
   return (ReturnCode)zoo_adelete(handle_, path.c_str(), version,
          &voidCompletion, (void*)context);
 }
@@ -164,25 +174,25 @@ remove(const std::string& path, int version,
 ReturnCode ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        boost::shared_ptr<StatCallback> cb) {
-  CallbackContext* context = new CallbackContext(cb, path);
+  CompletionContext* context = new CompletionContext(cb, path);
   return (ReturnCode)zoo_awexists(handle_, path.c_str(),
-         &callback, (void*) new boost::shared_ptr<Watch>(watch),
+         &watchCallback, (void*) new WatchContext(watch, true),
          &statCompletion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
     boost::shared_ptr<DataCallback> cb) {
-  CallbackContext* context = new CallbackContext(cb, path);
+  CompletionContext* context = new CompletionContext(cb, path);
   return (ReturnCode)zoo_awget(handle_, path.c_str(),
-         &callback, (void*) new boost::shared_ptr<Watch>(watch),
+         &watchCallback, (void*) new WatchContext(watch, true),
          &dataCompletion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
                int version, boost::shared_ptr<StatCallback> cb) {
-  CallbackContext* context = new CallbackContext(cb, path);
+  CompletionContext* context = new CompletionContext(cb, path);
   return (ReturnCode)zoo_aset(handle_, path.c_str(),
          data.c_str(), data.size(), version,
          &statCompletion, (void*)context);
@@ -191,15 +201,15 @@ set(const std::string& path, const std::string& data,
 ReturnCode ZooKeeperImpl::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ChildrenCallback> cb) {
-  CallbackContext* context = new CallbackContext(cb, path);
+  CompletionContext* context = new CompletionContext(cb, path);
   return (ReturnCode)zoo_awget_children2(handle_, path.c_str(),
-         &callback, (void*)new boost::shared_ptr<Watch>(watch),
+         &watchCallback, (void*) new WatchContext(watch, true),
          &childrenCompletion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 getAcl(const std::string& path, boost::shared_ptr<AclCallback> cb) {
-  CallbackContext* context = new CallbackContext(cb, path);
+  CompletionContext* context = new CompletionContext(cb, path);
   return (ReturnCode)zoo_aget_acl(handle_, path.c_str(),
          &aclCompletion, (void*)context);
 }
@@ -207,14 +217,14 @@ getAcl(const std::string& path, boost::shared_ptr<AclCallback> cb) {
 ReturnCode ZooKeeperImpl::
 setAcl(const std::string& path, int version, struct ACL_vector *acl,
        boost::shared_ptr<VoidCallback> cb) {
-  CallbackContext* context = new CallbackContext(cb, path);
+  CompletionContext* context = new CompletionContext(cb, path);
   return (ReturnCode)zoo_aset_acl(handle_, path.c_str(),
          version, acl, &voidCompletion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 sync(const std::string& path, boost::shared_ptr<StringCallback> cb) {
-  CallbackContext* context = new CallbackContext(cb, path);
+  CompletionContext* context = new CompletionContext(cb, path);
   return (ReturnCode)zoo_async(handle_, path.c_str(),
          &stringCompletion, context);
 }

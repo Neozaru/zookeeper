@@ -97,11 +97,10 @@ enum ReturnCode {
  * possible parameters of the watcher callback.
  */
 enum State {
-  SESSION_EXPIRED_STATE = -112,
-  AUTH_FAILED_STATE = -113,
-  CONNECTING_STATE = 1,
-  ASSOCIATING_STATE = 2,
-  CONNECTED_STATE = 3,
+  Expired = -112,
+  SessionAuthFailed = -113,
+  Connecting = 1,
+  Connected = 3,
 };
 
 /**
@@ -188,6 +187,9 @@ typedef enum {
   ZOO_LOG_LEVEL_DEBUG = 4
 } LogLevel;
 
+/**
+ * TODO use C++ jute.
+ */
 static struct ACL __OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
 static struct ACL __READ_ACL_UNSAFE_ACL[] = {{0x01, {(char*)"world", (char*)"anyone"}}};
 static struct ACL __CREATOR_ALL_ACL_ACL[] = {{0x1f, {(char*)"auth", (char*)""}}};
@@ -303,9 +305,9 @@ class ZooKeeper : boost::noncopyable {
      * fixed length of 10 digits, 0 padded.
      *
      * @param path The name of the znode.
-     * @param value The data to be stored in the node.
+     * @param data The data to be stored in the node.
      * @param acl The initial ACL of the node. The ACL must not be null or
-     *             empty.
+     *            empty.
      * @param mode
      * @param callback the routine to invoke when the request completes.
      *                 The completion will be triggered with one of the
@@ -316,13 +318,11 @@ class ZooKeeper : boost::noncopyable {
      * ZNODEEXISTS the node already exists
      * ZNOAUTH the client does not have permission.
      * ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
-     * \param data The data that will be passed to the completion routine when the 
-     * function completes.
      *
-     * @return ZOK on success
-     *         ZBADARGUMENTS - invalid input parameters
+     * @return Ok on success
+     *         BadArguments invalid input parameters
      *         ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
-     *         ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     *         MarshallingError - failed to marshall a request; possibly, out of memory
      */
     ReturnCode create(const std::string& path, const std::string& data,
                       const struct ACL_vector *acl, CreateMode mode,

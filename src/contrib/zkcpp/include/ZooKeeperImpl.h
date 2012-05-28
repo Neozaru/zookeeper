@@ -66,7 +66,7 @@ class ZooKeeperImpl {
     std::string getSessionPassword();
 
   private:
-    static void callback(zhandle_t *zh, int type, int state, const char *path,
+    static void watchCallback(zhandle_t *zh, int type, int state, const char *path,
                          void *watcherCtx);
     static void stringCompletion(int rc, const char *value, const void *data);
     static void voidCompletion(int rc, const void *data);
@@ -80,7 +80,6 @@ class ZooKeeperImpl {
                               struct Stat *stat, const void *data);
     zhandle_t* handle_;
     bool inited_;
-    boost::shared_ptr<Watch> defaultWatch_;
 };
 }}}
 
