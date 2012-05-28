@@ -37,7 +37,7 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
 
 ReturnCode ZooKeeper::
 addAuthInfo(const std::string& scheme, const std::string& cert,
-                       boost::shared_ptr<VoidCallback> callback) {
+            boost::shared_ptr<AuthCallback> callback) {
   return impl_->addAuthInfo(scheme, cert, callback);
 }
 

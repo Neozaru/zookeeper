@@ -46,12 +46,20 @@ class TestInitWatch : public Watch {
   public:
     void process(Event event, State state, const std::string& path) {
         printf("event %d, state %d path '%s'\n", event, state, path.c_str());
-        if (event == Session && state == Connected) {
+        if (event == Session) {
+          if (state == Connected) {
             {
                 boost::lock_guard<boost::mutex> lock(mutex);
                 connected = true;
             }
             cond.notify_all();
+          } else if (state = SessionAuthFailed) {
+            {
+                boost::lock_guard<boost::mutex> lock(mutex);
+                authFailed_ = true;
+            }
+            cond.notify_all();
+          }
         }
     }
 
@@ -68,9 +76,59 @@ class TestInitWatch : public Watch {
         return true;
     }
 
+    bool waitForAuthFailed(uint32_t timeoutMs) {
+        boost::system_time const timeout=boost::get_system_time() +
+            boost::posix_time::milliseconds(timeoutMs);
+
+        boost::mutex::scoped_lock lock(mutex);
+        while (!authFailed_) {
+            if(!cond.timed_wait(lock,timeout)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     boost::condition_variable cond;
     boost::mutex mutex;
     bool connected;
+    bool authFailed_;
+};
+
+class MyAuthCallback : public AuthCallback {
+  public:
+    MyAuthCallback() : completed_(false), scheme_(""), cert_("") {}
+    void processResult(ReturnCode rc, const std::string& scheme,
+                       const std::string& cert) {
+      rc_ = rc;
+      scheme_ = scheme;
+      cert_ = cert;
+      {
+        boost::lock_guard<boost::mutex> lock(mutex);
+        completed_ = true;
+      }
+      cond.notify_all();
+    }
+
+    bool waitForCompleted(uint32_t timeoutMs) {
+        boost::system_time const timeout=boost::get_system_time() +
+            boost::posix_time::milliseconds(timeoutMs);
+
+        boost::mutex::scoped_lock lock(mutex);
+        while (!completed_) {
+            if(!cond.timed_wait(lock,timeout)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    boost::condition_variable cond;
+    boost::mutex mutex;
+    bool completed_;
+    ReturnCode rc_;
+    std::string scheme_;
+    std::string cert_;
 };
 
 class CreateCallback : public StringCallback {
@@ -155,7 +213,9 @@ public:
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
         CPPUNIT_ASSERT(watch->waitForConnected(1000));
+        CPPUNIT_ASSERT_EQUAL(Connected, zk.getState());
         stopServer();
+        CPPUNIT_ASSERT_EQUAL(Connecting, zk.getState());
     }
 
     void testCreate() {
@@ -163,7 +223,7 @@ public:
         ZooKeeper zk;
         struct Stat stat;
 
-        shared_ptr<TestInitWatch> watch;
+        shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
 
         shared_ptr<CreateCallback> callback(new CreateCallback());
@@ -184,6 +244,30 @@ public:
         CPPUNIT_ASSERT_EQUAL(0, (int)stat.ephemeralOwner);
         CPPUNIT_ASSERT_EQUAL(5, stat.dataLength);
         CPPUNIT_ASSERT_EQUAL(0, stat.numChildren);
+
+        // Test authentication.
+        boost::shared_ptr<MyAuthCallback> authCallback(new MyAuthCallback());
+        std::string scheme = "digest";
+        std::string cert = "user:password";
+
+        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuthInfo(scheme, cert, authCallback));
+        CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
+        CPPUNIT_ASSERT_EQUAL(Ok, authCallback->rc_);
+        CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);
+        CPPUNIT_ASSERT_EQUAL(cert, authCallback->cert_);
+        CPPUNIT_ASSERT_EQUAL(Connected, zk.getState());
+
+        scheme = "bogus";
+        cert = "cert";
+        authCallback.reset(new MyAuthCallback());
+        watch->authFailed_= false;
+        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuthInfo(scheme, cert, authCallback));
+        CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
+        CPPUNIT_ASSERT_EQUAL(AuthFailed, authCallback->rc_);
+        CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);
+        CPPUNIT_ASSERT_EQUAL(cert, authCallback->cert_);
+        CPPUNIT_ASSERT(watch->waitForAuthFailed(30000));
+        CPPUNIT_ASSERT_EQUAL(SessionAuthFailed, zk.getState());
 
         stopServer();
     }

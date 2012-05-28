@@ -74,10 +74,10 @@ void ZooKeeperImpl::
 watchCallback(zhandle_t *zh, int type, int state, const char *path,
          void *watcherCtx) {
   assert(watcherCtx);
-  LOG_DEBUG(("%d, %d", type, state));
   WatchContext* context = (WatchContext*)watcherCtx;
 
   if ((Event)type == Session) {
+    LOG_DEBUG(("got session event %d, %d", type, state));
     bool validState = false;
     switch((State) state) {
       case Expired:
@@ -110,6 +110,17 @@ public:
                   std::string path) : callback_(callback), path_(path) {};
   boost::shared_ptr<Callback> callback_;
   std::string path_;
+};
+
+class AuthCompletionContext {
+public:
+  AuthCompletionContext(boost::shared_ptr<Callback> callback,
+                        const std::string& scheme,
+                        const std::string& cert) :
+    callback_(callback), scheme_(scheme), cert_(cert) {}
+  boost::shared_ptr<Callback> callback_;
+  std::string scheme_;
+  std::string cert_;
 };
 
 
@@ -199,6 +210,17 @@ aclCompletion(int rc, struct ACL_vector *acl,
   delete context;
 }
 
+void ZooKeeperImpl::
+authCompletion(int rc, const void* data) {
+  AuthCompletionContext* context = (AuthCompletionContext*)data;
+  AuthCallback* callback = (AuthCallback*)context->callback_.get();
+  LOG_DEBUG(("scheme='%s', cert='%s'", context->scheme_.c_str(), context->cert_.c_str()));
+  assert(callback);
+  callback->processResult((ReturnCode)rc, context->scheme_, context->cert_);
+  delete context;
+}
+
+
 ZooKeeperImpl::
 ZooKeeperImpl() : handle_(NULL), inited_(false), state_(Expired) {
 }
@@ -214,10 +236,8 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
   watcher_fn watcher = NULL;
   WatchContext* context = NULL;
 
-  if (watch.get()) {
-    watcher = &watchCallback;
-    context = new WatchContext(this, watch, false);
-  }
+  watcher = &watchCallback;
+  context = new WatchContext(this, watch, false);
   handle_ = zookeeper_init(hosts.c_str(), watcher, sessionTimeoutMs,
                            NULL, (void*)context, 0);
   if (handle_ == NULL) {
@@ -229,8 +249,15 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
 
 ReturnCode ZooKeeperImpl::
 addAuthInfo(const std::string& scheme, const std::string& cert,
-                       boost::shared_ptr<VoidCallback> callback) {
-  return Unimplemented;
+            boost::shared_ptr<AuthCallback> callback) {
+  void_completion_t completion = NULL;
+  AuthCompletionContext* context = NULL;
+  if (callback.get()) {
+    completion = &authCompletion;
+    context = new AuthCompletionContext(callback, scheme, cert);
+  }
+  return (ReturnCode)zoo_add_auth(handle_, scheme.c_str(), cert.c_str(),
+                                  cert.size(), completion, (void*)context);
 }
 
 

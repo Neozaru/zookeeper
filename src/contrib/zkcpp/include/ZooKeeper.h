@@ -278,12 +278,19 @@ class VoidCallback : public Callback {
     virtual void processResult(ReturnCode rc, std::string path) = 0;
 };
 
+class AuthCallback : public Callback {
+  public:
+    virtual void processResult(ReturnCode rc, const std::string& scheme,
+                               const std::string& cert) = 0;
+};
+
 class ZooKeeper : boost::noncopyable {
   public:
     ZooKeeper();
     ~ZooKeeper();
     ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs,
                     boost::shared_ptr<Watch> watch);
+
     /**
      * Adds authentication info for this session.
      *
@@ -310,7 +317,7 @@ class ZooKeeper : boost::noncopyable {
      * ZSYSTEMERROR - a system error occured
      */
     ReturnCode addAuthInfo(const std::string& scheme, const std::string& cert,
-                           boost::shared_ptr<VoidCallback> callback);
+                           boost::shared_ptr<AuthCallback> callback);
 
     /**
      * Create a znode asynchronously.

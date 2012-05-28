@@ -32,7 +32,7 @@ class ZooKeeperImpl {
     ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs,
                     boost::shared_ptr<Watch> watch);
     ReturnCode addAuthInfo(const std::string& scheme, const std::string& cert,
-                           boost::shared_ptr<VoidCallback> callback);
+                           boost::shared_ptr<AuthCallback> callback);
     ReturnCode create(const std::string& path, const std::string& data,
                       const struct ACL_vector *acl, CreateMode mode,
                       boost::shared_ptr<StringCallback> callback);
@@ -82,6 +82,7 @@ class ZooKeeperImpl {
                                    const struct Stat *stat, const void *data);
     static void aclCompletion(int rc, struct ACL_vector *acl,
                               struct Stat *stat, const void *data);
+    static void authCompletion(int rc, const void *data);
     zhandle_t* handle_;
     bool inited_;
     State state_;
