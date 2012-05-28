@@ -61,6 +61,12 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 }
 
 ReturnCode ZooKeeper::
+exists(const std::string& path, boost::shared_ptr<Watch> watch,
+       struct Stat* stat) {
+  return impl_->exists(path, watch, stat);
+}
+
+ReturnCode ZooKeeper::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
     boost::shared_ptr<DataCallback> callback) {
   return impl_->get(path, watch, callback);
@@ -102,13 +108,18 @@ sync(const std::string& path, boost::shared_ptr<StringCallback> callback) {
 //multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
 ReturnCode ZooKeeper::
-setDebugLevel(LogLevel logLevel) {
-  return ZooKeeperImpl::setDebugLevel(logLevel);
+setDebugLevel(ZooLogLevel level) {
+  return ZooKeeperImpl::setDebugLevel(level);
 }
 
 ReturnCode ZooKeeper::
 setLogStream(FILE* logStream) {
   return ZooKeeperImpl::setLogStream(logStream);
+}
+
+State ZooKeeper::
+getState() {
+  return impl_->getState();
 }
 
 ReturnCode ZooKeeper::

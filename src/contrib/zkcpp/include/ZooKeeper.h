@@ -23,6 +23,7 @@
 #include <vector>
 #include <boost/shared_ptr.hpp>
 #include <boost/utility.hpp>
+#include "zookeeper.h"
 #include "zookeeper.jute.h"
 
 namespace org { namespace apache { namespace zookeeper {
@@ -45,14 +46,26 @@ enum ReturnCode {
    */
   SystemError = -1,
 
-  RuntimeInconsistency = -2, /*!< A runtime inconsistency was found */
-  DataInconsistency = -3, /*!< A data inconsistency was found */
-  ConnectionLoss = -4, /*!< Connection to the server has been lost */
-  MarshallingError = -5, /*!< Error while marshalling or unmarshalling data */
-  Unimplemented = -6, /*!< Operation is unimplemented */
-  OperationTimeout = -7, /*!< Operation timeout */
-  BadArguments = -8, /*!< Invalid arguments */
-  InvalidState = -9, /*!< Invliad zhandle state */
+  /** A runtime inconsistency was found */
+  RuntimeInconsistency = -2,
+
+  /** A data inconsistency was found */
+  DataInconsistency = -3,
+
+  /** Connection to the server has been lost */
+  ConnectionLoss = -4,
+
+  /** Error while marshalling or unmarshalling data */
+  MarshallingError = -5,
+
+  /** Operation is unimplemented */
+  Unimplemented = -6,
+
+  /** Operation timeout */
+  OperationTimeout = -7,
+
+  /** Invalid arguments */
+  BadArguments = -8,
 
   /**
    * API errors.
@@ -64,20 +77,38 @@ enum ReturnCode {
    */
   ApiError = -100,
 
-  NoNode = -101, /*!< Node does not exist */
-  NoAuth = -102, /*!< Not authenticated */
-  BadVersion = -103, /*!< Version conflict */
-  NoChildrenForEphemerals = -108, /*!< Ephemeral nodes may not have children */
-  NodeExists = -110, /*!< The node already exists */
-  NotEmpty = -111, /*!< The node has children */
-  SessionExpired = -112, /*!< The session has been expired by the server */
-  InvalidCallback = -113, /*!< Invalid callback specified */
-  InvalidAcl = -114, /*!< Invalid ACL specified */
-  AuthFailed = -115, /*!< Client authentication failed */
-  Closing = -116, /*!< ZooKeeper is closing */
-  Nothing = -117, /*!< (not error) no server responses to process */
-  SessionMoved = -118, /*!<session moved to another server, so operation is
-                            ignored */
+  /** Node does not exist */
+  NoNode = -101,
+
+  /** Not authenticated */
+  NoAuth = -102,
+
+  /** Version conflict */
+  BadVersion = -103,
+
+  /** Ephemeral nodes may not have children */
+  NoChildrenForEphemerals = -108,
+
+  /** The node already exists */
+  NodeExists = -110,
+
+  /** The node has children */
+  NotEmpty = -111,
+
+  /** The session has been expired by the server */
+  SessionExpired = -112,
+
+  /** Invalid callback specified */
+  InvalidCallback = -113,
+
+  /** Invalid ACL specified */
+  InvalidAcl = -114,
+
+  /** Client authentication failed */
+  AuthFailed = -115,
+
+  /** Session moved to another server, so operation is ignored */
+  SessionMoved = -118,
 
   /**
    * C++ library specific errors.
@@ -88,8 +119,12 @@ enum ReturnCode {
    */
   CppError = 1,
 
+  /** The session is in an invalid state for a given operation. */
+  InvalidState = 2,
+
   /** Generic error */
-  Error = 2,
+  Error = 3,
+
 };
 
 /*
@@ -177,25 +212,10 @@ enum CreateMode {
 };
 
 /**
- * Debug levels
- * TODO deprecate
- */
-typedef enum {
-  ZOO_LOG_LEVEL_ERROR = 1,
-  ZOO_LOG_LEVEL_WARN = 2,
-  ZOO_LOG_LEVEL_INFO = 3,
-  ZOO_LOG_LEVEL_DEBUG = 4
-} LogLevel;
-
-/**
  * TODO use C++ jute.
  */
 static struct ACL __OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
-static struct ACL __READ_ACL_UNSAFE_ACL[] = {{0x01, {(char*)"world", (char*)"anyone"}}};
-static struct ACL __CREATOR_ALL_ACL_ACL[] = {{0x1f, {(char*)"auth", (char*)""}}};
 static struct ACL_vector OPEN_ACL_UNSAFE = { 1, __OPEN_ACL_UNSAFE_ACL};
-static struct ACL_vector READ_ACL_UNSAFE = { 1, __READ_ACL_UNSAFE_ACL};
-static struct ACL_vector CREATOR_ALL_ACL = { 1, __CREATOR_ALL_ACL_ACL};
 
 class Watch : boost::noncopyable {
   public:
@@ -272,22 +292,20 @@ class ZooKeeper : boost::noncopyable {
      * the scheme parameter to authenticate the client connection. If the 
      * authentication request has failed:
      * - the server connection is dropped
-     * - the watcher is called with the ZOO_AUTH_FAILED_STATE value as the state 
+     * - the watcher is called with the SessionAuthFailed value as the state 
      * parameter.
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param scheme the id of authentication scheme. Natively supported:
+     *
+     * @param scheme the id of authentication scheme. Natively supported:
      * "digest" password-based authentication
-     * \param cert application credentials. The actual value depends on the scheme.
-     * \param certLen the length of the data parameter
-     * \param completion the routine to invoke when the request completes. One of 
-     * the following result codes may be passed into the completion callback:
+     * @param authentification certificate.
+     * @param completion the routine to invoke when the request completes. One
+     * of the following result codes may be passed into the completion callback:
      * ZOK operation completed successfully
-     * ZAUTHFAILED authentication failed 
-     * \param data the data that will be passed to the completion routine when the 
-     * function completes.
+     * ZAUTHFAILED authentication failed
+     *
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      * ZSYSTEMERROR - a system error occured
      */
@@ -321,7 +339,7 @@ class ZooKeeper : boost::noncopyable {
      *
      * @return Ok on success
      *         BadArguments invalid input parameters
-     *         ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     *         InvalidState - zhandle state is either Expired or SessionAuthFailed
      *         MarshallingError - failed to marshall a request; possibly, out of memory
      */
     ReturnCode create(const std::string& path, const std::string& data,
@@ -347,7 +365,7 @@ class ZooKeeper : boost::noncopyable {
      * the function completes.
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode remove(const std::string& path, int version,
@@ -379,12 +397,31 @@ class ZooKeeper : boost::noncopyable {
      * function completes.
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<StatCallback> callback);
+
+    /**
+     * Synchronous version of exists().
+     *
+     * @param path The name of the node.
+     * @param watcher if non-null a watch will set on the specified znode on the server.
+     * The watch will be set even if the node does not exist. This allows clients 
+     * to watch for nodes to appear.
+     *
+     * @returns
+     * Ok The node exists
+     * NoNode The node does not exist.
+     * ZNOAUTH the client does not have permission.
+     * ZBADARGUMENTS - invalid input parameters
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
+     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     */
+    ReturnCode exists(const std::string& path, boost::shared_ptr<Watch> watch,
+                      struct Stat* stat);
 
     /**
      * Gets the data associated with a node.
@@ -409,7 +446,7 @@ class ZooKeeper : boost::noncopyable {
      * the function completes.
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either in ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either in Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode get(const std::string& path,
@@ -439,36 +476,28 @@ class ZooKeeper : boost::noncopyable {
      * the function completes.
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode set(const std::string& path, const std::string& data,
                    int version, boost::shared_ptr<StatCallback> callback);
 
     /**
-     * \brief lists the children of a node, and get the parent stat.
+     * Gets the children and the stat of a znode.
      *
-     * This function is similar to \ref zoo_aget_children2 except it allows one specify 
-     * a watcher object rather than a boolean watch flag.
-     *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watcher if non-null, a watch will be set at the server to notify 
+     * @param path the name of the znode.
+     * @param watcher if non-null, a watch will be set at the server to notify
      * the client if the node changes.
-     * \param watcherCtx user specific data, will be passed to the watcher callback.
-     * Unlike the global context set by \ref zookeeper_init, this watcher context
-     * is associated with the given instance of the watcher only.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
+     * @param completion the routine to invoke when the request completes. The
+     * completion will be triggered with one of the following codes passed in as
+     * the rc argument:
+     *   Ok operation completed successfully
+     *   NoNode the node does not exist.
+     *   ZNOAUTH the client does not have permission.
+     *
+     * @return Ok on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode getChildren(const std::string& path,
@@ -490,7 +519,7 @@ class ZooKeeper : boost::noncopyable {
      * the function completes.
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode getAcl(const std::string& path,
@@ -515,7 +544,7 @@ class ZooKeeper : boost::noncopyable {
      * the function completes.
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      * TODO use C++ jute
      */
@@ -537,7 +566,7 @@ class ZooKeeper : boost::noncopyable {
      * the function completes.
      * \return ZOK on success or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
-     * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+     * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode sync(const std::string& path,
@@ -579,7 +608,7 @@ class ZooKeeper : boost::noncopyable {
      * Sets the debugging level for the library.
      * TODO: deprecate
      */
-    static ReturnCode setDebugLevel(LogLevel logLevel);
+    static ReturnCode setDebugLevel(ZooLogLevel level);
 
     /**
      * Sets the stream to be used by the library for logging
@@ -606,6 +635,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode close();
 
+    State getState();
     int64_t getSessionId();
     std::string getSessionPassword();
 

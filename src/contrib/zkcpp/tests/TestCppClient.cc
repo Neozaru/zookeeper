@@ -130,6 +130,7 @@ public:
     void setUp()
     {
         zoo_set_log_stream(logfile);
+        zoo_set_debug_level(ZOO_LOG_LEVEL_DEBUG);
     }
 
     void startServer() {
@@ -160,13 +161,30 @@ public:
     void testCreate() {
         startServer();
         ZooKeeper zk;
-        shared_ptr<TestInitWatch> watch(new TestInitWatch());
+        struct Stat stat;
+
+        shared_ptr<TestInitWatch> watch;
         CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
-        CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
         shared_ptr<CreateCallback> callback(new CreateCallback());
+        ReturnCode rc = zk.exists("/hello", boost::shared_ptr<Watch>(), &stat);
+        CPPUNIT_ASSERT_EQUAL(NoNode, rc);
+
         zk.create("/hello", "world",  (const ACL_vector*)&OPEN_ACL_UNSAFE,
                   Persistent, callback);
         CPPUNIT_ASSERT(callback->waitForCreated(1000));
+
+        rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
+                       &stat);
+        CPPUNIT_ASSERT_EQUAL(Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(stat.czxid, stat.mzxid);
+        CPPUNIT_ASSERT_EQUAL(0, stat.version);
+        CPPUNIT_ASSERT_EQUAL(0, stat.cversion);
+        CPPUNIT_ASSERT_EQUAL(0, stat.aversion);
+        CPPUNIT_ASSERT_EQUAL(0, (int)stat.ephemeralOwner);
+        CPPUNIT_ASSERT_EQUAL(5, stat.dataLength);
+        CPPUNIT_ASSERT_EQUAL(0, stat.numChildren);
+
         stopServer();
     }
 

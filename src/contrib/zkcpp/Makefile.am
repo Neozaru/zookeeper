@@ -25,7 +25,7 @@ COMMON_SRC = src/zookeeper.c include/zookeeper.h include/ZooKeeper.h include/Zoo
 EXPORT_SYMBOLS = '(zoo_|zookeeper_|zhandle|Z|format_log_message|log_message|logLevel|deallocate_|zerror|is_unrecoverable)'
 noinst_LTLIBRARIES += libzkst.la
 libzkst_la_SOURCES =$(COMMON_SRC) src/st_adaptor.c
-libzkst_la_LIBADD = -lm
+libzkst_la_LIBADD = -lm -lboost_thread-mt
 
 lib_LTLIBRARIES = libzookeeper_st.la
 libzookeeper_st_la_SOURCES =
@@ -37,11 +37,11 @@ if WANT_SYNCAPI
 noinst_LTLIBRARIES += libzkmt.la
 libzkmt_la_SOURCES =$(COMMON_SRC) src/mt_adaptor.c
 libzkmt_la_CFLAGS = -DTHREADED
-libzkmt_la_LIBADD = -lm
+libzkmt_la_LIBADD = -lm -lboost_thread-mt
 
 lib_LTLIBRARIES += libzookeeper_mt.la
 libzookeeper_mt_la_SOURCES =
-libzookeeper_mt_la_LIBADD=libzkmt.la libhashtable.la -lpthread
+libzookeeper_mt_la_LIBADD=libzkmt.la libhashtable.la -lpthread -lboost_thread-mt
 libzookeeper_mt_la_DEPENDENCIES=libzkmt.la libhashtable.la
 libzookeeper_mt_la_LDFLAGS = $(LIB_LDFLAGS) -export-symbols-regex $(EXPORT_SYMBOLS)
 endif

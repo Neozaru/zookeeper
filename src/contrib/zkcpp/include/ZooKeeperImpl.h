@@ -41,6 +41,8 @@ class ZooKeeperImpl {
     ReturnCode exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<StatCallback> callback);
+    ReturnCode exists(const std::string& path, boost::shared_ptr<Watch> watch,
+                      struct Stat* stat);
     ReturnCode get(const std::string& path,
                    boost::shared_ptr<Watch>,
                    boost::shared_ptr<DataCallback> callback);
@@ -59,9 +61,11 @@ class ZooKeeperImpl {
     //      zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
 
     //ReturnCode multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
-    static ReturnCode setDebugLevel(LogLevel logLevel);
+    static ReturnCode setDebugLevel(ZooLogLevel level);
     static ReturnCode setLogStream(FILE* logStream);
     ReturnCode close();
+    State getState();
+    void setState(State state);
     int64_t getSessionId();
     std::string getSessionPassword();
 
@@ -80,6 +84,7 @@ class ZooKeeperImpl {
                               struct Stat *stat, const void *data);
     zhandle_t* handle_;
     bool inited_;
+    State state_;
 };
 }}}
 
