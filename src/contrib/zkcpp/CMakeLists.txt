@@ -29,7 +29,12 @@ file(GLOB source
   ${PROJECT_SOURCE_DIR}/generated/*.c
 )
 
-file(GLOB test
+# TODO derive this from ${source} and ${testsrc}
+file(GLOB testsrc
+  ${PROJECT_SOURCE_DIR}/src/*.cc
+  ${PROJECT_SOURCE_DIR}/src/*.c
+  ${PROJECT_SOURCE_DIR}/src/hashtable/*.c
+  ${PROJECT_SOURCE_DIR}/generated/*.c
   ${PROJECT_SOURCE_DIR}/tests/*.cc
   ${PROJECT_SOURCE_DIR}/tests/*.c
   ${PROJECT_SOURCE_DIR}/tests/*.h
@@ -57,7 +62,7 @@ ELSE (CPPUNIT_FOUND)
 
 ENDIF (CPPUNIT_FOUND)
 
-set_source_files_properties(${source} ${test} PROPERTIES LANGUAGE CXX)
+set_source_files_properties(${source} ${testsrc} PROPERTIES LANGUAGE CXX)
 add_definitions(
   -DTHREADED
   -DZKSERVER_CMD="${PROJECT_SOURCE_DIR}/tests/zkServer.sh"
@@ -69,10 +74,6 @@ set(CMAKE_EXE_LINKER_FLAGS
 "-Wl,--wrap -Wl,calloc -Wl,--wrap -Wl,free -Wl,--wrap -Wl,flush_send_queue -Wl,--wrap -Wl,get_xid -Wl,--wrap -Wl,deliverWatchers -Wl,--wrap -Wl,activateWatcher -Wl,--wrap -Wl,pthread_mutex_lock -Wl,--wrap -Wl,pthread_mutex_trylock -Wl,--wrap -Wl,pthread_mutex_unlock"
 )
 
-
-
-message(STATUS ${CMAKE_EXE_LINKER_FLAGS})
-add_executable(zktest ${test})
+add_executable(zktest ${testsrc})
 target_link_libraries(zktest ${CPPUNIT_LIBRARY}   ${Boost_THREAD_LIBRARY}
 )
-target_link_libraries(zktest zkcpp)
