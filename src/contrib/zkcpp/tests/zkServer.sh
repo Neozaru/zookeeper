@@ -77,7 +77,8 @@ fi
 
 if [ "x${base_dir}" == "x" ]
 then
-zk_base="../../.."
+#zk_base="../../.."
+zk_base="../../../.."
 else
 zk_base="${base_dir}"
 fi
