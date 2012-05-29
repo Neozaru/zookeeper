@@ -220,26 +220,14 @@ static struct ACL_vector OPEN_ACL_UNSAFE = { 1, __OPEN_ACL_UNSAFE_ACL};
 class Watch : boost::noncopyable {
   public:
     virtual void process(Event event, State state, const std::string& path) = 0;
-    void setContext(void* context);
-    void* getContext();
 
   protected:
-    Watch() : context_(NULL) {};
-
-  private:
-    void* context_;
+    Watch() {};
 };
 
 class Callback : boost::noncopyable {
-  public:
-    void setContext(void* context);
-    void* getContext();
-
   protected:
-    Callback() : context_(NULL) {};
-
-  private:
-    void* context_;
+    Callback() {};
 };
 
 class StatCallback : public Callback {
@@ -248,10 +236,19 @@ class StatCallback : public Callback {
                                struct Stat* stat) = 0;
 };
 
-class DataCallback : public Callback {
+/**
+ * Callback interface for get() operation.
+ */
+class GetCallback : public Callback {
   public:
-    virtual void processResult(ReturnCode rc, std::string path,
-                               std::string data, struct Stat* stat) = 0;
+    /**
+     * @param rc Ok if this get() operation was successful.
+     * @param path The path of the znode this get() operation was for
+     * @param data Data associated with this znode. Valid iff rc == Ok.
+     * @param stat Stat associated with this znode. Valid iff rc == Ok.
+     */
+    virtual void process(ReturnCode rc, const std::string& path,
+                         const std::string& data, const Stat& stat) = 0;
 };
 
 class AclCallback : public Callback {
@@ -458,7 +455,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode get(const std::string& path,
                    boost::shared_ptr<Watch>,
-                   boost::shared_ptr<DataCallback> callback);
+                   boost::shared_ptr<GetCallback> callback);
 
     /**
      * Sets the data associated with a znode.
@@ -559,25 +556,24 @@ class ZooKeeper : boost::noncopyable {
             struct ACL_vector *acl, boost::shared_ptr<VoidCallback> callback);
 
     /**
-     * \brief Flush leader channel.
+     * Asynchronously flushes the channel between process and leader.
      *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes
-     * separating ancestors of the node.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * When the callback gets invoked with ReturnCode Ok, ZooKeeper guarantees
+     * that all the operations requested before calling sync() have been
+     * completed and their callbacks have been invoked.
+     *
+     * @param path Currently unused. You can pass any value and this method will
+     *             simply ignore it, except that you'll get this value back in
+     *             the callback. This parameter might get used in the future
+     *             when ZooKeeper supports multiple namespaces to only sync the
+     *             namespace that contains the path.
+     * @param callback the routine to invoke when the request completes.
+     *
+     * @return Ok If the request was enqueued successfully. One of the errors in
+     *         the ReturnCode in case of failure.
      */
     ReturnCode sync(const std::string& path,
-                    boost::shared_ptr<StringCallback> callback);
+                    boost::shared_ptr<VoidCallback> callback);
 
     /**
      * \brief atomically commits multiple zookeeper operations.

@@ -68,7 +68,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeper::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
-    boost::shared_ptr<DataCallback> callback) {
+    boost::shared_ptr<GetCallback> callback) {
   return impl_->get(path, watch, callback);
 }
 
@@ -96,7 +96,7 @@ setAcl(const std::string& path, int version, struct ACL_vector *acl,
 }
 
 ReturnCode ZooKeeper::
-sync(const std::string& path, boost::shared_ptr<StringCallback> callback) {
+sync(const std::string& path, boost::shared_ptr<VoidCallback> callback) {
   return impl_->sync(path, callback);
 }
 

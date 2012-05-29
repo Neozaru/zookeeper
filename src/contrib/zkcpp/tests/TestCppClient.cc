@@ -235,6 +235,10 @@ public:
         CPPUNIT_ASSERT(callback->waitForCreated(1000));
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
+                       NULL);
+        CPPUNIT_ASSERT_EQUAL(Ok, rc);
+
+        rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
                        &stat);
         CPPUNIT_ASSERT_EQUAL(Ok, rc);
         CPPUNIT_ASSERT_EQUAL(stat.czxid, stat.mzxid);

@@ -45,7 +45,7 @@ class ZooKeeperImpl {
                       struct Stat* stat);
     ReturnCode get(const std::string& path,
                    boost::shared_ptr<Watch>,
-                   boost::shared_ptr<DataCallback> callback);
+                   boost::shared_ptr<GetCallback> callback);
     ReturnCode set(const std::string& path, const std::string& data,
                    int version, boost::shared_ptr<StatCallback> callback);
     ReturnCode getChildren(const std::string& path,
@@ -56,7 +56,7 @@ class ZooKeeperImpl {
     ReturnCode setAcl(const std::string& path, int version,
             struct ACL_vector *acl, boost::shared_ptr<VoidCallback> callback);
     ReturnCode sync(const std::string& path,
-                    boost::shared_ptr<StringCallback> callback);
+                    boost::shared_ptr<VoidCallback> callback);
     //ReturnCode multi(int count, const zoo_op_t *ops,
     //      zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
 
@@ -83,6 +83,7 @@ class ZooKeeperImpl {
     static void aclCompletion(int rc, struct ACL_vector *acl,
                               struct Stat *stat, const void *data);
     static void authCompletion(int rc, const void *data);
+    static void syncCompletion(int rc, const char *value, const void *data);
     zhandle_t* handle_;
     bool inited_;
     State state_;

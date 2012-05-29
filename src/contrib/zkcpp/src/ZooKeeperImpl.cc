@@ -28,7 +28,6 @@ class ExistsCallback : public StatCallback {
     ExistsCallback(struct Stat* stat) : stat_(stat), completed_(false) {};
     void processResult(ReturnCode rc, std::string path, struct Stat* stat) {
       if (rc == Ok) {
-        memmove(stat_, stat, sizeof(*stat));
         LOG_DEBUG(("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
                    "cversion=%d aversion=%d ephemeralOwner=%ld dataLength=%d "
                    "numChildren=%d pzxid=%ld",
@@ -36,6 +35,9 @@ class ExistsCallback : public StatCallback {
                    stat->version, stat->cversion, stat->aversion,
                    stat->ephemeralOwner, stat->dataLength, stat->numChildren,
                    stat->pzxid));
+        if (stat_) {
+          memmove(stat_, stat, sizeof(*stat));
+        }
       }
       rc_ = rc;
       path_ = path;
@@ -165,16 +167,18 @@ dataCompletion(int rc, const char *value, int value_len,
                            const struct Stat *stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
+  Stat statCopy;
   if (rc == Ok) {
     assert(value);
     assert(value_len >= 0);
+    assert(stat);
+    // TODO avoid copy
     result.assign(value, value_len);
+    memmove(&statCopy, stat, sizeof(*stat));
   }
-  DataCallback* callback = (DataCallback*)context->callback_.get();
-  if (callback) {
-    callback->processResult((ReturnCode)rc, context->path_, result,
-                            (struct Stat*)stat);
-  }
+  GetCallback* callback = (GetCallback*)context->callback_.get();
+  assert(callback);
+  callback->process((ReturnCode)rc, context->path_, result, statCopy);
   delete context;
 
 }
@@ -214,9 +218,21 @@ void ZooKeeperImpl::
 authCompletion(int rc, const void* data) {
   AuthCompletionContext* context = (AuthCompletionContext*)data;
   AuthCallback* callback = (AuthCallback*)context->callback_.get();
-  LOG_DEBUG(("scheme='%s', cert='%s'", context->scheme_.c_str(), context->cert_.c_str()));
+  LOG_DEBUG(("rc=%d, scheme='%s', cert='%s'", rc, context->scheme_.c_str(),
+             context->cert_.c_str()));
   assert(callback);
   callback->processResult((ReturnCode)rc, context->scheme_, context->cert_);
+  delete context;
+}
+
+void ZooKeeperImpl::
+syncCompletion(int rc, const char* value, const void* data) {
+  CompletionContext* context = (CompletionContext*)data;
+  std::string result;
+  VoidCallback* callback = (VoidCallback*)context->callback_.get();
+  if (callback) {
+    callback->processResult((ReturnCode)rc, context->path_);
+  }
   delete context;
 }
 
@@ -265,18 +281,28 @@ ReturnCode ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
                   const struct ACL_vector *acl, CreateMode mode,
                   boost::shared_ptr<StringCallback> callback) {
-  CompletionContext* context = new CompletionContext(callback, path);
+  string_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+  if (callback.get()) {
+    completion = &stringCompletion;
+    context = new CompletionContext(callback, path);
+  }
   return (ReturnCode)zoo_acreate(handle_, path.c_str(),
                                  data.c_str(), data.size(),
-                                 acl, mode, &stringCompletion, (void*)context);
+                                 acl, mode, completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 remove(const std::string& path, int version,
        boost::shared_ptr<VoidCallback> callback) {
-  CompletionContext* context = new CompletionContext(callback, path);
+  void_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+  if (callback.get()) {
+    completion = &voidCompletion;
+    context = new CompletionContext(callback, path);
+  }
   return (ReturnCode)zoo_adelete(handle_, path.c_str(), version,
-         &voidCompletion, (void*)context);
+         completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
@@ -296,7 +322,6 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
     watchContext = new WatchContext(this, watch, true);
   }
 
-
   return (ReturnCode)zoo_awexists(handle_, path.c_str(),
          watcher, (void*)watchContext, completion,  (void*)completionContext);
 }
@@ -315,51 +340,97 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeperImpl::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
-    boost::shared_ptr<DataCallback> cb) {
-  CompletionContext* context = new CompletionContext(cb, path);
+    boost::shared_ptr<GetCallback> cb) {
+  watcher_fn watcher = NULL;
+  WatchContext* watchContext = NULL;
+  data_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+
+  if (watch.get()) {
+    watcher = &watchCallback;
+    watchContext = new WatchContext(this, watch, true);
+  }
+  if (cb.get()) {
+    completion = &dataCompletion;
+    context = new CompletionContext(cb, path);
+  }
+
   return (ReturnCode)zoo_awget(handle_, path.c_str(),
-         &watchCallback, (void*) new WatchContext(this, watch, true),
-         &dataCompletion, (void*)context);
+         &watchCallback, (void*)watchContext,
+         completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
                int version, boost::shared_ptr<StatCallback> cb) {
-  CompletionContext* context = new CompletionContext(cb, path);
+  stat_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+  if (cb.get()) {
+    completion = &statCompletion;
+    context = new CompletionContext(cb, path);
+  }
+
   return (ReturnCode)zoo_aset(handle_, path.c_str(),
          data.c_str(), data.size(), version,
-         &statCompletion, (void*)context);
+         completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ChildrenCallback> cb) {
-  CompletionContext* context = new CompletionContext(cb, path);
+  watcher_fn watcher = NULL;
+  WatchContext* watchContext = NULL;
+  strings_stat_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+
+  if (watch.get()) {
+    watcher = &watchCallback;
+    watchContext = new WatchContext(this, watch, true);
+  }
+  if (cb.get()) {
+    completion = &childrenCompletion;
+    context = new CompletionContext(cb, path);
+  }
+
   return (ReturnCode)zoo_awget_children2(handle_, path.c_str(),
-         &watchCallback, (void*) new WatchContext(this, watch, true),
-         &childrenCompletion, (void*)context);
+         watcher, (void*)watchContext, completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 getAcl(const std::string& path, boost::shared_ptr<AclCallback> cb) {
-  CompletionContext* context = new CompletionContext(cb, path);
+  acl_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+  if (cb.get()) {
+    completion = &aclCompletion;
+    context = new CompletionContext(cb, path);
+  }
   return (ReturnCode)zoo_aget_acl(handle_, path.c_str(),
-         &aclCompletion, (void*)context);
+         completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
 setAcl(const std::string& path, int version, struct ACL_vector *acl,
        boost::shared_ptr<VoidCallback> cb) {
-  CompletionContext* context = new CompletionContext(cb, path);
+  void_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+  if (cb.get()) {
+    completion = &voidCompletion;
+    context = new CompletionContext(cb, path);
+  }
   return (ReturnCode)zoo_aset_acl(handle_, path.c_str(),
-         version, acl, &voidCompletion, (void*)context);
+         version, acl, completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
-sync(const std::string& path, boost::shared_ptr<StringCallback> cb) {
-  CompletionContext* context = new CompletionContext(cb, path);
+sync(const std::string& path, boost::shared_ptr<VoidCallback> cb) {
+  string_completion_t completion = NULL;
+  CompletionContext* context = NULL;
+  if (cb.get()) {
+    completion = &syncCompletion;
+    context = new CompletionContext(cb, path);
+  }
   return (ReturnCode)zoo_async(handle_, path.c_str(),
-         &stringCompletion, context);
+         completion, context);
 }
 
 //ReturnCode ZooKeeperImpl::
