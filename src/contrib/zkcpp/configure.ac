@@ -6,6 +6,15 @@ AC_PREREQ(2.59)
 AC_INIT([zookeeper C client],3.4.0,[user@zookeeper.apache.org],[zookeeper])
 AC_CONFIG_SRCDIR([src/zookeeper.c])
 
+# Use g++ for compiling C code.
+CC=g++
+
+# Check if boost and boost_thread are avaiable.
+m4_include(ax_boost_base.m4)
+m4_include(ax_boost_thread.m4)
+AX_BOOST_BASE([1.42.0])
+AX_BOOST_THREAD
+
 # Save initial CFLAGS and CXXFLAGS values before AC_PROG_CC and AC_PROG_CXX
 init_cflags="$CFLAGS"
 init_cxxflags="$CXXFLAGS"
