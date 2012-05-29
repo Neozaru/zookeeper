@@ -23,15 +23,15 @@ COMMON_SRC = src/zookeeper.c include/zookeeper.h include/ZooKeeper.h include/Zoo
 
 # These are the symbols (classes, mostly) we want to export from our library.
 EXPORT_SYMBOLS = '(zoo_|zookeeper_|zhandle|Z|format_log_message|log_message|logLevel|deallocate_|zerror|is_unrecoverable)'
-noinst_LTLIBRARIES += libzkst.la
-libzkst_la_SOURCES =$(COMMON_SRC) src/st_adaptor.c
-libzkst_la_LIBADD = -lm -lboost_thread-mt
-
-lib_LTLIBRARIES = libzookeeper_st.la
-libzookeeper_st_la_SOURCES =
-libzookeeper_st_la_LIBADD=libzkst.la libhashtable.la
-libzookeeper_st_la_DEPENDENCIES=libzkst.la libhashtable.la
-libzookeeper_st_la_LDFLAGS = $(LIB_LDFLAGS) -export-symbols-regex $(EXPORT_SYMBOLS)
+#noinst_LTLIBRARIES += libzkst.la
+#libzkst_la_SOURCES =$(COMMON_SRC) src/st_adaptor.c
+#libzkst_la_LIBADD = -lm -lboost_thread-mt
+#
+#lib_LTLIBRARIES = libzookeeper_st.la
+#libzookeeper_st_la_SOURCES =
+#libzookeeper_st_la_LIBADD=libzkst.la libhashtable.la
+#libzookeeper_st_la_DEPENDENCIES=libzkst.la libhashtable.la
+#libzookeeper_st_la_LDFLAGS = $(LIB_LDFLAGS) -export-symbols-regex $(EXPORT_SYMBOLS)
 
 if WANT_SYNCAPI
 noinst_LTLIBRARIES += libzkmt.la
@@ -39,30 +39,30 @@ libzkmt_la_SOURCES =$(COMMON_SRC) src/mt_adaptor.c
 libzkmt_la_CFLAGS = -DTHREADED
 libzkmt_la_LIBADD = -lm -lboost_thread-mt
 
-lib_LTLIBRARIES += libzookeeper_mt.la
+lib_LTLIBRARIES = libzookeeper_mt.la
 libzookeeper_mt_la_SOURCES =
 libzookeeper_mt_la_LIBADD=libzkmt.la libhashtable.la -lpthread -lboost_thread-mt
 libzookeeper_mt_la_DEPENDENCIES=libzkmt.la libhashtable.la
 libzookeeper_mt_la_LDFLAGS = $(LIB_LDFLAGS) -export-symbols-regex $(EXPORT_SYMBOLS)
 endif
 
-bin_PROGRAMS = cli_st
-
-cli_st_SOURCES = src/cli.c
-cli_st_LDADD = libzookeeper_st.la
-
-if WANT_SYNCAPI
-bin_PROGRAMS += cli_mt load_gen
-
-cli_mt_SOURCES = src/cli.c
-cli_mt_LDADD = libzookeeper_mt.la
-cli_mt_CFLAGS = -DTHREADED
-
-load_gen_SOURCES = src/load_gen.c
-load_gen_LDADD = libzookeeper_mt.la
-load_gen_CFLAGS = -DTHREADED
-
-endif
+#bin_PROGRAMS = cli_st
+#
+#cli_st_SOURCES = src/cli.c
+#cli_st_LDADD = libzookeeper_st.la
+#
+#if WANT_SYNCAPI
+#bin_PROGRAMS += cli_mt load_gen
+#
+#cli_mt_SOURCES = src/cli.c
+#cli_mt_LDADD = libzookeeper_mt.la
+#cli_mt_CFLAGS = -DTHREADED
+#
+#load_gen_SOURCES = src/load_gen.c
+#load_gen_LDADD = libzookeeper_mt.la
+#load_gen_CFLAGS = -DTHREADED
+#
+#endif
 
 #########################################################################
 # build and run unit tests
@@ -81,14 +81,14 @@ TEST_SOURCES = tests/TestDriver.cc tests/LibCMocks.cc tests/LibCSymTable.cc \
 
 SYMBOL_WRAPPERS=$(shell cat ${srcdir}/tests/wrappers.opt)
 
-check_PROGRAMS = zktest-st
-nodist_zktest_st_SOURCES = $(TEST_SOURCES)
-zktest_st_LDADD = libzkst.la libhashtable.la $(CPPUNIT_LIBS)
-zktest_st_CXXFLAGS = -DUSE_STATIC_LIB $(CPPUNIT_CFLAGS) $(USEIPV6)
-zktest_st_LDFLAGS = -static-libtool-libs $(SYMBOL_WRAPPERS) -lboost_thread-mt
+#check_PROGRAMS = zktest-st
+#nodist_zktest_st_SOURCES = $(TEST_SOURCES)
+#zktest_st_LDADD = libzkst.la libhashtable.la $(CPPUNIT_LIBS)
+#zktest_st_CXXFLAGS = -DUSE_STATIC_LIB $(CPPUNIT_CFLAGS) $(USEIPV6)
+#zktest_st_LDFLAGS = -static-libtool-libs $(SYMBOL_WRAPPERS) -lboost_thread-mt
 
 if WANT_SYNCAPI
-  check_PROGRAMS += zktest-mt
+  check_PROGRAMS = zktest-mt
   nodist_zktest_mt_SOURCES = $(TEST_SOURCES) tests/PthreadMocks.cc
   zktest_mt_LDADD = libzkmt.la libhashtable.la -lpthread $(CPPUNIT_LIBS) -lboost_thread-mt
   zktest_mt_CXXFLAGS = -DUSE_STATIC_LIB -DTHREADED $(CPPUNIT_CFLAGS) $(USEIPV6)
@@ -97,7 +97,6 @@ if WANT_SYNCAPI
 endif
 
 run-check: check
-	./zktest-st $(TEST_OPTIONS)
 if WANT_SYNCAPI
 	./zktest-mt $(TEST_OPTIONS)
 endif
