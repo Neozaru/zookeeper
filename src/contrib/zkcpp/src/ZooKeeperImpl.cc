@@ -19,7 +19,8 @@
 #include <cerrno>
 #include <boost/thread/condition.hpp>
 #include "ZooKeeperImpl.h"
-#include "zookeeper_log.h"
+#include "Logging.h"
+ENABLE_LOGGING;
 
 namespace org { namespace apache { namespace zookeeper {
 
@@ -442,13 +443,11 @@ sync(const std::string& path, boost::shared_ptr<VoidCallback> cb) {
 
 ReturnCode ZooKeeperImpl::
 setDebugLevel(ZooLogLevel level) {
-  zoo_set_debug_level(level);
   return Ok;
 }
 
 ReturnCode ZooKeeperImpl::
 setLogStream(FILE* logStream) {
-  zoo_set_log_stream(logStream);
   return Ok;
 }
 

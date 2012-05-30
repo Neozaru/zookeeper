@@ -187,8 +187,8 @@ public:
 
     void setUp()
     {
-        zoo_set_log_stream(logfile);
-        zoo_set_debug_level(ZOO_LOG_LEVEL_DEBUG);
+        //zoo_set_log_stream(logfile);
+        //zoo_set_debug_level(ZOO_LOG_LEVEL_DEBUG);
     }
 
     void startServer() {

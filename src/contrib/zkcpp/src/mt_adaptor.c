@@ -28,7 +28,8 @@
 #endif
 
 #include "zk_adaptor.h"
-#include "zookeeper_log.h"
+#include "Logging.h"
+ENABLE_LOGGING;
 
 #include <stdlib.h>
 #include <stdio.h>

@@ -23,7 +23,7 @@
 #include <vector>
 #include <string>
 
-#include "zookeeper_log.h"
+//#include "zookeeper_log.h"
 
 // number of elements in array
 #define COUNTOF(array) sizeof(array)/sizeof(array[0])
@@ -37,7 +37,7 @@
 
 // must include "src/zookeeper_log.h" to be able to use this macro
 #define TEST_TRACE(x) \
-    log_message(ZOO_LOG_LEVEL_DEBUG,__LINE__,__func__,format_log_message x)
+    //log_message(ZOO_LOG_LEVEL_DEBUG,__LINE__,__func__,format_log_message x)
 
 extern const std::string EMPTY_STRING;
 

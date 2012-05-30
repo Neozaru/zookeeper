@@ -4,6 +4,7 @@
 
 - cmake
 - boost
+- log4cxx
 - cppunit
 
 # How to Build

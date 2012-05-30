@@ -212,7 +212,7 @@ public:
 
     void setUp()
     {
-        zoo_set_log_stream(logfile);
+        //zoo_set_log_stream(logfile);
 
         char cmd[1024];
         sprintf(cmd, "%s stop %s", ZKSERVER_CMD, getHostPorts());

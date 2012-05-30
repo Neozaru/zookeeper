@@ -31,6 +31,8 @@ void millisleep(int ms){
 }
 
 FILE *openlogfile(const char* testname) {
+  return NULL;
+  #if 0
   char name[1024];
   strcpy(name, "TEST-");
   strncpy(name + 5, testname, sizeof(name) - 5);
@@ -48,4 +50,5 @@ FILE *openlogfile(const char* testname) {
   }
 
   return logfile;
+  #endif
 }

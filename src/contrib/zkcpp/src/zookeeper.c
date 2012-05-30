@@ -24,11 +24,13 @@
 #define USE_IPV6
 #endif
 
+#include <string>
 #include <zookeeper.h>
 #include <zookeeper.jute.h>
 #include <proto.h>
 #include "zk_adaptor.h"
-#include "zookeeper_log.h"
+#include "Logging.h"
+ENABLE_LOGGING;
 #include "zk_hashtable.h"
 
 #include <stdlib.h>
@@ -195,12 +197,10 @@ static void queue_completion_nolock(completion_head_t *list, completion_list_t *
 static void queue_completion(completion_head_t *list, completion_list_t *c,
         int add_to_front);
 static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
-    const char* format,...);
+                                  const std::string& message);
 static void cleanup_bufs(zhandle_t *zh,int callCompletion,int rc);
 
 static int disable_conn_permute=0; // permute enabled by default
-
-static __attribute__((unused)) void print_completion_queue(zhandle_t *zh);
 
 static void *SYNCHRONOUS_MARKER = (void*)&SYNCHRONOUS_MARKER;
 static int isValidPath(const char* path, const int flags);
@@ -1243,18 +1243,13 @@ static void handle_error(zhandle_t *zh,int rc)
 }
 
 static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
-        const char* format, ...)
+        const std::string& message)
 {
-    if(logLevel>=ZOO_LOG_LEVEL_ERROR){
-        va_list va;
-        char buf[1024];
-        va_start(va,format);
-        vsnprintf(buf, sizeof(buf)-1,format,va);
-        log_message(ZOO_LOG_LEVEL_ERROR,line,__func__,
-            format_log_message("Socket [%s] zk retcode=%d, errno=%d(%s): %s",
-            format_current_endpoint_info(zh),rc,errno,strerror(errno),buf));
-        va_end(va);
-    }
+#if 0
+  LOG_ERROR(boost::format("%s:%d Socket [%s] zk retcode=%d, errno=%d(%s): %s") %
+            __func__ % line % format_current_endpoint_info(zh) %
+            rc % errno % strerror(errno) % message);
+            #endif
     handle_error(zh,rc);
     return rc;
 }
@@ -1478,8 +1473,7 @@ static int prime_connection(zhandle_t *zh)
     serialize_prime_connect(&req, buffer_req);
     rc=rc<0 ? rc : zookeeper_send(zh->fd, buffer_req, len);
     if (rc<0) {
-        return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS,
-                "failed to send a handshake packet: %s", strerror(errno));
+        return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
     }
     zh->state = ZOO_ASSOCIATING_STATE;
 
@@ -1645,8 +1639,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             *interest=0;
             *tv = get_timeval(0);
             return api_epilog(zh,handle_socket_error_msg(zh,
-                    __LINE__,ZOPERATIONTIMEOUT,
-                    "connection timed out (exceeded timeout by %dms)",-recv_to));
+                  __LINE__,ZOPERATIONTIMEOUT, ""));
         }
         // We only allow 1/3 of our timeout time to expire before sending
         // a PING
@@ -1657,7 +1650,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
 //                                format_current_endpoint_info(zh),-send_to));
                 int rc=send_ping(zh);
                 if (rc < 0){
-                    LOG_ERROR(("failed to send PING request (zk retcode=%d)",rc));
+                    //LOG_ERROR("failed to send PING request (zk retcode=" << rc << ")");
                     return api_epilog(zh,rc);
                 }
                 send_to = zh->recv_timeout/3;
@@ -1739,7 +1732,7 @@ static int check_events(zhandle_t *zh, int events)
                     zh->state = ZOO_EXPIRED_SESSION_STATE;
                     errno = ESTALE;
                     return handle_socket_error_msg(zh,__LINE__,ZSESSIONEXPIRED,
-                            "sessionId=%#llx has expired.",oldid);
+                    "");
                 } else {
                     zh->recv_timeout = zh->primer_storage.timeOut;
                     zh->client_id.client_id = newid;
@@ -1780,26 +1773,6 @@ int api_epilog(zhandle_t *zh,int rc)
     if(inc_ref_counter(zh,-1)==0 && zh->close_requested!=0)
         zookeeper_close(zh);
     return rc;
-}
-
-static __attribute__((unused)) void print_completion_queue(zhandle_t *zh)
-{
-    completion_list_t* cptr;
-
-    if(logLevel<ZOO_LOG_LEVEL_DEBUG) return;
-
-    fprintf(LOGSTREAM,"Completion queue: ");
-    if (zh->sent_requests.head==0) {
-        fprintf(LOGSTREAM,"empty\n");
-        return;
-    }
-
-    cptr=zh->sent_requests.head;
-    while(cptr){
-        fprintf(LOGSTREAM,"%d,",cptr->xid);
-        cptr=cptr->next;
-    }
-    fprintf(LOGSTREAM,"end\n");
 }
 
 //#ifdef THREADED
@@ -2168,12 +2141,12 @@ int zookeeper_process(zhandle_t *zh, int events)
     if (is_unrecoverable(zh))
         return ZINVALIDSTATE;
     api_prolog(zh);
-    IF_DEBUG(checkResponseLatency(zh));
+    //IF_DEBUG(checkResponseLatency(zh));
     rc = check_events(zh, events);
     if (rc!=ZOK)
         return api_epilog(zh, rc);
 
-    IF_DEBUG(isSocketReadable(zh));
+    //IF_DEBUG(isSocketReadable(zh));
 
     while (rc >= 0 && (bptr=dequeue_buffer(&zh->to_process))) {
         struct ReplyHeader hdr;
@@ -2248,8 +2221,7 @@ int zookeeper_process(zhandle_t *zh, int events)
                 // signaled and deallocated) and disconnect from the server
                 queue_completion(&zh->sent_requests,cptr,1);
                 return handle_socket_error_msg(zh, __LINE__,ZRUNTIMEINCONSISTENCY,
-                        "unexpected server response: expected %#x, but received %#x",
-                        hdr.xid,cptr->xid);
+                "");
             }
 
             activateWatcher(zh, cptr->watcher, rc);
@@ -2701,8 +2673,10 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+#if 0
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+             h.xid % path % format_current_endpoint_info(zh));
+             #endif
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;

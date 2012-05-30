@@ -230,7 +230,7 @@ public:
 
     void setUp()
     {
-        zoo_set_log_stream(logfile);
+        //zoo_set_log_stream(logfile);
     }
 
     void tearDown()

@@ -58,8 +58,24 @@ configure_file(
 # Look for threading library (e.g. pthread)
 find_package(Threads)
 
+# Look for log4cpp
+find_path(LOG4CXX_INCLUDE_DIR log4cxx/log4cxx.h)
+find_library(LOG4CXX_LIBRARY NAMES log4cxx)
+
+if(LOG4CXX_INCLUDE_DIR AND LOG4CXX_LIBRARY)
+  set(LOG4CXX_FOUND TRUE)
+endif()
+
+if(LOG4CXX_FOUND)
+  message(STATUS "Found log4cxx: ${LOG4CXX_LIBRARY}")
+else()
+  message(FATAL_ERROR "Could not find log4cxx")
+endif()
+
+
 # Look for boost with thread
 find_package(Boost COMPONENTS thread REQUIRED)
+
 
 # Look for cppunit
 find_path(CPPUNIT_INCLUDE_DIR cppunit/Test.h)
@@ -67,13 +83,13 @@ find_library(CPPUNIT_LIBRARY NAMES cppunit)
 
 if(CPPUNIT_INCLUDE_DIR AND CPPUNIT_LIBRARY)
   set(CPPUNIT_FOUND TRUE)
-endif(CPPUNIT_INCLUDE_DIR AND CPPUNIT_LIBRARY)
+endif()
 
 if(CPPUNIT_FOUND)
-  message(STATUS "Found CppUnit: ${CPPUNIT_LIBRARY}")
-else(CPPUNIT_FOUND)
-  message(FATAL_ERROR "Could not find CppUnit")
-endif(CPPUNIT_FOUND)
+  message(STATUS "Found cppunit: ${CPPUNIT_LIBRARY}")
+else()
+  message(FATAL_ERROR "Could not find cppunit")
+endif()
 
 # Treat C source code as C++ source code.
 set_source_files_properties(${source} ${testsrc} PROPERTIES LANGUAGE CXX)
@@ -84,14 +100,22 @@ add_definitions(
 )
 
 add_library(zkcpp SHARED ${header} ${source})
-target_link_libraries (zkcpp ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries (zkcpp
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${LOG4CXX_LIBRARY}
+)
+
 set(CMAKE_EXE_LINKER_FLAGS
 "-Wl,--wrap -Wl,calloc -Wl,--wrap -Wl,free -Wl,--wrap -Wl,flush_send_queue -Wl,--wrap -Wl,get_xid -Wl,--wrap -Wl,deliverWatchers -Wl,--wrap -Wl,activateWatcher -Wl,--wrap -Wl,pthread_mutex_lock -Wl,--wrap -Wl,pthread_mutex_trylock -Wl,--wrap -Wl,pthread_mutex_unlock"
 )
 
 add_executable(zktest ${testsrc})
-target_link_libraries(zktest ${CPPUNIT_LIBRARY}   ${Boost_THREAD_LIBRARY}
+target_link_libraries(zktest
+  ${CPPUNIT_LIBRARY}
+  ${Boost_THREAD_LIBRARY}
+  ${LOG4CXX_LIBRARY}
 )
 
 # Add "make lint" target
 add_custom_target(lint ${PROJECT_SOURCE_DIR}/cpplint.py ${testsrc} ${header})
+file(COPY ${PROJECT_SOURCE_DIR}/tests/log4cxx.properties DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

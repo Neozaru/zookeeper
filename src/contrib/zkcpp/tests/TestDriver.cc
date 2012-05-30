@@ -35,9 +35,10 @@
 #include <cppunit/TestAssert.h>
 #include <fstream>
 #include <time.h> 
+#include <sys/time.h>
 
 #include "Util.h"
-#include "zookeeper_log.h"
+//#include "zookeeper_log.h"
 
 using namespace std;
 
@@ -146,7 +147,7 @@ int main( int argc, char* argv[] ) {
    try {
      CPPUNIT_NS::stdCOut() << "Running " << endl;
 
-     zoo_set_debug_level(ZOO_LOG_LEVEL_INFO);
+     //zoo_set_debug_level(ZOO_LOG_LEVEL_INFO);
      //zoo_set_debug_level(ZOO_LOG_LEVEL_DEBUG);
 
      runner.run( controller, globalTestConfig.getTestName());

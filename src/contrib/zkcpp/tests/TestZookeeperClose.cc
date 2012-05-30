@@ -56,7 +56,7 @@ public:
 
     void setUp()
     {
-        zoo_set_log_stream(logfile);
+        //zoo_set_log_stream(logfile);
 
         zoo_deterministic_conn_order(0);
         zh=0;
