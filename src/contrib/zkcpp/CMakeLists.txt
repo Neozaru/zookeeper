@@ -92,3 +92,6 @@ set(CMAKE_EXE_LINKER_FLAGS
 add_executable(zktest ${testsrc})
 target_link_libraries(zktest ${CPPUNIT_LIBRARY}   ${Boost_THREAD_LIBRARY}
 )
+
+# Add "make lint" target
+add_custom_target(lint ${PROJECT_SOURCE_DIR}/cpplint.py ${testsrc} ${header})
