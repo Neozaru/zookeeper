@@ -608,22 +608,6 @@ class ZooKeeper : boost::noncopyable {
      */
 
     /**
-     * Sets the debugging level for the library.
-     * TODO: deprecate
-     */
-    static ReturnCode setDebugLevel(ZooLogLevel level);
-
-    /**
-     * Sets the stream to be used by the library for logging
-     *
-     * The zookeeper library uses stderr as its default log stream. Application
-     * must make sure the stream is writable. Passing in NULL resets the stream
-     * to its default value (stderr).
-     * TODO: deprecate
-     */
-    static ReturnCode setLogStream(FILE* logStream);
-
-    /**
      * Closes this ZooKeeper session.
      *
      * After this call, the client session will no longer be valid.

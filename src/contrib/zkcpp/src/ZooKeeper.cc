@@ -107,16 +107,6 @@ sync(const std::string& path, boost::shared_ptr<VoidCallback> callback) {
 //ReturnCode ZooKeeper::
 //multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
-ReturnCode ZooKeeper::
-setDebugLevel(ZooLogLevel level) {
-  return ZooKeeperImpl::setDebugLevel(level);
-}
-
-ReturnCode ZooKeeper::
-setLogStream(FILE* logStream) {
-  return ZooKeeperImpl::setLogStream(logStream);
-}
-
 State ZooKeeper::
 getState() {
   return impl_->getState();

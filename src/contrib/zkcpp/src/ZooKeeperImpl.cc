@@ -443,16 +443,6 @@ sync(const std::string& path, boost::shared_ptr<VoidCallback> cb) {
 //multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
 ReturnCode ZooKeeperImpl::
-setDebugLevel(ZooLogLevel level) {
-  return Ok;
-}
-
-ReturnCode ZooKeeperImpl::
-setLogStream(FILE* logStream) {
-  return Ok;
-}
-
-ReturnCode ZooKeeperImpl::
 close() {
   if (!inited_) {
     return Error;
