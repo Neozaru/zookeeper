@@ -1,12 +1,9 @@
-#Specify the version being used aswell as the language
 cmake_minimum_required(VERSION 2.6)
-#Name your project here
 project(zkcpp)
-find_package(Threads)
-find_package(Boost COMPONENTS thread REQUIRED)
-
+include(CheckTypeSize)
 
 include_directories(
+  ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/generated
@@ -40,29 +37,47 @@ file(GLOB testsrc
   ${PROJECT_SOURCE_DIR}/tests/*.h
 )
 
+# Set parameters needed by config.h.in to generate config.h
+set(PACKAGE_STRING "\"ZooKeeper C++ Client 3.5.0\"")
+
+# Check if ndfs_t type is defined in poll.h. If it is not defined, use
+# unsigned int.
+set(CMAKE_EXTRA_INCLUDE_FILES poll.h)
+check_type_size("nfds_t" NFDS_T_SIZE)
+set(CMAKE_EXTRA_INCLUDE_FILES)
+if(NFDS_T_SIZE)
+  set(POLL_NFDS_TYPE nfds_t)
+else(NFDS_T_SIZE)
+set(POLL_NFDS_TYPE "unsigned int")
+endif(NFDS_T_SIZE)
+configure_file(
+  ${PROJECT_SOURCE_DIR}/config.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/config.h
+)
+
+# Look for threading library (e.g. pthread)
+find_package(Threads)
+
+# Look for boost with thread
+find_package(Boost COMPONENTS thread REQUIRED)
+
+# Look for cppunit
 find_path(CPPUNIT_INCLUDE_DIR cppunit/Test.h)
 find_library(CPPUNIT_LIBRARY NAMES cppunit)
 
-IF (CPPUNIT_INCLUDE_DIR AND CPPUNIT_LIBRARY)
-   SET(CPPUNIT_FOUND TRUE)
-ENDIF (CPPUNIT_INCLUDE_DIR AND CPPUNIT_LIBRARY)
+if(CPPUNIT_INCLUDE_DIR AND CPPUNIT_LIBRARY)
+  set(CPPUNIT_FOUND TRUE)
+endif(CPPUNIT_INCLUDE_DIR AND CPPUNIT_LIBRARY)
 
-IF (CPPUNIT_FOUND)
-   # show which CppUnit was found only if not quiet
-   IF (NOT CppUnit_FIND_QUIETLY)
-      MESSAGE(STATUS "Found CppUnit: ${CPPUNIT_LIBRARY}")
-   ENDIF (NOT CppUnit_FIND_QUIETLY)
+if(CPPUNIT_FOUND)
+  message(STATUS "Found CppUnit: ${CPPUNIT_LIBRARY}")
+else(CPPUNIT_FOUND)
+  message(FATAL_ERROR "Could not find CppUnit")
+endif(CPPUNIT_FOUND)
 
-ELSE (CPPUNIT_FOUND)
-
-   # fatal error if CppUnit is required but not found
-   IF (CppUnit_FIND_REQUIRED)
-      MESSAGE(FATAL_ERROR "Could not find CppUnit")
-   ENDIF (CppUnit_FIND_REQUIRED)
-
-ENDIF (CPPUNIT_FOUND)
-
+# Treat C source code as C++ source code.
 set_source_files_properties(${source} ${testsrc} PROPERTIES LANGUAGE CXX)
+
 add_definitions(
   -DTHREADED
   -DZKSERVER_CMD="${PROJECT_SOURCE_DIR}/tests/zkServer.sh"
