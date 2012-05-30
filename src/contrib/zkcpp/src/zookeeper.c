@@ -475,7 +475,7 @@ int getaddrs(zhandle_t *zh)
         zh->addrs = 0;
     }
     if (!hosts) {
-         LOG_ERROR(("out of memory"));
+         LOG_ERROR("out of memory");
         errno=ENOMEM;
         return ZSYSTEMERROR;
     }
@@ -486,7 +486,7 @@ int getaddrs(zhandle_t *zh)
         char *end_port_spec;
         int port;
         if (!port_spec) {
-            LOG_ERROR(("no port in %s", host));
+            LOG_ERROR("no port in " << host);
             errno=EINVAL;
             rc=ZBADARGUMENTS;
             goto fail;
@@ -495,7 +495,7 @@ int getaddrs(zhandle_t *zh)
         port_spec++;
         port = strtol(port_spec, &end_port_spec, 0);
         if (!*port_spec || *end_port_spec || port == 0) {
-            LOG_ERROR(("invalid port in %s", host));
+            LOG_ERROR("invalid port in " << host);
             errno=EINVAL;
             rc=ZBADARGUMENTS;
             goto fail;
@@ -510,7 +510,7 @@ int getaddrs(zhandle_t *zh)
 
         he = gethostbyname(host);
         if (!he) {
-            LOG_ERROR(("could not resolve %s", host));
+            LOG_ERROR("could not resolve " << host);
             errno=ENOENT;
             rc=ZBADARGUMENTS;
             goto fail;
@@ -522,7 +522,7 @@ int getaddrs(zhandle_t *zh)
                 alen += 16;
                 zh->addrs = realloc(zh->addrs, sizeof(*zh->addrs)*alen);
                 if (zh->addrs == 0) {
-                    LOG_ERROR(("out of memory"));
+                    LOG_ERROR("out of memory");
                     errno=ENOMEM;
                     rc=ZSYSTEMERROR;
                     goto fail;
@@ -550,8 +550,9 @@ int getaddrs(zhandle_t *zh)
             }
 #endif
             else {
-                LOG_WARN(("skipping unknown address family %x for %s",
-                         addr->ss_family, zh->hostname));
+                LOG_WARN(
+                  boost::format("skipping unknown address family %x for %s") %
+                                % addr->ss_family % zh->hostname);
             }
         }
         host = strtok_r(0, ",", &strtok_last);
@@ -594,11 +595,11 @@ int getaddrs(zhandle_t *zh)
             if (rc != 0) {
                 errno = getaddrinfo_errno(rc);
 #ifdef WIN32
-                LOG_ERROR(("Win32 message: %s\n", gai_strerror(rc)));
+                LOG_ERROR("Win32 message: " <<  gai_strerror(rc));
 #elif __linux__ && __GNUC__
-                LOG_ERROR(("getaddrinfo: %s\n", gai_strerror(rc)));
+                LOG_ERROR("getaddrinfo: " << gai_strerror(rc));
 #else
-                LOG_ERROR(("getaddrinfo: %s\n", strerror(errno)));
+                LOG_ERROR("getaddrinfo: " << strerror(errno));
 #endif
                 rc=ZSYSTEMERROR;
                 goto fail;
@@ -612,7 +613,7 @@ int getaddrs(zhandle_t *zh)
                 alen += 16;
                 tmpaddr = realloc(zh->addrs, sizeof(*zh->addrs)*alen);
                 if (tmpaddr == 0) {
-                    LOG_ERROR(("out of memory"));
+                    LOG_ERROR("out of memory");
                     errno=ENOMEM;
                     rc=ZSYSTEMERROR;
                     goto fail;
@@ -631,8 +632,9 @@ int getaddrs(zhandle_t *zh)
                 ++zh->addrs_count;
                 break;
             default:
-                LOG_WARN(("skipping unknown address family %x for %s",
-                res->ai_family, zh->hostname));
+                LOG_WARN(
+                  boost::format("skipping unknown address family %x for %s") %
+                                res->ai_family % zh->hostname);
                 break;
             }
         }
@@ -699,6 +701,7 @@ struct sockaddr* zookeeper_get_connected_host(zhandle_t *zh,
     return addr;
 }
 
+// TODO Fix these macros
 static void log_env() {
   char buf[2048];
 #ifdef HAVE_SYS_UTSNAME_H
@@ -711,51 +714,51 @@ static void log_env() {
   uid_t uid = 0;
 #endif
 
-  LOG_INFO(("Client environment:zookeeper.version=%s", PACKAGE_STRING));
+  LOG_INFO("Client environment:zookeeper.version=" << PACKAGE_STRING);
 
 #ifdef HAVE_GETHOSTNAME
   gethostname(buf, sizeof(buf));
-  LOG_INFO(("Client environment:host.name=%s", buf));
+  LOG_INFO("Client environment:host.name=" << buf);
 #else
-  LOG_INFO(("Client environment:host.name=<not implemented>"));
+  LOG_INFO("Client environment:host.name=<not implemented>");
 #endif
 
 #ifdef HAVE_SYS_UTSNAME_H
   uname(&utsname);
-  LOG_INFO(("Client environment:os.name=%s", utsname.sysname));
-  LOG_INFO(("Client environment:os.arch=%s", utsname.release));
-  LOG_INFO(("Client environment:os.version=%s", utsname.version));
+  LOG_INFO("Client environment:os.name=" << utsname.sysname);
+  LOG_INFO("Client environment:os.arch=" << utsname.release);
+  LOG_INFO("Client environment:os.version=" << utsname.version);
 #else
-  LOG_INFO(("Client environment:os.name=<not implemented>"));
-  LOG_INFO(("Client environment:os.arch=<not implemented>"));
-  LOG_INFO(("Client environment:os.version=<not implemented>"));
+  LOG_INFO("Client environment:os.name=<not implemented>");
+  LOG_INFO("Client environment:os.arch=<not implemented>");
+  LOG_INFO("Client environment:os.version=<not implemented>");
 #endif
 
 #ifdef HAVE_GETLOGIN
-  LOG_INFO(("Client environment:user.name=%s", getlogin()));
+  LOG_INFO("Client environment:user.name=" << getlogin());
 #else
-  LOG_INFO(("Client environment:user.name=<not implemented>"));
+  LOG_INFO("Client environment:user.name=<not implemented>");
 #endif
 
 #if defined(HAVE_GETUID) && defined(HAVE_GETPWUID_R)
   uid = getuid();
   if (!getpwuid_r(uid, &pw, buf, sizeof(buf), &pwp) && pwp) {
-    LOG_INFO(("Client environment:user.home=%s", pw.pw_dir));
+    LOG_INFO("Client environment:user.home=" << pw.pw_dir);
   } else {
-    LOG_INFO(("Client environment:user.home=<NA>"));
+    LOG_INFO("Client environment:user.home=<NA>");
   }
 #else
-  LOG_INFO(("Client environment:user.home=<not implemented>"));
+  LOG_INFO("Client environment:user.home=<not implemented>");
 #endif
 
 #ifdef HAVE_GETCWD
   if (!getcwd(buf, sizeof(buf))) {
-    LOG_INFO(("Client environment:user.dir=<toolong>"));
+    LOG_INFO("Client environment:user.dir=<toolong>");
   } else {
-    LOG_INFO(("Client environment:user.dir=%s", buf));
+    LOG_INFO("Client environment:user.dir=" << buf);
   }
 #else
-  LOG_INFO(("Client environment:user.dir=<not implemented>"));
+  LOG_INFO("Client environment:user.dir=<not implemented>");
 #endif
 }
 
@@ -772,20 +775,17 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     log_env();
 #ifdef WIN32
        if (Win32WSAStartup()){
-               LOG_ERROR(("Error initializing ws2_32.dll"));
+               LOG_ERROR("Error initializing ws2_32.dll");
                return 0;
        }
 #endif
-    LOG_INFO(("Initiating client connection, host=%s sessionTimeout=%d watcher=%p"
-          " sessionId=%#llx sessionPasswd=%s context=%p flags=%d",
-              host,
-              recv_timeout,
-              watcher,
-              (clientid == 0 ? 0 : clientid->client_id),
-              ((clientid == 0) || (clientid->passwd[0] == 0) ?
-               "<null>" : "<hidden>"),
-              context,
-              flags));
+    LOG_INFO(
+      boost::format("Initiating client connection, host=%s sessionTimeout=%d "
+                    "watcher=%p sessionId=%#llx sessionPasswd=%s context=%p flags=%d") %
+                    host % recv_timeout % watcher %
+                    (clientid == 0 ? 0 : clientid->client_id) %
+                    ((clientid == 0) || (clientid->passwd[0] == 0) ?
+                     "<null>" : "<hidden>") % context % flags);
 
     zh = (zhandle_t*)calloc(1, sizeof(*zh));
     if (!zh) {
@@ -904,8 +904,9 @@ char* sub_string(zhandle_t *zh, const char* server_path) {
         return (char *) server_path;
     //ZOOKEEPER-1027
     if (strncmp(server_path, zh->chroot, strlen(zh->chroot)) != 0) {
-        LOG_ERROR(("server path %s does not include chroot path %s",
-                   server_path, zh->chroot));
+        LOG_ERROR(
+          boost::format("server path %s does not include chroot path %s") %
+                        server_path % zh->chroot);
         return (char *) server_path;
     }
     if (strlen(server_path) == strlen(zh->chroot)) {
@@ -1224,11 +1225,11 @@ static void handle_error(zhandle_t *zh,int rc)
 {
     close(zh->fd);
     if (is_unrecoverable(zh)) {
-        LOG_DEBUG(("Calling a watcher for a ZOO_SESSION_EVENT and the state=%s",
-                state2String(zh->state)));
+        LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=" <<
+                  state2String(zh->state));
         PROCESS_SESSION_EVENT(zh, zh->state);
     } else if (zh->state == ZOO_CONNECTED_STATE) {
-        LOG_DEBUG(("Calling a watcher for a ZOO_SESSION_EVENT and the state=CONNECTING_STATE"));
+        LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=CONNECTING_STATE");
         PROCESS_SESSION_EVENT(zh, ZOO_CONNECTING_STATE);
     }
     cleanup_bufs(zh,1,rc);
@@ -1245,11 +1246,9 @@ static void handle_error(zhandle_t *zh,int rc)
 static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
         const std::string& message)
 {
-#if 0
-  LOG_ERROR(boost::format("%s:%d Socket [%s] zk retcode=%d, errno=%d(%s): %s") %
+    LOG_ERROR(boost::format("%s:%d Socket [%s] zk retcode=%d, errno=%d(%s): %s") %
             __func__ % line % format_current_endpoint_info(zh) %
             rc % errno % strerror(errno) % message);
-            #endif
     handle_error(zh,rc);
     return rc;
 }
@@ -1276,11 +1275,12 @@ static void auth_completion_func(int rc, zhandle_t* zh)
     get_auth_completions(&zh->auth_h, &a_list);
     zoo_unlock_auth(zh);
     if (rc) {
-        LOG_ERROR(("Authentication scheme %s failed. Connection closed.",
-                   zh->auth_h.auth->scheme));
+        LOG_ERROR("Authentication scheme " << zh->auth_h.auth->scheme <<
+                  " failed. Connection closed.");
     }
     else {
-        LOG_INFO(("Authentication scheme %s succeeded", zh->auth_h.auth->scheme));
+        LOG_INFO("Authentication scheme " << zh->auth_h.auth->scheme <<
+                 " succeeded.");
     }
     a_tmp = &a_list;
     // chain call user's completion function
@@ -1330,7 +1330,7 @@ static int send_auth_info(zhandle_t *zh) {
         auth = auth->next;
     }
     zoo_unlock_auth(zh);
-    LOG_DEBUG(("Sending all auth info request to %s", format_current_endpoint_info(zh)));
+    LOG_DEBUG("Sending all auth info request to " << format_current_endpoint_info(zh));
     return (rc <0) ? ZMARSHALLINGERROR:ZOK;
 }
 
@@ -1347,7 +1347,7 @@ static int send_last_auth_info(zhandle_t *zh)
     }
     rc = send_info_packet(zh, auth);
     zoo_unlock_auth(zh);
-    LOG_DEBUG(("Sending auth info request to %s",format_current_endpoint_info(zh)));
+    LOG_DEBUG("Sending auth info request to " << format_current_endpoint_info(zh));
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
@@ -1394,7 +1394,7 @@ static int send_set_watches(zhandle_t *zh)
     free_key_list(req.dataWatches.data, req.dataWatches.count);
     free_key_list(req.existWatches.data, req.existWatches.count);
     free_key_list(req.childWatches.data, req.childWatches.count);
-    LOG_DEBUG(("Sending set watches request to %s",format_current_endpoint_info(zh)));
+    LOG_DEBUG("Sending set watches request to " << format_current_endpoint_info(zh));
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
@@ -1552,7 +1552,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         int max_exceed = zh->recv_timeout / 10 > 200 ? 200 : 
                          (zh->recv_timeout / 10);
         if (time_left > max_exceed)
-            LOG_WARN(("Exceeded deadline by %dms", time_left));
+            LOG_WARN("Exceeded deadline by " << time_left << "ms");
     }
     api_prolog(zh);
     *fd = zh->fd;
@@ -1579,7 +1579,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             }
             ssoresult = setsockopt(zh->fd, IPPROTO_TCP, TCP_NODELAY, &enable_tcp_nodelay, sizeof(enable_tcp_nodelay));
             if (ssoresult != 0) {
-                LOG_WARN(("Unable to set TCP_NODELAY, operation latency may be effected"));
+                LOG_WARN("Unable to set TCP_NODELAY, operation latency may be effected");
             }
 #ifdef WIN32
             ioctlsocket(zh->fd, FIONBIO, &nonblocking_flag);                    
@@ -1591,7 +1591,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
                 rc = connect(zh->fd, (struct sockaddr*) &zh->addrs[zh->connect_index], sizeof(struct sockaddr_in6));
             } else {
 #else
-               LOG_DEBUG(("[zk] connect()\n"));
+               LOG_DEBUG("[zk] connect()");
             {
 #endif
                 rc = connect(zh->fd, (struct sockaddr*) &zh->addrs[zh->connect_index], sizeof(struct sockaddr_in));
@@ -1612,8 +1612,8 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
                 if((rc=prime_connection(zh))!=0)
                     return api_epilog(zh,rc);
 
-                LOG_INFO(("Initiated connection to server [%s]",
-                        format_endpoint_info(&zh->addrs[zh->connect_index])));
+                LOG_INFO("Initiated connection to server: " <<
+                        format_endpoint_info(&zh->addrs[zh->connect_index]));
             }
         }
         *fd = zh->fd;
@@ -1694,8 +1694,8 @@ static int check_events(zhandle_t *zh, int events)
         }
         if((rc=prime_connection(zh))!=0)
             return rc;
-        LOG_INFO(("initiated connection to server [%s]",
-                format_endpoint_info(&zh->addrs[zh->connect_index])));
+        LOG_INFO("initiated connection to server: " <<
+                format_endpoint_info(&zh->addrs[zh->connect_index]));
         return ZOK;
     }
     if (zh->to_send.head && (events&ZOOKEEPER_WRITE)) {
@@ -1740,15 +1740,15 @@ static int check_events(zhandle_t *zh, int events)
                     memcpy(zh->client_id.passwd, &zh->primer_storage.passwd,
                            sizeof(zh->client_id.passwd));
                     zh->state = ZOO_CONNECTED_STATE;
-                    LOG_INFO(("session establishment complete on server [%s], sessionId=%#llx, negotiated timeout=%d",
-                              format_endpoint_info(&zh->addrs[zh->connect_index]),
-                              newid, zh->recv_timeout));
+                    LOG_INFO(
+                      boost::format("session establishment complete on server [%s], sessionId=%#llx, negotiated timeout=%d") %
+                              format_endpoint_info(&zh->addrs[zh->connect_index]) % newid % zh->recv_timeout);
                     /* we want the auth to be sent for, but since both call push to front
                        we need to call send_watch_set first */
                     send_set_watches(zh);
                     /* send the authentication packet now */
                     send_auth_info(zh);
-                    LOG_DEBUG(("Calling a watcher for a ZOO_SESSION_EVENT and the state=ZOO_CONNECTED_STATE"));
+                    LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=ZOO_CONNECTED_STATE");
                     zh->input_buffer = 0; // just in case the watcher calls zookeeper_process() again
                     PROCESS_SESSION_EVENT(zh, ZOO_CONNECTED_STATE);
                 }
@@ -1786,7 +1786,7 @@ static int queue_session_event(zhandle_t *zh, int state)
     completion_list_t *cptr;
 
     if ((oa=create_buffer_oarchive())==NULL) {
-        LOG_ERROR(("out of memory"));
+        LOG_ERROR("out of memory");
         goto error;
     }
     rc = serialize_ReplyHeader(oa, "hdr", &hdr);
@@ -1839,8 +1839,8 @@ static void process_sync_completion(
         struct iarchive *ia,
 	zhandle_t *zh)
 {
-    LOG_DEBUG(("Processing sync_completion with type=%d xid=%#x rc=%d",
-            cptr->c.type, cptr->xid, sc->rc));
+    LOG_DEBUG(boost::format("Processing sync_completion with type=%d xid=%#x rc=%d") %
+                           cptr->c.type % cptr->xid % sc->rc);
 
     switch(cptr->c.type) {
     case COMPLETION_DATA: 
@@ -1927,7 +1927,7 @@ static void process_sync_completion(
         sc->rc = deserialize_multi(cptr->xid, cptr, ia);
         break;
     default:
-        LOG_DEBUG(("Unsupported completion type=%d", cptr->c.type));
+        LOG_DEBUG("Unsupported completion type=" << cptr->c.type);
         break;
     }
 }
@@ -1963,8 +1963,8 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
 {
     switch (type) {
     case COMPLETION_DATA:
-        LOG_DEBUG(("Calling COMPLETION_DATA for xid=%#x failed=%d rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#x failed=%d rc=%d") %
+                                cptr->xid % failed % rc);
         if (failed) {
             cptr->c.data_result(rc, 0, 0, 0, cptr->data);
         } else {
@@ -1976,8 +1976,8 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STAT:
-        LOG_DEBUG(("Calling COMPLETION_STAT for xid=%#x failed=%d rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_STAT for xid=%#x failed=%d rc=%d") % 
+                                cptr->xid % failed % rc);
         if (failed) {
             cptr->c.stat_result(rc, 0, cptr->data);
         } else {
@@ -1988,8 +1988,8 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STRINGLIST:
-        LOG_DEBUG(("Calling COMPLETION_STRINGLIST for xid=%#x failed=%d rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST for xid=%#x failed=%d rc=%d") %
+                                cptr->xid % failed % rc);
         if (failed) {
             cptr->c.strings_result(rc, 0, cptr->data);
         } else {
@@ -2000,8 +2000,8 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STRINGLIST_STAT:
-        LOG_DEBUG(("Calling COMPLETION_STRINGLIST_STAT for xid=%#x failed=%d rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST_STAT for xid=%#x failed=%d rc=%d") %
+                                cptr->xid % failed % rc);
         if (failed) {
             cptr->c.strings_stat_result(rc, 0, 0, cptr->data);
         } else {
@@ -2012,8 +2012,8 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STRING:
-        LOG_DEBUG(("Calling COMPLETION_STRING for xid=%#x failed=%d, rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_STRING for xid=%#x failed=%d, rc=%d") %
+                                cptr->xid % failed % rc);
         if (failed) {
             cptr->c.string_result(rc, 0, cptr->data);
         } else {
@@ -2024,8 +2024,8 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_ACLLIST:
-        LOG_DEBUG(("Calling COMPLETION_ACLLIST for xid=%#x failed=%d rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_ACLLIST for xid=%#x failed=%d rc=%d") %
+                                cptr->xid % failed % rc);
         if (failed) {
             cptr->c.acl_result(rc, 0, 0, cptr->data);
         } else {
@@ -2036,8 +2036,8 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_VOID:
-        LOG_DEBUG(("Calling COMPLETION_VOID for xid=%#x failed=%d rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#x failed=%d rc=%d") %
+                                cptr->xid % failed % rc);
         if (xid == PING_XID) {
             // We want to skip the ping
         } else {
@@ -2046,14 +2046,14 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_MULTI:
-        LOG_DEBUG(("Calling COMPLETION_MULTI for xid=%#x failed=%d rc=%d",
-                    cptr->xid, failed, rc));
+        LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#x failed=%d rc=%d") %
+                                cptr->xid % failed % rc);
         rc = deserialize_multi(xid, cptr, ia);
         assert(cptr->c.void_result);
         cptr->c.void_result(rc, cptr->data);
         break;
     default:
-        LOG_DEBUG(("Unsupported completion type=%d", cptr->c.type));
+        LOG_DEBUG("Unsupported completion type=" << cptr->c.type);
     }
 }
 
@@ -2077,9 +2077,9 @@ void process_completions(zhandle_t *zh)
             type = evt.type;
             state = evt.state;
             /* This is a notification so there aren't any pending requests */
-            LOG_DEBUG(("Calling a watcher for node [%s], type = %d event=%s",
-                       (evt.path==NULL?"NULL":evt.path), cptr->c.type,
-                       watcherEvent2String(type)));
+            LOG_DEBUG(boost::format("Calling a watcher for node [%s], type = %d event=%s") %
+                                    (evt.path==NULL?"NULL":evt.path) % cptr->c.type %
+                                    watcherEvent2String(type));
             deliverWatchers(zh,type,state,evt.path, &cptr->c.watcher_result);
             deallocate_WatcherEvent(&evt);
         } else {
@@ -2126,7 +2126,8 @@ static void checkResponseLatency(zhandle_t* zh)
     gettimeofday(&now,0);
     delay=calculate_interval(&zh->socket_readable, &now);
     if(delay>20)
-        LOG_DEBUG(("The following server response has spent at least %dms sitting in the client socket recv buffer",delay));
+        LOG_DEBUG("The following server response has spent at least " <<
+                  delay << "ms sitting in the client socket recv buffer");
 
     zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
 }
@@ -2141,11 +2142,13 @@ int zookeeper_process(zhandle_t *zh, int events)
     if (is_unrecoverable(zh))
         return ZINVALIDSTATE;
     api_prolog(zh);
+    // TODO decide what to do
     //IF_DEBUG(checkResponseLatency(zh));
     rc = check_events(zh, events);
     if (rc!=ZOK)
         return api_epilog(zh, rc);
 
+    // TODO decide what to do
     //IF_DEBUG(isSocketReadable(zh));
 
     while (rc >= 0 && (bptr=dequeue_buffer(&zh->to_process))) {
@@ -2165,7 +2168,7 @@ int zookeeper_process(zhandle_t *zh, int events)
             char *path = NULL;
             completion_list_t *c = NULL;
 
-            LOG_DEBUG(("Processing WATCHER_EVENT"));
+            LOG_DEBUG("Processing WATCHER_EVENT");
 
             deserialize_WatcherEvent(ia, "event", &evt);
             type = evt.type;
@@ -2179,10 +2182,10 @@ int zookeeper_process(zhandle_t *zh, int events)
             deallocate_WatcherEvent(&evt);
             queue_completion(&zh->completions_to_process, c, 0);
         } else if (hdr.xid == SET_WATCHES_XID) {
-            LOG_DEBUG(("Processing SET_WATCHES"));
+            LOG_DEBUG("Processing SET_WATCHES");
             free_buffer(bptr);
         } else if (hdr.xid == AUTH_XID){
-            LOG_DEBUG(("Processing AUTH_XID"));
+            LOG_DEBUG("Processing AUTH_XID");
 
             /* special handling for the AUTH response as it may come back
              * out-of-band */
@@ -2212,7 +2215,7 @@ int zookeeper_process(zhandle_t *zh, int events)
             assert(cptr);
             /* The requests are going to come back in order */
             if (cptr->xid != hdr.xid) {
-                LOG_DEBUG(("Processing unexpected or out-of-order response!"));
+                LOG_DEBUG("Processing unexpected or out-of-order response!");
 
                 // received unexpected (or out-of-order) response
                 close_buffer_iarchive(&ia);
@@ -2232,13 +2235,13 @@ int zookeeper_process(zhandle_t *zh, int events)
                     struct timeval now;
                     gettimeofday(&now, 0);
                     elapsed = calculate_interval(&zh->last_ping, &now);
-                    LOG_DEBUG(("Got ping response in %d ms", elapsed));
+                    LOG_DEBUG("Got ping response in " << elapsed << "ms");
 
                     // Nothing to do with a ping response
                     free_buffer(bptr);
                     destroy_completion_entry(cptr);
                 } else {
-                    LOG_DEBUG(("Queueing asynchronous response"));
+                    LOG_DEBUG("Queueing asynchronous response");
 
                     cptr->buffer = bptr;
                     queue_completion(&zh->completions_to_process, cptr, 0);
@@ -2297,7 +2300,7 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
 {
     completion_list_t *c = (completion_list_t*)calloc(1,sizeof(completion_list_t));
     if (!c) {
-        LOG_ERROR(("out of memory"));
+        LOG_ERROR("out of memory");
         return 0;
     }
     c->c.type = completion_type;
@@ -2478,8 +2481,8 @@ int zookeeper_close(zhandle_t *zh)
     if(zh->state==ZOO_CONNECTED_STATE){
         struct oarchive *oa;
         struct RequestHeader h = { STRUCT_INITIALIZER (xid , get_xid()), STRUCT_INITIALIZER (type , ZOO_CLOSE_OP)};
-        LOG_INFO(("Closing zookeeper sessionId=%#llx to [%s]\n",
-                zh->client_id.client_id,format_current_endpoint_info(zh)));
+        LOG_INFO(boost::format("Closing zookeeper sessionId=%#llx to [%s]\n") %
+            zh->client_id.client_id % format_current_endpoint_info(zh));
         oa = create_buffer_oarchive();
         rc = serialize_RequestHeader(oa, "header", &h);
         rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
@@ -2495,8 +2498,8 @@ int zookeeper_close(zhandle_t *zh)
          * (but reasonable) number of milliseconds since we want the call to block*/
         rc=adaptor_send_queue(zh, 3000);
     }else{
-        LOG_INFO(("Freeing zookeeper resources for sessionId=%#llx\n",
-                zh->client_id.client_id));
+        LOG_INFO(boost::format("Freeing zookeeper resources for sessionId=%#llx") %
+                               zh->client_id.client_id);
         rc = ZOK;
     }
 
@@ -2628,8 +2631,8 @@ int zoo_awget(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2673,10 +2676,8 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-#if 0
     LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
              h.xid % path % format_current_endpoint_info(zh));
-             #endif
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2731,8 +2732,8 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2771,8 +2772,8 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2810,8 +2811,8 @@ int zoo_awexists(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2843,8 +2844,8 @@ static int zoo_awget_children_(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2891,8 +2892,8 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2934,8 +2935,8 @@ int zoo_async(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2964,8 +2965,8 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -2995,8 +2996,8 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
-            format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+                            h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -3136,7 +3137,8 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
             } 
 
             default:
-                LOG_ERROR(("Unimplemented sub-op type=%d in multi-op", op->type));
+                LOG_ERROR("Unimplemented sub-op type=" <<
+                          op->type << " in multi-op");
                 return ZUNIMPLEMENTED; 
         }
 
@@ -3155,8 +3157,8 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(("Sending multi request xid=%#x with %d subrequests to %s",
-            h.xid, index, format_current_endpoint_info(zh)));
+    LOG_DEBUG(boost::format("Sending multi request xid=%#x with %d subrequests to %s") %
+                            h.xid % index % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
 

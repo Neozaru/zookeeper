@@ -29,13 +29,14 @@ class ExistsCallback : public StatCallback {
     ExistsCallback(struct Stat* stat) : stat_(stat), completed_(false) {};
     void processResult(ReturnCode rc, std::string path, struct Stat* stat) {
       if (rc == Ok) {
-        LOG_DEBUG(("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
-                   "cversion=%d aversion=%d ephemeralOwner=%ld dataLength=%d "
-                   "numChildren=%d pzxid=%ld",
-                   stat->czxid, stat->mzxid, stat->ctime, stat->mtime,
-                   stat->version, stat->cversion, stat->aversion,
-                   stat->ephemeralOwner, stat->dataLength, stat->numChildren,
-                   stat->pzxid));
+        LOG_DEBUG(
+          boost::format("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
+                        "cversion=%d aversion=%d ephemeralOwner=%ld "
+                        "dataLength=%d numChildren=%d pzxid=%ld") %
+                        stat->czxid % stat->mzxid % stat->ctime % stat->mtime %
+                        stat->version % stat->cversion % stat->aversion %
+                        stat->ephemeralOwner % stat->dataLength %
+                        stat->numChildren % stat->pzxid);
         if (stat_) {
           memmove(stat_, stat, sizeof(*stat));
         }
@@ -80,7 +81,7 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
   WatchContext* context = (WatchContext*)watcherCtx;
 
   if ((Event)type == Session) {
-    LOG_DEBUG(("got session event %d, %d", type, state));
+    LOG_DEBUG(boost::format("got session event %d, %d") % type % state);
     bool validState = false;
     switch((State) state) {
       case Expired:
@@ -93,7 +94,7 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
     }
     if (!validState) {
       fprintf(stderr, "Got unknown state: %d\n", state);
-      LOG_ERROR(("Got unknown state: %d", state));
+      LOG_ERROR("Got unknown state: " << state);
       assert(!"Got unknown state");
     }
   }
@@ -219,8 +220,8 @@ void ZooKeeperImpl::
 authCompletion(int rc, const void* data) {
   AuthCompletionContext* context = (AuthCompletionContext*)data;
   AuthCallback* callback = (AuthCallback*)context->callback_.get();
-  LOG_DEBUG(("rc=%d, scheme='%s', cert='%s'", rc, context->scheme_.c_str(),
-             context->cert_.c_str()));
+  LOG_DEBUG(boost::format("rc=%d, scheme='%s', cert='%s'") % rc %
+                          context->scheme_.c_str() % context->cert_.c_str());
   assert(callback);
   callback->processResult((ReturnCode)rc, context->scheme_, context->cert_);
   delete context;
