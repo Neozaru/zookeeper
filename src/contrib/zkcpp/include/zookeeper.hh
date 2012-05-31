@@ -335,9 +335,19 @@ class CreateCallback {
                          const std::string& pathCreated) = 0;
 };
 
-class VoidCallback {
+class RemoveCallback {
   public:
-    virtual void processResult(ReturnCode rc, std::string path) = 0;
+    virtual void process(ReturnCode rc, const std::string& path) = 0;
+};
+
+class SetAclCallback {
+  public:
+    virtual void process(ReturnCode rc, const std::string& path) = 0;
+};
+
+class SyncCallback {
+  public:
+    virtual void process(ReturnCode rc, const std::string& path) = 0;
 };
 
 /**
@@ -450,7 +460,7 @@ class ZooKeeper : boost::noncopyable {
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode remove(const std::string& path, int version,
-                      boost::shared_ptr<VoidCallback> callback);
+                      boost::shared_ptr<RemoveCallback> callback);
 
     /**
      * Checks the existence of a node in zookeeper.
@@ -632,7 +642,7 @@ class ZooKeeper : boost::noncopyable {
      * TODO use C++ jute
      */
     ReturnCode setAcl(const std::string& path, int version,
-            struct ACL_vector *acl, boost::shared_ptr<VoidCallback> callback);
+            struct ACL_vector *acl, boost::shared_ptr<SetAclCallback> callback);
 
     /**
      * Asynchronously flushes the channel between process and leader.
@@ -652,7 +662,7 @@ class ZooKeeper : boost::noncopyable {
      *         the ReturnCode in case of failure.
      */
     ReturnCode sync(const std::string& path,
-                    boost::shared_ptr<VoidCallback> callback);
+                    boost::shared_ptr<SyncCallback> callback);
 
     /**
      * \brief atomically commits multiple zookeeper operations.

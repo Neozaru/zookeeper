@@ -142,11 +142,21 @@ stringCompletion(int rc, const char* value, const void* data) {
 }
 
 void ZooKeeperImpl::
-voidCompletion(int rc, const void* data) {
+removeCompletion(int rc, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
-  VoidCallback* callback = (VoidCallback*)context->callback_.get();
+  RemoveCallback* callback = (RemoveCallback*)context->callback_.get();
   if (callback) {
-    callback->processResult((ReturnCode)rc, context->path_);
+    callback->process((ReturnCode)rc, context->path_);
+  }
+  delete context;
+}
+
+void ZooKeeperImpl::
+setAclCompletion(int rc, const void* data) {
+  CompletionContext* context = (CompletionContext*)data;
+  SetAclCallback* callback = (SetAclCallback*)context->callback_.get();
+  if (callback) {
+    callback->process((ReturnCode)rc, context->path_);
   }
   delete context;
 }
@@ -157,9 +167,12 @@ existsCompletion(int rc, const struct Stat* stat,
   CompletionContext* context = (CompletionContext*)data;
   ExistsCallback* callback = (ExistsCallback*)context->callback_.get();
   if (callback) {
-    // TODO handle NULL
-    assert(stat);
-    callback->process((ReturnCode)rc, context->path_, *stat);
+    if (stat) {
+      callback->process((ReturnCode)rc, context->path_, *stat);
+    } else {
+      Stat tempStat;
+      callback->process((ReturnCode)rc, context->path_, tempStat);
+    }
   }
   delete context;
 }
@@ -170,9 +183,12 @@ setCompletion(int rc, const struct Stat* stat,
   CompletionContext* context = (CompletionContext*)data;
   SetCallback* callback = (SetCallback*)context->callback_.get();
   if (callback) {
-    // TODO handle NULL
-    assert(stat);
-    callback->process((ReturnCode)rc, context->path_, *stat);
+    if (stat) {
+      callback->process((ReturnCode)rc, context->path_, *stat);
+    } else {
+      Stat tempStat;
+      callback->process((ReturnCode)rc, context->path_, tempStat);
+    }
   }
   delete context;
 }
@@ -244,9 +260,9 @@ void ZooKeeperImpl::
 syncCompletion(int rc, const char* value, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
-  VoidCallback* callback = (VoidCallback*)context->callback_.get();
+  SyncCallback* callback = (SyncCallback*)context->callback_.get();
   if (callback) {
-    callback->processResult((ReturnCode)rc, context->path_);
+    callback->process((ReturnCode)rc, context->path_);
   }
   delete context;
 }
@@ -309,11 +325,11 @@ create(const std::string& path, const std::string& data,
 
 ReturnCode ZooKeeperImpl::
 remove(const std::string& path, int version,
-       boost::shared_ptr<VoidCallback> callback) {
+       boost::shared_ptr<RemoveCallback> callback) {
   void_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (callback.get()) {
-    completion = &voidCompletion;
+    completion = &removeCompletion;
     context = new CompletionContext(callback, path);
   }
   return (ReturnCode)zoo_adelete(handle_, path.c_str(), version,
@@ -425,11 +441,11 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
 
 ReturnCode ZooKeeperImpl::
 setAcl(const std::string& path, int version, struct ACL_vector *acl,
-       boost::shared_ptr<VoidCallback> cb) {
+       boost::shared_ptr<SetAclCallback> cb) {
   void_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {
-    completion = &voidCompletion;
+    completion = &setAclCompletion;
     context = new CompletionContext(cb, path);
   }
   return (ReturnCode)zoo_aset_acl(handle_, path.c_str(),
@@ -437,7 +453,7 @@ setAcl(const std::string& path, int version, struct ACL_vector *acl,
 }
 
 ReturnCode ZooKeeperImpl::
-sync(const std::string& path, boost::shared_ptr<VoidCallback> cb) {
+sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {

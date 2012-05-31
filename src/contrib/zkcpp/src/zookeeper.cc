@@ -50,7 +50,7 @@ create(const std::string& path, const std::string& data,
 
 ReturnCode ZooKeeper::
 remove(const std::string& path, int version,
-       boost::shared_ptr<VoidCallback> callback) {
+       boost::shared_ptr<RemoveCallback> callback) {
   return impl_->remove(path, version, callback);
 }
 
@@ -91,12 +91,12 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
 
 ReturnCode ZooKeeper::
 setAcl(const std::string& path, int version, struct ACL_vector *acl,
-       boost::shared_ptr<VoidCallback> callback) {
+       boost::shared_ptr<SetAclCallback> callback) {
   return impl_->setAcl(path, version, acl, callback);
 }
 
 ReturnCode ZooKeeper::
-sync(const std::string& path, boost::shared_ptr<VoidCallback> callback) {
+sync(const std::string& path, boost::shared_ptr<SyncCallback> callback) {
   return impl_->sync(path, callback);
 }
 

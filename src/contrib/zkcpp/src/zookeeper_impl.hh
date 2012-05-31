@@ -37,7 +37,7 @@ class ZooKeeperImpl {
                       const struct ACL_vector *acl, CreateMode mode,
                       boost::shared_ptr<CreateCallback> callback);
     ReturnCode remove(const std::string& path, int version,
-                      boost::shared_ptr<VoidCallback> callback);
+                      boost::shared_ptr<RemoveCallback> callback);
     ReturnCode exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ExistsCallback> callback);
@@ -54,9 +54,9 @@ class ZooKeeperImpl {
     ReturnCode getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
     ReturnCode setAcl(const std::string& path, int version,
-            struct ACL_vector *acl, boost::shared_ptr<VoidCallback> callback);
+            struct ACL_vector *acl, boost::shared_ptr<SetAclCallback> callback);
     ReturnCode sync(const std::string& path,
-                    boost::shared_ptr<VoidCallback> callback);
+                    boost::shared_ptr<SyncCallback> callback);
     //ReturnCode multi(int count, const zoo_op_t *ops,
     //      zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
 
@@ -69,7 +69,9 @@ class ZooKeeperImpl {
     static void watchCallback(zhandle_t *zh, int type, int state, const char *path,
                          void *watcherCtx);
     static void stringCompletion(int rc, const char *value, const void *data);
-    static void voidCompletion(int rc, const void *data);
+    static void removeCompletion(int rc, const void *data);
+    static void setAclCompletion(int rc, const void *data);
+    static void syncCompletion(int rc, const void *data);
     static void existsCompletion(int rc, const struct Stat* stat,
                                  const void* data);
     static void setCompletion(int rc, const struct Stat* stat,
