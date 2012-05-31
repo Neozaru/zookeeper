@@ -195,10 +195,10 @@ childrenCompletion(int rc, const struct String_vector *strings,
       children.push_back(strings->data[i]);
     }
   }
-  ChildrenCallback* callback = (ChildrenCallback*)context->callback_.get();
+  GetChildrenCallback* callback = (GetChildrenCallback*)context->callback_.get();
   if (callback) {
-    callback->processResult((ReturnCode)rc, context->path_, children,
-                            (struct Stat*)stat);
+    // TODO check if stat is NULL
+    callback->process((ReturnCode)rc, context->path_, children, *stat);
   }
   delete context;
 
@@ -379,7 +379,7 @@ set(const std::string& path, const std::string& data,
 
 ReturnCode ZooKeeperImpl::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
-            boost::shared_ptr<ChildrenCallback> cb) {
+            boost::shared_ptr<GetChildrenCallback> cb) {
   watcher_fn watcher = NULL;
   WatchContext* watchContext = NULL;
   strings_stat_completion_t completion = NULL;

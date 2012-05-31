@@ -80,7 +80,7 @@ set(const std::string& path, const std::string& data,
 
 ReturnCode ZooKeeper::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
-            boost::shared_ptr<ChildrenCallback> callback) {
+            boost::shared_ptr<GetChildrenCallback> callback) {
   return impl_->getChildren(path, watch, callback);
 }
 

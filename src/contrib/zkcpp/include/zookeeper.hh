@@ -271,11 +271,20 @@ class GetAclCallback : public Callback {
                          const ACL_vector& acl, const Stat& stat) = 0;
 };
 
-class ChildrenCallback : public Callback {
+/**
+ * Callback interface for getChildren() operation.
+ */
+class GetChildrenCallback : public Callback {
   public:
-    virtual void processResult(ReturnCode rc, std::string path,
-                               const std::vector<std::string>& children,
-                               struct Stat* stat) = 0;
+    /**
+     * @param rc Ok if this getChildren() operation was successful.
+     * @param path The path of the znode this getChildren() operation was for
+     * @param acl The list of children for this znode. Valid iff rc == Ok.
+     * @param stat Stat associated with this znode. Valid iff rc == Ok.
+     */
+    virtual void process(ReturnCode rc, const std::string& path,
+                         const std::vector<std::string>& children,
+                         const Stat& stat) = 0;
 };
 
 /**
@@ -534,7 +543,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
-                           boost::shared_ptr<ChildrenCallback> callback);
+                           boost::shared_ptr<GetChildrenCallback> callback);
 
     /**
      * Gets the acl associated with a znode.
@@ -650,9 +659,36 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode close();
 
+    /**
+     * Gets the current state of this ZooKeeper object.
+     *
+     * @see State
+     */
     State getState();
-    int64_t getSessionId();
-    std::string getSessionPassword();
+
+    /**
+     * Gets the ZooKeeper session ID.
+     *
+     * This ZooKeeper object must be in "Connected" state for this operation
+     * to succeed.
+     *
+     * @param(OUT) id Session ID.
+     */
+    ReturnCode getSessionId(int64_t& id) {
+      return Unimplemented;
+    }
+
+    /**
+     * Gets the ZooKeeper session password.
+     *
+     * This ZooKeeper object must be in "Connected" state for this operation
+     * to succeed.
+     *
+     * @param(OUT) password Session password.
+     */
+    ReturnCode getSessionPassword(std::string& password) {
+      return Unimplemented;
+    }
 
   private:
     ZooKeeperImpl* impl_;

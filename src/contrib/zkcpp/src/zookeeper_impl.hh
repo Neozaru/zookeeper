@@ -50,7 +50,7 @@ class ZooKeeperImpl {
                    int version, boost::shared_ptr<StatCallback> callback);
     ReturnCode getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
-                           boost::shared_ptr<ChildrenCallback> callback);
+                           boost::shared_ptr<GetChildrenCallback> callback);
     ReturnCode getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
     ReturnCode setAcl(const std::string& path, int version,
@@ -64,8 +64,6 @@ class ZooKeeperImpl {
     ReturnCode close();
     State getState();
     void setState(State state);
-    int64_t getSessionId();
-    std::string getSessionPassword();
 
   private:
     static void watchCallback(zhandle_t *zh, int type, int state, const char *path,
