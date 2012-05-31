@@ -139,6 +139,11 @@ enum ReturnCode {
  */
 enum State {
   Expired = -112,
+
+  /**
+   * Session Authentication failed. The client is no longer connected to the
+   * server. You must call ZooKeeper::init() to re-establish the connection.
+   */
   SessionAuthFailed = -113,
   Connecting = 1,
   Connected = 3,
@@ -323,7 +328,7 @@ class CreateCallback {
      *                    for sequential znode, in which the path of the
      *                    resulting znode is different from the path originally
      *                    specified in the request. For non-seuquential znode,
-     *                    this is equal to pathRequested. See \ref CreateMode
+     *                    this is equal to pathRequested. See ::CreateMode
      *                    for more detail about sequential znode path names.
      */
     virtual void process(ReturnCode rc, const std::string& pathRequested,
@@ -353,6 +358,10 @@ class ZooKeeper : boost::noncopyable {
   public:
     ZooKeeper();
     ~ZooKeeper();
+
+    /**
+     * Initializes ZooKeeper session asynchronously.
+     */
     ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs,
                     boost::shared_ptr<Watch> watch);
 
@@ -387,7 +396,7 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Create a znode asynchronously.
      *
-     * A znode can only be created if it does not already exists. The CreateMode
+     * A znode can only be created if it does not already exists. The ::CreateMode
      * affect the creation of nodes. In Ephemeral mode, the node will
      * automatically get removed if the client session goes away. If the
      * Sequential mode is set, a unique monotonically increasing sequence
@@ -485,12 +494,14 @@ class ZooKeeper : boost::noncopyable {
      * to watch for nodes to appear.
      *
      * @returns
-     * Ok The node exists
-     * NoNode The node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * <ul>
+     * <li>Ok The node exists
+     * <li>NoNode The node does not exist.
+     * <li>ZNOAUTH the client does not have permission.
+     * <li>ZBADARGUMENTS - invalid input parameters
+     * <li>InvalidState - zhandle state is either Expired or SessionAuthFailed
+     * <li>ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * </ul>
      */
     ReturnCode exists(const std::string& path, boost::shared_ptr<Watch> watch,
                       Stat& stat);
