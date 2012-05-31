@@ -29,7 +29,7 @@
 #include <zookeeper.jute.h>
 #include <proto.h>
 #include "zk_adaptor.h"
-#include "Logging.h"
+#include "logging.hh"
 ENABLE_LOGGING;
 #include "zk_hashtable.h"
 

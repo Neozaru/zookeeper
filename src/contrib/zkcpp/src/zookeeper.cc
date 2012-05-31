@@ -15,8 +15,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ZooKeeper.h"
-#include "ZooKeeperImpl.h"
+#include "zookeeper.hh"
+#include "zookeeper_impl.hh"
 
 namespace org { namespace apache { namespace zookeeper {
 

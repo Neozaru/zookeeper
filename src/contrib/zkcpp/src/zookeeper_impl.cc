@@ -18,8 +18,8 @@
 #include <cstring>
 #include <cerrno>
 #include <boost/thread/condition.hpp>
-#include "ZooKeeperImpl.h"
-#include "Logging.h"
+#include "zookeeper_impl.hh"
+#include "logging.hh"
 ENABLE_LOGGING;
 
 namespace org { namespace apache { namespace zookeeper {

@@ -20,7 +20,7 @@
 
 #include <stdint.h>
 #include <string>
-#include "ZooKeeper.h"
+#include "zookeeper.hh"
 #include "zookeeper.h"
 
 namespace org { namespace apache { namespace zookeeper {

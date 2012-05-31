@@ -28,7 +28,7 @@
 #endif
 
 #include "zk_adaptor.h"
-#include "Logging.h"
+#include "logging.hh"
 ENABLE_LOGGING;
 
 #include <stdlib.h>
