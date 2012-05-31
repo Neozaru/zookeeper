@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -15,6 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #ifndef SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_H_
 #define SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_H_
 
@@ -26,7 +27,12 @@
 #include "zookeeper.h"
 #include "zookeeper.jute.h"
 
-namespace org { namespace apache { namespace zookeeper {
+namespace org {
+
+namespace apache {
+
+/** ZooKeeper namespace. */
+namespace zookeeper {
 
 class ZooKeeperImpl;
 
@@ -127,7 +133,7 @@ enum ReturnCode {
 
 };
 
-/*
+/**
  * These constants represent the states of a zookeeper connection. They are
  * possible parameters of the watcher callback.
  */
