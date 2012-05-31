@@ -110,19 +110,19 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
 
 class CompletionContext {
 public:
-  CompletionContext(boost::shared_ptr<Callback> callback,
+  CompletionContext(boost::shared_ptr<void> callback,
                   std::string path) : callback_(callback), path_(path) {};
-  boost::shared_ptr<Callback> callback_;
+  boost::shared_ptr<void> callback_;
   std::string path_;
 };
 
 class AuthCompletionContext {
 public:
-  AuthCompletionContext(boost::shared_ptr<Callback> callback,
+  AuthCompletionContext(boost::shared_ptr<void> callback,
                         const std::string& scheme,
                         const std::string& cert) :
     callback_(callback), scheme_(scheme), cert_(cert) {}
-  boost::shared_ptr<Callback> callback_;
+  boost::shared_ptr<void> callback_;
   std::string scheme_;
   std::string cert_;
 };

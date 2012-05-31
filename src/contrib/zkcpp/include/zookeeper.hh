@@ -225,17 +225,12 @@ enum CreateMode {
 static struct ACL __OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
 static struct ACL_vector OPEN_ACL_UNSAFE = { 1, __OPEN_ACL_UNSAFE_ACL};
 
-class Watch : boost::noncopyable {
+class Watch {
   public:
     virtual void process(Event event, State state, const std::string& path) = 0;
 };
 
-class Callback : boost::noncopyable {
-  protected:
-    Callback() {};
-};
-
-class StatCallback : public Callback {
+class StatCallback {
   public:
     virtual void processResult(ReturnCode rc, std::string path,
                                struct Stat* stat) = 0;
@@ -244,7 +239,7 @@ class StatCallback : public Callback {
 /**
  * Callback interface for get() operation.
  */
-class GetCallback : public Callback {
+class GetCallback {
   public:
     /**
      * @param rc Ok if this get() operation was successful.
@@ -259,7 +254,7 @@ class GetCallback : public Callback {
 /**
  * Callback interface for getAcl() operation.
  */
-class GetAclCallback : public Callback {
+class GetAclCallback {
   public:
     /**
      * @param rc Ok if this getAcl() operation was successful.
@@ -274,7 +269,7 @@ class GetAclCallback : public Callback {
 /**
  * Callback interface for getChildren() operation.
  */
-class GetChildrenCallback : public Callback {
+class GetChildrenCallback {
   public:
     /**
      * @param rc Ok if this getChildren() operation was successful.
@@ -290,7 +285,7 @@ class GetChildrenCallback : public Callback {
 /**
  * Callback interface for create() operation.
  */
-class CreateCallback : public Callback {
+class CreateCallback {
   public:
     /**
      * @param rc Ok if this create() operation was successful.
@@ -307,12 +302,12 @@ class CreateCallback : public Callback {
                          const std::string& pathCreated) = 0;
 };
 
-class VoidCallback : public Callback {
+class VoidCallback {
   public:
     virtual void processResult(ReturnCode rc, std::string path) = 0;
 };
 
-class AuthCallback : public Callback {
+class AuthCallback {
   public:
     virtual void processResult(ReturnCode rc, const std::string& scheme,
                                const std::string& cert) = 0;
