@@ -131,10 +131,12 @@ class MyAuthCallback : public AuthCallback {
     std::string cert_;
 };
 
-class CreateCallback : public StringCallback {
+class MyCreateCallback : public CreateCallback {
   public:
-    void processResult(ReturnCode rc, std::string path, std::string name) {
-      printf("%d %s %s\n", rc, path.c_str(), name.c_str());
+    void process(ReturnCode rc, const std::string& pathRequested,
+                 const std::string& pathCreated) {
+      printf("%d %s %s\n", rc, pathRequested.c_str(),
+             pathCreated.c_str());
       if (rc == Ok) {
         {
           boost::lock_guard<boost::mutex> lock(mutex);
@@ -226,7 +228,7 @@ public:
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
 
-        shared_ptr<CreateCallback> callback(new CreateCallback());
+        shared_ptr<MyCreateCallback> callback(new MyCreateCallback());
         ReturnCode rc = zk.exists("/hello", boost::shared_ptr<Watch>(), &stat);
         CPPUNIT_ASSERT_EQUAL(NoNode, rc);
 

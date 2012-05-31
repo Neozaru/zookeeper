@@ -136,9 +136,9 @@ stringCompletion(int rc, const char* value, const void* data) {
     assert(value != NULL);
     result = value;
   }
-  StringCallback* callback = (StringCallback*)context->callback_.get();
+  CreateCallback* callback = (CreateCallback*)context->callback_.get();
   if (callback) {
-    callback->processResult((ReturnCode)rc, context->path_, result);
+    callback->process((ReturnCode)rc, context->path_, result);
   }
   delete context;
 }
@@ -282,7 +282,7 @@ addAuthInfo(const std::string& scheme, const std::string& cert,
 ReturnCode ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
                   const struct ACL_vector *acl, CreateMode mode,
-                  boost::shared_ptr<StringCallback> callback) {
+                  boost::shared_ptr<CreateCallback> callback) {
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (callback.get()) {

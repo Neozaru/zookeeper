@@ -35,7 +35,7 @@ class ZooKeeperImpl {
                            boost::shared_ptr<AuthCallback> callback);
     ReturnCode create(const std::string& path, const std::string& data,
                       const struct ACL_vector *acl, CreateMode mode,
-                      boost::shared_ptr<StringCallback> callback);
+                      boost::shared_ptr<CreateCallback> callback);
     ReturnCode remove(const std::string& path, int version,
                       boost::shared_ptr<VoidCallback> callback);
     ReturnCode exists(const std::string& path,

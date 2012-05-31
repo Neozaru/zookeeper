@@ -186,6 +186,14 @@ enum Event {
 
 /**
  * Create modes.
+ *
+ * In seuqential mode (either PersistentSequential of rEphemeralSequential),
+ * ZooKeeper appends a monotonicly increasing counter to the end of path. This
+ * counter is unique to the parent znode. The counter has a format of "%010d"
+ * -- that is 10 digits with 0 (zero) padding (e.g. "<path>0000000001"). The
+ * counter used to store the next sequence number is a signed int (4 bytes)
+ * maintained by the parent znode, the counter will overflow when incremented
+ * beyond 2147483647 (resulting in a name "<path>-2147483647").
  */
 enum CreateMode {
     /**
@@ -220,9 +228,6 @@ static struct ACL_vector OPEN_ACL_UNSAFE = { 1, __OPEN_ACL_UNSAFE_ACL};
 class Watch : boost::noncopyable {
   public:
     virtual void process(Event event, State state, const std::string& path) = 0;
-
-  protected:
-    Watch() {};
 };
 
 class Callback : boost::noncopyable {
@@ -264,10 +269,24 @@ class ChildrenCallback : public Callback {
                                struct Stat* stat) = 0;
 };
 
-class StringCallback : public Callback {
+/**
+ * Callback interface for create() operation.
+ */
+class CreateCallback : public Callback {
   public:
-    virtual void processResult(ReturnCode rc, std::string path,
-                               std::string name) = 0;
+    /**
+     * @param rc Ok if this create() operation was successful.
+     * @param pathRequested The path of the znode this operation was for.
+     * @param pathCreated The path of the znode that was created by this
+     *                    request. Valid iff rc == Ok. This is useful only
+     *                    for sequential znode, in which the path of the
+     *                    resulting znode is different from the path originally
+     *                    specified in the request. For non-seuquential znode,
+     *                    this is equal to pathRequested. See \ref CreateMode
+     *                    for more detail about sequential znode path names.
+     */
+    virtual void process(ReturnCode rc, const std::string& pathRequested,
+                         const std::string& pathCreated) = 0;
 };
 
 class VoidCallback : public Callback {
@@ -348,7 +367,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode create(const std::string& path, const std::string& data,
                       const struct ACL_vector *acl, CreateMode mode,
-                      boost::shared_ptr<StringCallback> callback);
+                      boost::shared_ptr<CreateCallback> callback);
 
     /**
      * Removes a znode asynchronously.
