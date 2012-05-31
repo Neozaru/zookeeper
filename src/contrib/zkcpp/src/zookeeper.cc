@@ -56,7 +56,7 @@ remove(const std::string& path, int version,
 
 ReturnCode ZooKeeper::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       boost::shared_ptr<StatCallback> callback) {
+       boost::shared_ptr<ExistsCallback> callback) {
   return impl_->exists(path, watch, callback);
 }
 
@@ -74,7 +74,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeper::
 set(const std::string& path, const std::string& data,
-    int version, boost::shared_ptr<StatCallback> callback) {
+    int version, boost::shared_ptr<SetCallback> callback) {
   return impl_->set(path, data, version, callback);
 }
 

@@ -40,14 +40,14 @@ class ZooKeeperImpl {
                       boost::shared_ptr<VoidCallback> callback);
     ReturnCode exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
-            boost::shared_ptr<StatCallback> callback);
+            boost::shared_ptr<ExistsCallback> callback);
     ReturnCode exists(const std::string& path, boost::shared_ptr<Watch> watch,
                       Stat& stat);
     ReturnCode get(const std::string& path,
                    boost::shared_ptr<Watch>,
                    boost::shared_ptr<GetCallback> callback);
     ReturnCode set(const std::string& path, const std::string& data,
-                   int version, boost::shared_ptr<StatCallback> callback);
+                   int version, boost::shared_ptr<SetCallback> callback);
     ReturnCode getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
                            boost::shared_ptr<GetChildrenCallback> callback);
@@ -70,8 +70,10 @@ class ZooKeeperImpl {
                          void *watcherCtx);
     static void stringCompletion(int rc, const char *value, const void *data);
     static void voidCompletion(int rc, const void *data);
-    static void statCompletion(int rc, const struct Stat* stat,
-                               const void* data);
+    static void existsCompletion(int rc, const struct Stat* stat,
+                                 const void* data);
+    static void setCompletion(int rc, const struct Stat* stat,
+                              const void* data);
     static void dataCompletion(int rc, const char *value, int value_len,
                                const struct Stat *stat, const void *data);
     static void childrenCompletion(int rc, const struct String_vector *strings,

@@ -24,20 +24,20 @@ ENABLE_LOGGING;
 
 namespace org { namespace apache { namespace zookeeper {
 
-class ExistsCallback : public StatCallback {
+class MyExistsCallback : public ExistsCallback {
   public:
-    ExistsCallback(Stat& stat) : stat_(stat), completed_(false) {};
-    void processResult(ReturnCode rc, std::string path, struct Stat* stat) {
+    MyExistsCallback(Stat& stat) : stat_(stat), completed_(false) {};
+    void process(ReturnCode rc, const std::string& path, const Stat& stat) {
       if (rc == Ok) {
         LOG_DEBUG(
           boost::format("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
                         "cversion=%d aversion=%d ephemeralOwner=%ld "
                         "dataLength=%d numChildren=%d pzxid=%ld") %
-                        stat->czxid % stat->mzxid % stat->ctime % stat->mtime %
-                        stat->version % stat->cversion % stat->aversion %
-                        stat->ephemeralOwner % stat->dataLength %
-                        stat->numChildren % stat->pzxid);
-        memmove(&stat_, stat, sizeof(*stat));
+                        stat.czxid % stat.mzxid % stat.ctime % stat.mtime %
+                        stat.version % stat.cversion % stat.aversion %
+                        stat.ephemeralOwner % stat.dataLength %
+                        stat.numChildren % stat.pzxid);
+        memmove(&stat_, &stat, sizeof(stat));
       }
       rc_ = rc;
       path_ = path;
@@ -152,12 +152,27 @@ voidCompletion(int rc, const void* data) {
 }
 
 void ZooKeeperImpl::
-statCompletion(int rc, const struct Stat* stat,
+existsCompletion(int rc, const struct Stat* stat,
                            const void* data) {
   CompletionContext* context = (CompletionContext*)data;
-  StatCallback* callback = (StatCallback*)context->callback_.get();
+  ExistsCallback* callback = (ExistsCallback*)context->callback_.get();
   if (callback) {
-    callback->processResult((ReturnCode)rc, context->path_, (struct Stat*)stat);
+    // TODO handle NULL
+    assert(stat);
+    callback->process((ReturnCode)rc, context->path_, *stat);
+  }
+  delete context;
+}
+
+void ZooKeeperImpl::
+setCompletion(int rc, const struct Stat* stat,
+                           const void* data) {
+  CompletionContext* context = (CompletionContext*)data;
+  SetCallback* callback = (SetCallback*)context->callback_.get();
+  if (callback) {
+    // TODO handle NULL
+    assert(stat);
+    callback->process((ReturnCode)rc, context->path_, *stat);
   }
   delete context;
 }
@@ -221,7 +236,7 @@ authCompletion(int rc, const void* data) {
   LOG_DEBUG(boost::format("rc=%d, scheme='%s', cert='%s'") % rc %
                           context->scheme_.c_str() % context->cert_.c_str());
   assert(callback);
-  callback->processResult((ReturnCode)rc, context->scheme_, context->cert_);
+  callback->process((ReturnCode)rc, context->scheme_, context->cert_);
   delete context;
 }
 
@@ -307,14 +322,14 @@ remove(const std::string& path, int version,
 
 ReturnCode ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       boost::shared_ptr<StatCallback> cb) {
+       boost::shared_ptr<ExistsCallback> cb) {
   watcher_fn watcher = NULL;
   WatchContext* watchContext = NULL;
   stat_completion_t completion = NULL;
   CompletionContext* completionContext = NULL;
 
   if (cb.get()) {
-    completion = &statCompletion;
+    completion = &existsCompletion;
     completionContext = new CompletionContext(cb, path);
   }
   if (watch.get()) {
@@ -329,7 +344,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 ReturnCode ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        Stat& stat) {
-  boost::shared_ptr<ExistsCallback> callback(new ExistsCallback(stat));
+  boost::shared_ptr<MyExistsCallback> callback(new MyExistsCallback(stat));
   ReturnCode rc = exists(path, watch, callback);
   if (rc != Ok) {
     return rc;
@@ -362,11 +377,11 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
-               int version, boost::shared_ptr<StatCallback> cb) {
+               int version, boost::shared_ptr<SetCallback> cb) {
   stat_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {
-    completion = &statCompletion;
+    completion = &setCompletion;
     context = new CompletionContext(cb, path);
   }
 

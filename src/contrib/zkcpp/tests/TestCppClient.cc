@@ -98,8 +98,8 @@ class TestInitWatch : public Watch {
 class MyAuthCallback : public AddAuthCallback {
   public:
     MyAuthCallback() : completed_(false), scheme_(""), cert_("") {}
-    void processResult(ReturnCode rc, const std::string& scheme,
-                       const std::string& cert) {
+    void process(ReturnCode rc, const std::string& scheme,
+                 const std::string& cert) {
       rc_ = rc;
       scheme_ = scheme;
       cert_ = cert;

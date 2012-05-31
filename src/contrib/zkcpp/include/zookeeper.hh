@@ -236,10 +236,32 @@ class Watch {
     virtual void process(Event event, State state, const std::string& path) = 0;
 };
 
-class StatCallback {
+/**
+ * Callback interface for set() operation.
+ */
+class SetCallback {
   public:
-    virtual void processResult(ReturnCode rc, std::string path,
-                               struct Stat* stat) = 0;
+    /**
+     * @param rc Ok if this set() operation was successful.
+     * @param path The path of the znode this set() operation was for
+     * @param stat Stat stat of the resulting znode. Valid iff rc == Ok.
+     */
+    virtual void process(ReturnCode rc, const std::string& path,
+                         const Stat& stat) = 0;
+};
+
+/**
+ * Callback interface for exists() operation.
+ */
+class ExistsCallback {
+  public:
+    /**
+     * @param rc Ok if this znode exists.
+     * @param path The path of the znode this exists() operation was for
+     * @param stat Stat stat of the znode. Valid iff rc == Ok.
+     */
+    virtual void process(ReturnCode rc, const std::string& path,
+                         const Stat& stat) = 0;
 };
 
 /**
@@ -323,8 +345,8 @@ class AddAuthCallback {
      * @param scheme The scheme used for this operation.
      * @param cert The certificate used for this operation.
      */
-    virtual void processResult(ReturnCode rc, const std::string& scheme,
-                               const std::string& cert) = 0;
+    virtual void process(ReturnCode rc, const std::string& scheme,
+                         const std::string& cert) = 0;
 };
 
 class ZooKeeper : boost::noncopyable {
@@ -452,7 +474,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
-            boost::shared_ptr<StatCallback> callback);
+            boost::shared_ptr<ExistsCallback> callback);
 
     /**
      * Synchronous version of exists().
@@ -530,7 +552,7 @@ class ZooKeeper : boost::noncopyable {
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode set(const std::string& path, const std::string& data,
-                   int version, boost::shared_ptr<StatCallback> callback);
+                   int version, boost::shared_ptr<SetCallback> callback);
 
     /**
      * Gets the children and the stat of a znode.
