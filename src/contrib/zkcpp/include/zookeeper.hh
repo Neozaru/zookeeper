@@ -313,8 +313,16 @@ class VoidCallback {
     virtual void processResult(ReturnCode rc, std::string path) = 0;
 };
 
-class AuthCallback {
+/**
+ * Callback interface for addAuth() operation.
+ */
+class AddAuthCallback {
   public:
+    /**
+     * @param rc Ok if this addAuth() operation was successful.
+     * @param scheme The scheme used for this operation.
+     * @param cert The certificate used for this operation.
+     */
     virtual void processResult(ReturnCode rc, const std::string& scheme,
                                const std::string& cert) = 0;
 };
@@ -329,30 +337,30 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Adds authentication info for this session.
      *
-     * The application calls this function to specify its credentials for purposes
-     * of authentication. The server will use the security provider specified by 
-     * the scheme parameter to authenticate the client connection. If the 
-     * authentication request has failed:
-     * - the server connection is dropped
-     * - the watcher is called with the SessionAuthFailed value as the state 
-     * parameter.
+     * The application calls this function to specify its credentials for
+     * purposes of authentication. The server will use the security provider
+     * specified by the scheme parameter to authenticate the client connection.
+     * If the authentication request has failed:
+     * <ul>
+     *   <li>The server connection is dropped, and the session state becomes
+     *       ::SessionAuthFailed</li>
+     *   <li>All the existing watchers are called with for ::Session event with
+     *       the ::SessionAuthFailed value as the state parameter.</li>
+     * </ul>
      *
      * @param scheme the id of authentication scheme. Natively supported:
      * "digest" password-based authentication
      * @param authentification certificate.
-     * @param completion the routine to invoke when the request completes. One
-     * of the following result codes may be passed into the completion callback:
-     * ZOK operation completed successfully
-     * ZAUTHFAILED authentication failed
+     * @param callback The callback to invoke when the request completes.
      *
-     * \return ZOK on success or one of the following errcodes on failure:
+     * @return Ok on successfu or one of the following errcodes on failure:
      * ZBADARGUMENTS - invalid input parameters
      * InvalidState - state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      * ZSYSTEMERROR - a system error occured
      */
-    ReturnCode addAuthInfo(const std::string& scheme, const std::string& cert,
-                           boost::shared_ptr<AuthCallback> callback);
+    ReturnCode addAuth(const std::string& scheme, const std::string& cert,
+                       boost::shared_ptr<AddAuthCallback> callback);
 
     /**
      * Create a znode asynchronously.
@@ -463,7 +471,7 @@ class ZooKeeper : boost::noncopyable {
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode exists(const std::string& path, boost::shared_ptr<Watch> watch,
-                      struct Stat* stat);
+                      Stat& stat);
 
     /**
      * Gets the data associated with a node.

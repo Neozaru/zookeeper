@@ -95,7 +95,7 @@ class TestInitWatch : public Watch {
     bool authFailed_;
 };
 
-class MyAuthCallback : public AuthCallback {
+class MyAuthCallback : public AddAuthCallback {
   public:
     MyAuthCallback() : completed_(false), scheme_(""), cert_("") {}
     void processResult(ReturnCode rc, const std::string& scheme,
@@ -229,7 +229,7 @@ public:
         CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
 
         shared_ptr<MyCreateCallback> callback(new MyCreateCallback());
-        ReturnCode rc = zk.exists("/hello", boost::shared_ptr<Watch>(), &stat);
+        ReturnCode rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
         CPPUNIT_ASSERT_EQUAL(NoNode, rc);
 
         zk.create("/hello", "world",  (const ACL_vector*)&OPEN_ACL_UNSAFE,
@@ -237,11 +237,11 @@ public:
         CPPUNIT_ASSERT(callback->waitForCreated(1000));
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
-                       NULL);
+                       stat);
         CPPUNIT_ASSERT_EQUAL(Ok, rc);
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
-                       &stat);
+                       stat);
         CPPUNIT_ASSERT_EQUAL(Ok, rc);
         CPPUNIT_ASSERT_EQUAL(stat.czxid, stat.mzxid);
         CPPUNIT_ASSERT_EQUAL(0, stat.version);
@@ -256,7 +256,7 @@ public:
         std::string scheme = "digest";
         std::string cert = "user:password";
 
-        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuthInfo(scheme, cert, authCallback));
+        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuth(scheme, cert, authCallback));
         CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
         CPPUNIT_ASSERT_EQUAL(Ok, authCallback->rc_);
         CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);
@@ -267,7 +267,7 @@ public:
         cert = "cert";
         authCallback.reset(new MyAuthCallback());
         watch->authFailed_= false;
-        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuthInfo(scheme, cert, authCallback));
+        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuth(scheme, cert, authCallback));
         CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
         CPPUNIT_ASSERT_EQUAL(AuthFailed, authCallback->rc_);
         CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);

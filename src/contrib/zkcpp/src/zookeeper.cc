@@ -36,9 +36,9 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
 }
 
 ReturnCode ZooKeeper::
-addAuthInfo(const std::string& scheme, const std::string& cert,
-            boost::shared_ptr<AuthCallback> callback) {
-  return impl_->addAuthInfo(scheme, cert, callback);
+addAuth(const std::string& scheme, const std::string& cert,
+        boost::shared_ptr<AddAuthCallback> callback) {
+  return impl_->addAuth(scheme, cert, callback);
 }
 
 ReturnCode ZooKeeper::
@@ -62,7 +62,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeper::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       struct Stat* stat) {
+       Stat& stat) {
   return impl_->exists(path, watch, stat);
 }
 

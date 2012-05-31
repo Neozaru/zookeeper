@@ -26,7 +26,7 @@ namespace org { namespace apache { namespace zookeeper {
 
 class ExistsCallback : public StatCallback {
   public:
-    ExistsCallback(struct Stat* stat) : stat_(stat), completed_(false) {};
+    ExistsCallback(Stat& stat) : stat_(stat), completed_(false) {};
     void processResult(ReturnCode rc, std::string path, struct Stat* stat) {
       if (rc == Ok) {
         LOG_DEBUG(
@@ -37,9 +37,7 @@ class ExistsCallback : public StatCallback {
                         stat->version % stat->cversion % stat->aversion %
                         stat->ephemeralOwner % stat->dataLength %
                         stat->numChildren % stat->pzxid);
-        if (stat_) {
-          memmove(stat_, stat, sizeof(*stat));
-        }
+        memmove(&stat_, stat, sizeof(*stat));
       }
       rc_ = rc;
       path_ = path;
@@ -61,7 +59,7 @@ class ExistsCallback : public StatCallback {
     boost::mutex mutex_;
     ReturnCode rc_;
     std::string path_;
-    struct Stat* stat_;
+    Stat& stat_;
     bool completed_;
 };
 
@@ -219,7 +217,7 @@ aclCompletion(int rc, struct ACL_vector *acl,
 void ZooKeeperImpl::
 authCompletion(int rc, const void* data) {
   AuthCompletionContext* context = (AuthCompletionContext*)data;
-  AuthCallback* callback = (AuthCallback*)context->callback_.get();
+  AddAuthCallback* callback = (AddAuthCallback*)context->callback_.get();
   LOG_DEBUG(boost::format("rc=%d, scheme='%s', cert='%s'") % rc %
                           context->scheme_.c_str() % context->cert_.c_str());
   assert(callback);
@@ -266,8 +264,8 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
 }
 
 ReturnCode ZooKeeperImpl::
-addAuthInfo(const std::string& scheme, const std::string& cert,
-            boost::shared_ptr<AuthCallback> callback) {
+addAuth(const std::string& scheme, const std::string& cert,
+        boost::shared_ptr<AddAuthCallback> callback) {
   void_completion_t completion = NULL;
   AuthCompletionContext* context = NULL;
   if (callback.get()) {
@@ -330,7 +328,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       struct Stat* stat) {
+       Stat& stat) {
   boost::shared_ptr<ExistsCallback> callback(new ExistsCallback(stat));
   ReturnCode rc = exists(path, watch, callback);
   if (rc != Ok) {
