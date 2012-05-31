@@ -256,10 +256,19 @@ class GetCallback : public Callback {
                          const std::string& data, const Stat& stat) = 0;
 };
 
-class AclCallback : public Callback {
+/**
+ * Callback interface for getAcl() operation.
+ */
+class GetAclCallback : public Callback {
   public:
-    virtual void processResult(ReturnCode rc, std::string path,
-            struct ACL_vector* acl, struct Stat* stat) = 0;
+    /**
+     * @param rc Ok if this getAcl() operation was successful.
+     * @param path The path of the znode this getAcl() operation was for
+     * @param acl The list of ACLs for this znode. Valid iff rc == Ok.
+     * @param stat Stat associated with this znode. Valid iff rc == Ok.
+     */
+    virtual void process(ReturnCode rc, const std::string& path,
+                         const ACL_vector& acl, const Stat& stat) = 0;
 };
 
 class ChildrenCallback : public Callback {
@@ -546,7 +555,7 @@ class ZooKeeper : boost::noncopyable {
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode getAcl(const std::string& path,
-                      boost::shared_ptr<AclCallback> callback);
+                      boost::shared_ptr<GetAclCallback> callback);
 
     /**
      * \brief sets the acl associated with a node.

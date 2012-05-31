@@ -52,7 +52,7 @@ class ZooKeeperImpl {
                            boost::shared_ptr<Watch> watch,
                            boost::shared_ptr<ChildrenCallback> callback);
     ReturnCode getAcl(const std::string& path,
-                      boost::shared_ptr<AclCallback> callback);
+                      boost::shared_ptr<GetAclCallback> callback);
     ReturnCode setAcl(const std::string& path, int version,
             struct ACL_vector *acl, boost::shared_ptr<VoidCallback> callback);
     ReturnCode sync(const std::string& path,

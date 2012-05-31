@@ -85,7 +85,7 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 }
 
 ReturnCode ZooKeeper::
-getAcl(const std::string& path, boost::shared_ptr<AclCallback> callback) {
+getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
   return impl_->getAcl(path, callback);
 }
 

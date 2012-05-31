@@ -208,10 +208,10 @@ void ZooKeeperImpl::
 aclCompletion(int rc, struct ACL_vector *acl,
               struct Stat *stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
-  AclCallback* callback = (AclCallback*)context->callback_.get();
+  GetAclCallback* callback = (GetAclCallback*)context->callback_.get();
   if (callback) {
-    callback->processResult((ReturnCode)rc, context->path_, acl,
-                            (struct Stat*)stat);
+    callback->process((ReturnCode)rc, context->path_,
+                     (const ACL_vector&)acl, (const Stat&)stat);
   }
   delete context;
 }
@@ -399,7 +399,7 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 }
 
 ReturnCode ZooKeeperImpl::
-getAcl(const std::string& path, boost::shared_ptr<AclCallback> cb) {
+getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
   acl_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {
