@@ -29,90 +29,90 @@ ZooKeeper::
   delete impl_;
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 init(const std::string& hosts, int32_t sessionTimeoutMs,
      boost::shared_ptr<Watch> watch) {
   return impl_->init(hosts, sessionTimeoutMs, watch);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 addAuth(const std::string& scheme, const std::string& cert,
         boost::shared_ptr<AddAuthCallback> callback) {
   return impl_->addAuth(scheme, cert, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 create(const std::string& path, const std::string& data,
-       const std::vector<Acl>& acl, CreateMode mode,
+       const std::vector<Acl>& acl, CreateMode::type mode,
        boost::shared_ptr<CreateCallback> callback) {
   return impl_->create(path, data, acl, mode, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 remove(const std::string& path, int32_t version,
        boost::shared_ptr<RemoveCallback> callback) {
   return impl_->remove(path, version, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        boost::shared_ptr<ExistsCallback> callback) {
   return impl_->exists(path, watch, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        Stat& stat) {
   return impl_->exists(path, watch, stat);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
     boost::shared_ptr<GetCallback> callback) {
   return impl_->get(path, watch, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 set(const std::string& path, const std::string& data,
     int32_t version, boost::shared_ptr<SetCallback> callback) {
   return impl_->set(path, data, version, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
             boost::shared_ptr<GetChildrenCallback> callback) {
   return impl_->getChildren(path, watch, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
   return impl_->getAcl(path, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
        boost::shared_ptr<SetAclCallback> callback) {
   return impl_->setAcl(path, version, acl, callback);
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 sync(const std::string& path, boost::shared_ptr<SyncCallback> callback) {
   return impl_->sync(path, callback);
 }
 
-//ReturnCode ZooKeeper::
+//ReturnCode::type ZooKeeper::
 //multi(int count, const zoo_op_t *ops,
 //        zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
 
-//ReturnCode ZooKeeper::
+//ReturnCode::type ZooKeeper::
 //multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
-State ZooKeeper::
+SessionState::type ZooKeeper::
 getState() {
   return impl_->getState();
 }
 
-ReturnCode ZooKeeper::
+ReturnCode::type ZooKeeper::
 ZooKeeper::
 close() {
   return impl_->close();

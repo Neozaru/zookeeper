@@ -44,16 +44,17 @@ using namespace org::apache::zookeeper;
 
 class TestInitWatch : public Watch {
   public:
-    void process(Event event, State state, const std::string& path) {
+    void process(WatchEvent::type event, SessionState::type state,
+                 const std::string& path) {
         printf("event %d, state %d path '%s'\n", event, state, path.c_str());
-        if (event == Session) {
-          if (state == Connected) {
+        if (event == WatchEvent::SessionStateChanged) {
+          if (state == SessionState::Connected) {
             {
                 boost::lock_guard<boost::mutex> lock(mutex);
                 connected = true;
             }
             cond.notify_all();
-          } else if (state = SessionAuthFailed) {
+          } else if (state = SessionState::AuthFailed) {
             {
                 boost::lock_guard<boost::mutex> lock(mutex);
                 authFailed_ = true;
@@ -98,7 +99,7 @@ class TestInitWatch : public Watch {
 class MyAuthCallback : public AddAuthCallback {
   public:
     MyAuthCallback() : completed_(false), scheme_(""), cert_("") {}
-    void process(ReturnCode rc, const std::string& scheme,
+    void process(ReturnCode::type rc, const std::string& scheme,
                  const std::string& cert) {
       rc_ = rc;
       scheme_ = scheme;
@@ -126,18 +127,18 @@ class MyAuthCallback : public AddAuthCallback {
     boost::condition_variable cond;
     boost::mutex mutex;
     bool completed_;
-    ReturnCode rc_;
+    ReturnCode::type rc_;
     std::string scheme_;
     std::string cert_;
 };
 
 class MyCreateCallback : public CreateCallback {
   public:
-    void process(ReturnCode rc, const std::string& pathRequested,
+    void process(ReturnCode::type rc, const std::string& pathRequested,
                  const std::string& pathCreated) {
       printf("%d %s %s\n", rc, pathRequested.c_str(),
              pathCreated.c_str());
-      if (rc == Ok) {
+      if (rc == ReturnCode::Ok) {
         {
           boost::lock_guard<boost::mutex> lock(mutex);
           created = true;
@@ -213,11 +214,11 @@ public:
         startServer();
         ZooKeeper zk;
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
-        CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
         CPPUNIT_ASSERT(watch->waitForConnected(1000));
-        CPPUNIT_ASSERT_EQUAL(Connected, zk.getState());
+        CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk.getState());
         stopServer();
-        CPPUNIT_ASSERT_EQUAL(Connecting, zk.getState());
+        CPPUNIT_ASSERT_EQUAL(SessionState::Connecting, zk.getState());
     }
 
     void testCreate() {
@@ -226,25 +227,25 @@ public:
         struct Stat stat;
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
-        CPPUNIT_ASSERT_EQUAL(Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
 
         shared_ptr<MyCreateCallback> callback(new MyCreateCallback());
-        ReturnCode rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
-        CPPUNIT_ASSERT_EQUAL(NoNode, rc);
+        ReturnCode::type rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
         std::vector<Acl> acls;
         acls.push_back(Acl("world", "anyone", Permission::All));
         zk.create("/hello", "world",  acls,
-                  Persistent, callback);
+                  CreateMode::Persistent, callback);
         CPPUNIT_ASSERT(callback->waitForCreated(1000));
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
                        stat);
-        CPPUNIT_ASSERT_EQUAL(Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
                        stat);
-        CPPUNIT_ASSERT_EQUAL(Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
         CPPUNIT_ASSERT_EQUAL(stat.czxid, stat.mzxid);
         CPPUNIT_ASSERT_EQUAL(0, stat.version);
         CPPUNIT_ASSERT_EQUAL(0, stat.cversion);
@@ -258,24 +259,24 @@ public:
         std::string scheme = "digest";
         std::string cert = "user:password";
 
-        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuth(scheme, cert, authCallback));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.addAuth(scheme, cert, authCallback));
         CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
-        CPPUNIT_ASSERT_EQUAL(Ok, authCallback->rc_);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, authCallback->rc_);
         CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);
         CPPUNIT_ASSERT_EQUAL(cert, authCallback->cert_);
-        CPPUNIT_ASSERT_EQUAL(Connected, zk.getState());
+        CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk.getState());
 
         scheme = "bogus";
         cert = "cert";
         authCallback.reset(new MyAuthCallback());
         watch->authFailed_= false;
-        CPPUNIT_ASSERT_EQUAL(Ok, zk.addAuth(scheme, cert, authCallback));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.addAuth(scheme, cert, authCallback));
         CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
-        CPPUNIT_ASSERT_EQUAL(AuthFailed, authCallback->rc_);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::AuthFailed, authCallback->rc_);
         CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);
         CPPUNIT_ASSERT_EQUAL(cert, authCallback->cert_);
         CPPUNIT_ASSERT(watch->waitForAuthFailed(30000));
-        CPPUNIT_ASSERT_EQUAL(SessionAuthFailed, zk.getState());
+        CPPUNIT_ASSERT_EQUAL(SessionState::AuthFailed, zk.getState());
 
         stopServer();
     }

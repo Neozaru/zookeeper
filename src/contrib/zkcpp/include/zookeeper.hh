@@ -39,174 +39,185 @@ class ZooKeeperImpl;
 /**
  * ZooKeeper return codes.
  */
-enum ReturnCode {
-  /** Everything is OK */
-  Ok = 0,
+namespace ReturnCode {
+  enum type {
+    /** Everything is OK */
+    Ok = 0,
 
-  /**
-   * System and server-side errors.
-   *
-   * SystemError is never returned by ZooKeeper. It is meant to be used
-   * to indicate a range. Specifically error codes less than this value,
-   * but greater than {@link #ApiError}, are system errors.
-   */
-  SystemError = -1,
+    /**
+     * System and server-side errors.
+     *
+     * SystemError is never returned by ZooKeeper. It is meant to be used
+     * to indicate a range. Specifically error codes less than this value,
+     * but greater than {@link #ApiError}, are system errors.
+     */
+    SystemError = -1,
 
-  /** A runtime inconsistency was found */
-  RuntimeInconsistency = -2,
+    /** A runtime inconsistency was found */
+    RuntimeInconsistency = -2,
 
-  /** A data inconsistency was found */
-  DataInconsistency = -3,
+    /** A data inconsistency was found */
+    DataInconsistency = -3,
 
-  /** Connection to the server has been lost */
-  ConnectionLoss = -4,
+    /** Connection to the server has been lost */
+    ConnectionLoss = -4,
 
-  /** Error while marshalling or unmarshalling data */
-  MarshallingError = -5,
+    /** Error while marshalling or unmarshalling data */
+    MarshallingError = -5,
 
-  /** Operation is unimplemented */
-  Unimplemented = -6,
+    /** Operation is unimplemented */
+    Unimplemented = -6,
 
-  /** Operation timeout */
-  OperationTimeout = -7,
+    /** Operation timeout */
+    OperationTimeout = -7,
 
-  /** Invalid arguments */
-  BadArguments = -8,
+    /** Invalid arguments */
+    BadArguments = -8,
 
-  /**
-   * API errors.
-   *
-   * ApiError is never returned by the ZooKeeper. It is meant to be used
-   * to indicate a range. Specifically error codes less than this
-   * value are API errors (while values greater than this and less than
-   * {@link #SystemError} indicate a {@link #SystemError}).
-   */
-  ApiError = -100,
+    /**
+     * API errors.
+     *
+     * ApiError is never returned by the ZooKeeper. It is meant to be used
+     * to indicate a range. Specifically error codes less than this
+     * value are API errors (while values greater than this and less than
+     * {@link #SystemError} indicate a {@link #SystemError}).
+     */
+    ApiError = -100,
 
-  /** Node does not exist */
-  NoNode = -101,
+    /** Node does not exist */
+    NoNode = -101,
 
-  /** Not authenticated */
-  NoAuth = -102,
+    /** Not authenticated */
+    NoAuth = -102,
 
-  /** Version conflict */
-  BadVersion = -103,
+    /** Version conflict */
+    BadVersion = -103,
 
-  /** Ephemeral nodes may not have children */
-  NoChildrenForEphemerals = -108,
+    /** Ephemeral nodes may not have children */
+    NoChildrenForEphemerals = -108,
 
-  /** The node already exists */
-  NodeExists = -110,
+    /** The node already exists */
+    NodeExists = -110,
 
-  /** The node has children */
-  NotEmpty = -111,
+    /** The node has children */
+    NotEmpty = -111,
 
-  /** The session has been expired by the server */
-  SessionExpired = -112,
+    /** The session has been expired by the server */
+    SessionExpired = -112,
 
-  /** Invalid callback specified */
-  InvalidCallback = -113,
+    /** Invalid callback specified */
+    InvalidCallback = -113,
 
-  /** Invalid ACL specified */
-  InvalidAcl = -114,
+    /** Invalid ACL specified */
+    InvalidAcl = -114,
 
-  /** Client authentication failed */
-  AuthFailed = -115,
+    /** Client authentication failed */
+    AuthFailed = -115,
 
-  /** Session moved to another server, so operation is ignored */
-  SessionMoved = -118,
+    /** Session moved to another server, so operation is ignored */
+    SessionMoved = -118,
 
-  /**
-   * C++ library specific errors.
-   *
-   * CppError is never returned by the ZooKeeper. It is meant to be used
-   * to indicate a range. Specifically error codes greater than this
-   * value are C++ library specific errors.
-   */
-  CppError = 1,
+    /**
+     * C++ library specific errors.
+     *
+     * CppError is never returned by the ZooKeeper. It is meant to be used
+     * to indicate a range. Specifically error codes greater than this
+     * value are C++ library specific errors.
+     */
+    CppError = 1,
 
-  /** The session is in an invalid state for a given operation. */
-  InvalidState = 2,
+    /** The session is in an invalid state for a given operation. */
+    InvalidState = 2,
 
-  /** Generic error */
-  Error = 3,
+    /** Generic error */
+    Error = 3,
+  };
 
+  const std::string toString();
 };
 
 /**
  * These constants represent the states of a zookeeper connection. They are
  * possible parameters of the watcher callback.
  */
-enum State {
-  Expired = -112,
+namespace SessionState {
+  enum type {
+    Expired = -112,
 
-  /**
-   * Session Authentication failed. The client is no longer connected to the
-   * server. You must call ZooKeeper::init() to re-establish the connection.
-   */
-  SessionAuthFailed = -113,
-  Connecting = 1,
-  Connected = 3,
+    /**
+     * Session Authentication failed. The client is no longer connected to the
+     * server. You must call ZooKeeper::init() to re-establish the connection.
+     */
+    AuthFailed = -113,
+    Connecting = 1,
+    Connected = 3,
+  };
 };
 
 /**
  * These constants indicate the event that caused a watch to trigger. They
  * are possible values of the first parameter of the watcher callback.
  */
-enum Event {
-  /**
-   * Session state has changed.
-   *
-   * This is generated when a client loses contact or reconnects with a
-   * server.
-   */
-  Session = -1,
+namespace WatchEvent {
+  enum type {
+    /**
+     * Session state has changed.
+     *
+     * This is generated when a client loses contact or reconnects with a
+     * server.
+     */
+    SessionStateChanged = -1,
 
-  /**
-   * Node has been created.
-   *
-   * This is only generated by watches on non-existent nodes. These watches
-   * are set using \ref zoo_exists.
-   */
-  NodeCreated = 1,
+    /**
+     * Node has been created.
+     *
+     * This is only generated by watches on non-existent nodes. These watches
+     * are set using \ref zoo_exists.
+     */
+    NodeCreated = 1,
 
-  /**
-   * Node has been deleted.
-   *
-   * This is only generated by watches on nodes. These watches
-   * are set using \ref zoo_exists and \ref zoo_get.
-   */
-  NodeDeleted = 2,
+    /**
+     * Node has been deleted.
+     *
+     * This is only generated by watches on nodes. These watches
+     * are set using \ref zoo_exists and \ref zoo_get.
+     */
+    NodeDeleted = 2,
 
-  /**
-   * Node data has changed.
-   *
-   * This is only generated by watches on nodes. These watches
-   * are set using \ref zoo_exists and \ref zoo_get.
-   */
-  NodeDataChanged = 3,
+    /**
+     * Node data has changed.
+     *
+     * This is only generated by watches on nodes. These watches
+     * are set using \ref zoo_exists and \ref zoo_get.
+     */
+    NodeDataChanged = 3,
 
-  /**
-   * A change has occurred in the list of children.
-   *
-   * This is only generated by watches on the child list of a node. These
-   * watches are set using \ref zoo_get_children or \ref zoo_get_children2.
-   */
-  NodeChildrenChanged = 4,
+    /**
+     * A change has occurred in the list of children.
+     *
+     * This is only generated by watches on the child list of a node. These
+     * watches are set using \ref zoo_get_children or \ref zoo_get_children2.
+     */
+    NodeChildrenChanged = 4,
+  };
 };
 
 /**
- * Create modes.
- *
- * In seuqential mode (either PersistentSequential of rEphemeralSequential),
- * ZooKeeper appends a monotonicly increasing counter to the end of path. This
- * counter is unique to the parent znode. The counter has a format of "%010d"
- * -- that is 10 digits with 0 (zero) padding (e.g. "<path>0000000001"). The
- * counter used to store the next sequence number is a signed int (4 bytes)
- * maintained by the parent znode, the counter will overflow when incremented
- * beyond 2147483647 (resulting in a name "<path>-2147483647").
+ * Namespace for create mode enums.
  */
-enum CreateMode {
+namespace CreateMode {
+  /**
+   * Create modes.
+   *
+   * In seuqential mode (either PersistentSequential of rEphemeralSequential),
+   * ZooKeeper appends a monotonicly increasing counter to the end of path. This
+   * counter is unique to the parent znode. The counter has a format of "%010d"
+   * -- that is 10 digits with 0 (zero) padding (e.g. "<path>0000000001"). The
+   * counter used to store the next sequence number is a signed int (4 bytes)
+   * maintained by the parent znode, the counter will overflow when incremented
+   * beyond 2147483647 (resulting in a name "<path>-2147483647").
+   */
+  enum type {
     /**
      * The znode will not be automatically deleted upon client's disconnect.
      */
@@ -228,6 +239,9 @@ enum CreateMode {
      * will be appended with a monotonically increasing number.
      */
     EphemeralSequential = 3,
+  };
+
+  const std::string toString(int32_t flags);
 };
 
 namespace Permission {
@@ -240,7 +254,7 @@ namespace Permission {
     All = Read | Write | Create | Delete | Admin,
   };
 
-  std::string toString(int32_t flags);
+  const std::string toString(int32_t flags);
 };
 
 class Acl {
@@ -255,7 +269,8 @@ class Acl {
 
 class Watch {
   public:
-    virtual void process(Event event, State state, const std::string& path) = 0;
+    virtual void process(WatchEvent::type event, SessionState::type state,
+                         const std::string& path) = 0;
 };
 
 /**
@@ -268,7 +283,7 @@ class SetCallback {
      * @param path The path of the znode this set() operation was for
      * @param stat Stat stat of the resulting znode. Valid iff rc == Ok.
      */
-    virtual void process(ReturnCode rc, const std::string& path,
+    virtual void process(ReturnCode::type rc, const std::string& path,
                          const Stat& stat) = 0;
 };
 
@@ -282,7 +297,7 @@ class ExistsCallback {
      * @param path The path of the znode this exists() operation was for
      * @param stat Stat stat of the znode. Valid iff rc == Ok.
      */
-    virtual void process(ReturnCode rc, const std::string& path,
+    virtual void process(ReturnCode::type rc, const std::string& path,
                          const Stat& stat) = 0;
 };
 
@@ -297,7 +312,7 @@ class GetCallback {
      * @param data Data associated with this znode. Valid iff rc == Ok.
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
-    virtual void process(ReturnCode rc, const std::string& path,
+    virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::string& data, const Stat& stat) = 0;
 };
 
@@ -312,7 +327,7 @@ class GetAclCallback {
      * @param acl The list of ACLs for this znode. Valid iff rc == Ok.
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
-    virtual void process(ReturnCode rc, const std::string& path,
+    virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::vector<Acl>& acl, const Stat& stat) = 0;
 };
 
@@ -327,7 +342,7 @@ class GetChildrenCallback {
      * @param acl The list of children for this znode. Valid iff rc == Ok.
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
-    virtual void process(ReturnCode rc, const std::string& path,
+    virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::vector<std::string>& children,
                          const Stat& stat) = 0;
 };
@@ -348,23 +363,23 @@ class CreateCallback {
      *                    this is equal to pathRequested. See ::CreateMode
      *                    for more detail about sequential znode path names.
      */
-    virtual void process(ReturnCode rc, const std::string& pathRequested,
+    virtual void process(ReturnCode::type rc, const std::string& pathRequested,
                          const std::string& pathCreated) = 0;
 };
 
 class RemoveCallback {
   public:
-    virtual void process(ReturnCode rc, const std::string& path) = 0;
+    virtual void process(ReturnCode::type rc, const std::string& path) = 0;
 };
 
 class SetAclCallback {
   public:
-    virtual void process(ReturnCode rc, const std::string& path) = 0;
+    virtual void process(ReturnCode::type rc, const std::string& path) = 0;
 };
 
 class SyncCallback {
   public:
-    virtual void process(ReturnCode rc, const std::string& path) = 0;
+    virtual void process(ReturnCode::type rc, const std::string& path) = 0;
 };
 
 /**
@@ -377,7 +392,7 @@ class AddAuthCallback {
      * @param scheme The scheme used for this operation.
      * @param cert The certificate used for this operation.
      */
-    virtual void process(ReturnCode rc, const std::string& scheme,
+    virtual void process(ReturnCode::type rc, const std::string& scheme,
                          const std::string& cert) = 0;
 };
 
@@ -389,7 +404,7 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Initializes ZooKeeper session asynchronously.
      */
-    ReturnCode init(const std::string& hosts, int32_t sessionTimeoutMs,
+    ReturnCode::type init(const std::string& hosts, int32_t sessionTimeoutMs,
                     boost::shared_ptr<Watch> watch);
 
     /**
@@ -417,7 +432,7 @@ class ZooKeeper : boost::noncopyable {
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      * ZSYSTEMERROR - a system error occured
      */
-    ReturnCode addAuth(const std::string& scheme, const std::string& cert,
+    ReturnCode::type addAuth(const std::string& scheme, const std::string& cert,
                        boost::shared_ptr<AddAuthCallback> callback);
 
     /**
@@ -450,8 +465,8 @@ class ZooKeeper : boost::noncopyable {
      *         InvalidState - zhandle state is either Expired or SessionAuthFailed
      *         MarshallingError - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode create(const std::string& path, const std::string& data,
-                      const std::vector<Acl>& acl, CreateMode mode,
+    ReturnCode::type create(const std::string& path, const std::string& data,
+                      const std::vector<Acl>& acl, CreateMode::type mode,
                       boost::shared_ptr<CreateCallback> callback);
 
     /**
@@ -476,7 +491,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode remove(const std::string& path, int32_t version,
+    ReturnCode::type remove(const std::string& path, int32_t version,
                       boost::shared_ptr<RemoveCallback> callback);
 
     /**
@@ -508,7 +523,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode exists(const std::string& path,
+    ReturnCode::type exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ExistsCallback> callback);
 
@@ -530,7 +545,7 @@ class ZooKeeper : boost::noncopyable {
      * <li>ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      * </ul>
      */
-    ReturnCode exists(const std::string& path, boost::shared_ptr<Watch> watch,
+    ReturnCode::type exists(const std::string& path, boost::shared_ptr<Watch> watch,
                       Stat& stat);
 
     /**
@@ -559,7 +574,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either in Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode get(const std::string& path,
+    ReturnCode::type get(const std::string& path,
                    boost::shared_ptr<Watch>,
                    boost::shared_ptr<GetCallback> callback);
 
@@ -589,7 +604,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode set(const std::string& path, const std::string& data,
+    ReturnCode::type set(const std::string& path, const std::string& data,
                    int32_t version, boost::shared_ptr<SetCallback> callback);
 
     /**
@@ -610,7 +625,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode getChildren(const std::string& path,
+    ReturnCode::type getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
                            boost::shared_ptr<GetChildrenCallback> callback);
 
@@ -632,7 +647,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode getAcl(const std::string& path,
+    ReturnCode::type getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
 
     /**
@@ -657,7 +672,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode setAcl(const std::string& path, int32_t version,
+    ReturnCode::type setAcl(const std::string& path, int32_t version,
                       const std::vector<Acl>& acl,
                       boost::shared_ptr<SetAclCallback> callback);
 
@@ -678,7 +693,7 @@ class ZooKeeper : boost::noncopyable {
      * @return Ok If the request was enqueued successfully. One of the errors in
      *         the ReturnCode in case of failure.
      */
-    ReturnCode sync(const std::string& path,
+    ReturnCode::type sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
 
     /**
@@ -726,14 +741,14 @@ class ZooKeeper : boost::noncopyable {
      * OperationTimeout Failed to flush the buffers within the specified timeout.
      * ConnectionLoss A network error occured while attempting to send request to server
      */
-    ReturnCode close();
+    ReturnCode::type close();
 
     /**
      * Gets the current state of this ZooKeeper object.
      *
      * @see State
      */
-    State getState();
+    SessionState::type getState();
 
     /**
      * Gets the ZooKeeper session ID.
@@ -743,8 +758,8 @@ class ZooKeeper : boost::noncopyable {
      *
      * @param(OUT) id Session ID.
      */
-    ReturnCode getSessionId(int64_t& id) {
-      return Unimplemented;
+    ReturnCode::type getSessionId(int64_t& id) {
+      return ReturnCode::Unimplemented;
     }
 
     /**
@@ -755,8 +770,8 @@ class ZooKeeper : boost::noncopyable {
      *
      * @param(OUT) password Session password.
      */
-    ReturnCode getSessionPassword(std::string& password) {
-      return Unimplemented;
+    ReturnCode::type getSessionPassword(std::string& password) {
+      return ReturnCode::Unimplemented;
     }
 
   private:

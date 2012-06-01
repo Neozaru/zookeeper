@@ -27,8 +27,8 @@ namespace org { namespace apache { namespace zookeeper {
 class MyExistsCallback : public ExistsCallback {
   public:
     MyExistsCallback(Stat& stat) : stat_(stat), completed_(false) {};
-    void process(ReturnCode rc, const std::string& path, const Stat& stat) {
-      if (rc == Ok) {
+    void process(ReturnCode::type rc, const std::string& path, const Stat& stat) {
+      if (rc == ReturnCode::Ok) {
         LOG_DEBUG(
           boost::format("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
                         "cversion=%d aversion=%d ephemeralOwner=%ld "
@@ -57,7 +57,7 @@ class MyExistsCallback : public ExistsCallback {
 
     boost::condition_variable cond_;
     boost::mutex mutex_;
-    ReturnCode rc_;
+    ReturnCode::type rc_;
     std::string path_;
     Stat& stat_;
     bool completed_;
@@ -78,15 +78,15 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
   assert(watcherCtx);
   WatchContext* context = (WatchContext*)watcherCtx;
 
-  if ((Event)type == Session) {
+  if ((WatchEvent::type)type == WatchEvent::SessionStateChanged) {
     LOG_DEBUG(boost::format("got session event %d, %d") % type % state);
     bool validState = false;
-    switch((State) state) {
-      case Expired:
-      case SessionAuthFailed:
-      case Connecting:
-      case Connected:
-        context->zk_->setState((State)state);
+    switch((SessionState::type) state) {
+      case SessionState::Expired:
+      case SessionState::AuthFailed:
+      case SessionState::Connecting:
+      case SessionState::Connected:
+        context->zk_->setState((SessionState::type)state);
         validState = true;
         break;
     }
@@ -99,7 +99,7 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
 
   Watch* watch = context->watch_.get();
   if (watch) {
-    watch->process((Event)type, (State)state, path);
+    watch->process((WatchEvent::type)type, (SessionState::type)state, path);
   }
   if (context->deleteAfterCallback_) {
     delete context;
@@ -130,13 +130,13 @@ void ZooKeeperImpl::
 stringCompletion(int rc, const char* value, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
-  if (rc == Ok) {
+  if (rc == ReturnCode::Ok) {
     assert(value != NULL);
     result = value;
   }
   CreateCallback* callback = (CreateCallback*)context->callback_.get();
   if (callback) {
-    callback->process((ReturnCode)rc, context->path_, result);
+    callback->process((ReturnCode::type)rc, context->path_, result);
   }
   delete context;
 }
@@ -146,7 +146,7 @@ removeCompletion(int rc, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
   RemoveCallback* callback = (RemoveCallback*)context->callback_.get();
   if (callback) {
-    callback->process((ReturnCode)rc, context->path_);
+    callback->process((ReturnCode::type)rc, context->path_);
   }
   delete context;
 }
@@ -156,7 +156,7 @@ setAclCompletion(int rc, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
   SetAclCallback* callback = (SetAclCallback*)context->callback_.get();
   if (callback) {
-    callback->process((ReturnCode)rc, context->path_);
+    callback->process((ReturnCode::type)rc, context->path_);
   }
   delete context;
 }
@@ -168,10 +168,10 @@ existsCompletion(int rc, const struct Stat* stat,
   ExistsCallback* callback = (ExistsCallback*)context->callback_.get();
   if (callback) {
     if (stat) {
-      callback->process((ReturnCode)rc, context->path_, *stat);
+      callback->process((ReturnCode::type)rc, context->path_, *stat);
     } else {
       Stat tempStat;
-      callback->process((ReturnCode)rc, context->path_, tempStat);
+      callback->process((ReturnCode::type)rc, context->path_, tempStat);
     }
   }
   delete context;
@@ -184,10 +184,10 @@ setCompletion(int rc, const struct Stat* stat,
   SetCallback* callback = (SetCallback*)context->callback_.get();
   if (callback) {
     if (stat) {
-      callback->process((ReturnCode)rc, context->path_, *stat);
+      callback->process((ReturnCode::type)rc, context->path_, *stat);
     } else {
       Stat tempStat;
-      callback->process((ReturnCode)rc, context->path_, tempStat);
+      callback->process((ReturnCode::type)rc, context->path_, tempStat);
     }
   }
   delete context;
@@ -199,7 +199,7 @@ dataCompletion(int rc, const char *value, int value_len,
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
   Stat statCopy;
-  if (rc == Ok) {
+  if (rc == ReturnCode::Ok) {
     assert(value);
     assert(value_len >= 0);
     assert(stat);
@@ -209,7 +209,7 @@ dataCompletion(int rc, const char *value, int value_len,
   }
   GetCallback* callback = (GetCallback*)context->callback_.get();
   assert(callback);
-  callback->process((ReturnCode)rc, context->path_, result, statCopy);
+  callback->process((ReturnCode::type)rc, context->path_, result, statCopy);
   delete context;
 
 }
@@ -219,7 +219,7 @@ childrenCompletion(int rc, const struct String_vector *strings,
                    const struct Stat *stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
   std::vector<std::string> children;
-  if (rc == Ok) {
+  if (rc == ReturnCode::Ok) {
     for (int i = 0; i < strings->count; i++) {
       children.push_back(strings->data[i]);
     }
@@ -227,7 +227,7 @@ childrenCompletion(int rc, const struct String_vector *strings,
   GetChildrenCallback* callback = (GetChildrenCallback*)context->callback_.get();
   if (callback) {
     // TODO check if stat is NULL
-    callback->process((ReturnCode)rc, context->path_, children, *stat);
+    callback->process((ReturnCode::type)rc, context->path_, children, *stat);
   }
   delete context;
 
@@ -247,7 +247,7 @@ aclCompletion(int rc, struct ACL_vector *acl,
                                 acl->data[i].perms));
       }
     }
-    callback->process((ReturnCode)rc, context->path_,
+    callback->process((ReturnCode::type)rc, context->path_,
                      aclVector, (const Stat&)stat);
   }
   delete context;
@@ -260,7 +260,7 @@ authCompletion(int rc, const void* data) {
   LOG_DEBUG(boost::format("rc=%d, scheme='%s', cert='%s'") % rc %
                           context->scheme_.c_str() % context->cert_.c_str());
   assert(callback);
-  callback->process((ReturnCode)rc, context->scheme_, context->cert_);
+  callback->process((ReturnCode::type)rc, context->scheme_, context->cert_);
   delete context;
 }
 
@@ -270,14 +270,14 @@ syncCompletion(int rc, const char* value, const void* data) {
   std::string result;
   SyncCallback* callback = (SyncCallback*)context->callback_.get();
   if (callback) {
-    callback->process((ReturnCode)rc, context->path_);
+    callback->process((ReturnCode::type)rc, context->path_);
   }
   delete context;
 }
 
 
 ZooKeeperImpl::
-ZooKeeperImpl() : handle_(NULL), inited_(false), state_(Expired) {
+ZooKeeperImpl() : handle_(NULL), inited_(false), state_(SessionState::Expired) {
 }
 
 ZooKeeperImpl::
@@ -285,7 +285,7 @@ ZooKeeperImpl::
   close();
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 init(const std::string& hosts, int32_t sessionTimeoutMs,
      boost::shared_ptr<Watch> watch) {
   watcher_fn watcher = NULL;
@@ -296,13 +296,13 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
   handle_ = zookeeper_init(hosts.c_str(), watcher, sessionTimeoutMs,
                            NULL, (void*)context, 0);
   if (handle_ == NULL) {
-    return Error;
+    return ReturnCode::Error;
   }
   inited_ = true;
-  return Ok;
+  return ReturnCode::Ok;
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 addAuth(const std::string& scheme, const std::string& cert,
         boost::shared_ptr<AddAuthCallback> callback) {
   void_completion_t completion = NULL;
@@ -311,14 +311,14 @@ addAuth(const std::string& scheme, const std::string& cert,
     completion = &authCompletion;
     context = new AuthCompletionContext(callback, scheme, cert);
   }
-  return (ReturnCode)zoo_add_auth(handle_, scheme.c_str(), cert.c_str(),
+  return (ReturnCode::type)zoo_add_auth(handle_, scheme.c_str(), cert.c_str(),
                                   cert.size(), completion, (void*)context);
 }
 
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
-                  const std::vector<Acl>& acl, CreateMode mode,
+                  const std::vector<Acl>& acl, CreateMode::type mode,
                   boost::shared_ptr<CreateCallback> callback) {
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
@@ -336,12 +336,12 @@ create(const std::string& path, const std::string& data,
     completion = &stringCompletion;
     context = new CompletionContext(callback, path);
   }
-  return (ReturnCode)zoo_acreate(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_acreate(handle_, path.c_str(),
                                  data.c_str(), data.size(),
                                  &aclVector, mode, completion, (void*)context);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 remove(const std::string& path, int32_t version,
        boost::shared_ptr<RemoveCallback> callback) {
   void_completion_t completion = NULL;
@@ -350,11 +350,11 @@ remove(const std::string& path, int32_t version,
     completion = &removeCompletion;
     context = new CompletionContext(callback, path);
   }
-  return (ReturnCode)zoo_adelete(handle_, path.c_str(), version,
+  return (ReturnCode::type)zoo_adelete(handle_, path.c_str(), version,
          completion, (void*)context);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        boost::shared_ptr<ExistsCallback> cb) {
   watcher_fn watcher = NULL;
@@ -371,23 +371,23 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
     watchContext = new WatchContext(this, watch, true);
   }
 
-  return (ReturnCode)zoo_awexists(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_awexists(handle_, path.c_str(),
          watcher, (void*)watchContext, completion,  (void*)completionContext);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        Stat& stat) {
   boost::shared_ptr<MyExistsCallback> callback(new MyExistsCallback(stat));
-  ReturnCode rc = exists(path, watch, callback);
-  if (rc != Ok) {
+  ReturnCode::type rc = exists(path, watch, callback);
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
   callback->waitForCompleted();
   return callback->rc_;
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
     boost::shared_ptr<GetCallback> cb) {
   watcher_fn watcher = NULL;
@@ -404,12 +404,12 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
     context = new CompletionContext(cb, path);
   }
 
-  return (ReturnCode)zoo_awget(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_awget(handle_, path.c_str(),
          &watchCallback, (void*)watchContext,
          completion, (void*)context);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
                int32_t version, boost::shared_ptr<SetCallback> cb) {
   stat_completion_t completion = NULL;
@@ -419,12 +419,12 @@ set(const std::string& path, const std::string& data,
     context = new CompletionContext(cb, path);
   }
 
-  return (ReturnCode)zoo_aset(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_aset(handle_, path.c_str(),
          data.c_str(), data.size(), version,
          completion, (void*)context);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
             boost::shared_ptr<GetChildrenCallback> cb) {
   watcher_fn watcher = NULL;
@@ -441,11 +441,11 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
     context = new CompletionContext(cb, path);
   }
 
-  return (ReturnCode)zoo_awget_children2(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_awget_children2(handle_, path.c_str(),
          watcher, (void*)watchContext, completion, (void*)context);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
   acl_completion_t completion = NULL;
   CompletionContext* context = NULL;
@@ -453,11 +453,11 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
     completion = &aclCompletion;
     context = new CompletionContext(cb, path);
   }
-  return (ReturnCode)zoo_aget_acl(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_aget_acl(handle_, path.c_str(),
          completion, (void*)context);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
        boost::shared_ptr<SetAclCallback> cb) {
   void_completion_t completion = NULL;
@@ -476,11 +476,11 @@ setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
     completion = &setAclCompletion;
     context = new CompletionContext(cb, path);
   }
-  return (ReturnCode)zoo_aset_acl(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_aset_acl(handle_, path.c_str(),
          version, &aclVector, completion, (void*)context);
 }
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
@@ -488,36 +488,36 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
     completion = &syncCompletion;
     context = new CompletionContext(cb, path);
   }
-  return (ReturnCode)zoo_async(handle_, path.c_str(),
+  return (ReturnCode::type)zoo_async(handle_, path.c_str(),
          completion, context);
 }
 
-//ReturnCode ZooKeeperImpl::
+//ReturnCode::type ZooKeeperImpl::
 //multi(int count, const zoo_op_t *ops,
 //        zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
 
-//ReturnCode ZooKeeperImpl::
+//ReturnCode::type ZooKeeperImpl::
 //multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
-ReturnCode ZooKeeperImpl::
+ReturnCode::type ZooKeeperImpl::
 close() {
   if (!inited_) {
-    return Error;
+    return ReturnCode::Error;
   }
   inited_ = false;
   // XXX handle return codes.
   zookeeper_close(handle_);
   handle_ = NULL;
-  return Ok;
+  return ReturnCode::Ok;
 }
 
-State ZooKeeperImpl::
+SessionState::type ZooKeeperImpl::
 getState() {
   return state_;
 }
 
 void ZooKeeperImpl::
-setState(State state) {
+setState(SessionState::type state) {
   state_ = state;
 }
 
