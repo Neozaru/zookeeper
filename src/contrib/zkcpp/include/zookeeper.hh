@@ -367,18 +367,69 @@ class CreateCallback {
                          const std::string& pathCreated) = 0;
 };
 
+/**
+ * Callback interface for remove() operation.
+ */
 class RemoveCallback {
   public:
+    /**
+     * @param rc ReturnCode::Ok if this remove() operation was successful.
+     * @param path The path of the znode this operation was for.
+     */
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
 };
 
+/**
+ * Callback interface for setAcl() operation.
+ */
 class SetAclCallback {
   public:
+    /**
+     * @param rc ReturnCode::Ok if this setAcl() operation was successful.
+     * @param path The path of the znode this operation was for.
+     */
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
 };
 
+/**
+ * Callback interface for sync() operation.
+ */
 class SyncCallback {
   public:
+    /**
+     * @param rc ReturnCode::Ok if this sync() operation was successful.
+     * @param path The path of the znode this operation was for.
+     */
+    virtual void process(ReturnCode::type rc, const std::string& path) = 0;
+};
+
+/**
+ * Callback interface for sync() operation.
+ */
+class SyncCallback {
+  public:
+    virtual void process(ReturnCode::type rc, const std::string& path) = 0;
+};
+
+/**
+ * Callback interface for addAuth() operation.
+ */
+class AddAuthCallback {
+  public:
+    /**
+     * @param rc Ok if this addAuth() operation was successful.
+     * @param scheme The scheme used for this operation.
+     * @param cert The certificate used for this operation.
+     */
+    virtual void process(ReturnCode::type rc, const std::string& scheme,
+                         const std::string& cert) = 0;
+};
+
+class ZooKeeper : boost::noncopyable {
+  public:
+    ZooKeeper();
+    ~ZooKeeper();
+
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
 };
 
