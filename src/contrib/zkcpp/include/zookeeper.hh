@@ -357,7 +357,7 @@ class GetChildrenCallback {
     /**
      * @param rc Ok if this getChildren() operation was successful.
      * @param path The path of the znode this getChildren() operation was for
-     * @param acl The list of children for this znode. Valid iff rc == Ok.
+     * @param children The list of children for this znode. Valid iff rc == Ok.
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
@@ -378,7 +378,7 @@ class CreateCallback {
      *                    for sequential znode, in which the path of the
      *                    resulting znode is different from the path originally
      *                    specified in the request. For non-seuquential znode,
-     *                    this is equal to pathRequested. See ::CreateMode
+     *                    this is equal to pathRequested. See CreateMode::type
      *                    for more detail about sequential znode path names.
      */
     virtual void process(ReturnCode::type rc, const std::string& pathRequested,
@@ -455,14 +455,14 @@ class ZooKeeper : boost::noncopyable {
      * If the authentication request has failed:
      * <ul>
      *   <li>The server connection is dropped, and the session state becomes
-     *       ::SessionAuthFailed</li>
-     *   <li>All the existing watchers are called with for ::Session event with
-     *       the ::SessionAuthFailed value as the state parameter.</li>
+     *       SessionState::AuthFailed</li>
+     *   <li>All the existing watchers are called for WatchEvent::Session
+     *       event with SessionState::AuthFailed as the state parameter.</li>
      * </ul>
      *
      * @param scheme the id of authentication scheme. Natively supported:
      * "digest" password-based authentication
-     * @param authentification certificate.
+     * @param cert authentification certificate.
      * @param callback The callback to invoke when the request completes.
      *
      * @return Ok on successfu or one of the following errcodes on failure:
@@ -477,7 +477,7 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Create a znode asynchronously.
      *
-     * A znode can only be created if it does not already exists. The ::CreateMode
+     * A znode can only be created if it does not already exists. The CreateMode::type
      * affect the creation of nodes. In Ephemeral mode, the node will
      * automatically get removed if the client session goes away. If the
      * Sequential mode is set, a unique monotonically increasing sequence
@@ -505,7 +505,7 @@ class ZooKeeper : boost::noncopyable {
      *         MarshallingError - failed to marshall a request; possibly, out of memory
      */
     ReturnCode::type create(const std::string& path, const std::string& data,
-                      const std::vector<Acl>& acl, CreateMode::type mode,
+                      const std::vector<Acl>& acl, ::CreateMode::type mode,
                       boost::shared_ptr<CreateCallback> callback);
 
     /**
@@ -526,31 +526,17 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Checks the existence of a node in zookeeper.
      *
-     * This function is similar to \ref zoo_axists except it allows one specify 
-     * a watcher object - a function pointer and associated context. The function
+     * This function allows one to specify a watch, a callback object. The callback
      * will be called once the watch has fired. The associated context data will be 
      * passed to the function as the watcher context parameter. 
      * 
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watcher if non-null a watch will set on the specified znode on the server.
+     * @param path The name of the node.
+     * @param watch if non-null a watch will set on the specified znode on the server.
      * The watch will be set even if the node does not exist. This allows clients 
      * to watch for nodes to appear.
-     * \param watcherCtx user specific data, will be passed to the watcher callback.
-     * Unlike the global context set by \ref zookeeper_init, this watcher context
-     * is associated with the given instance of the watcher only.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when the 
-     * function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * @param callback The callback to invoke when the request completes.
+     *
+     * @return ReturnCode::Ok if this request has been enqueued successfully.
      */
     ReturnCode::type exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
@@ -560,9 +546,10 @@ class ZooKeeper : boost::noncopyable {
      * Synchronous version of exists().
      *
      * @param path The name of the node.
-     * @param watcher if non-null a watch will set on the specified znode on the server.
+     * @param watch if non-null a watch will set on the specified znode on the server.
      * The watch will be set even if the node does not exist. This allows clients 
      * to watch for nodes to appear.
+     * @param[out] stat The stat of this znode. Valid iff rc == ReturnCode::Ok.
      *
      * @returns
      * <ul>
@@ -666,38 +653,6 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
-
-    /**
-     * \brief atomically commits multiple zookeeper operations.
-     *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param count the number of operations
-     * \param ops an array of operations to commit
-     * \param results an array to hold the results of the operations
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with any of the error codes that can that can be returned by the 
-     * ops supported by a multi op (see \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
-     * \param data the data that will be passed to the completion routine when
-     * the function completes.
-     * \return the return code for the function call. This can be any of the
-     * values that can be returned by the ops supported by a multi op (see
-     * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
-    ReturnCode multi(int count, const zoo_op_t *ops,
-            zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
-     */
-
-    /**
-     * \brief atomically commits multiple zookeeper operations synchronously.
-     *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param count the number of operations
-     * \param ops an array of operations to commit
-     * \param results an array to hold the results of the operations
-     * \return the return code for the function call. This can be any of the
-     * values that can be returned by the ops supported by a multi op (see
-     * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
-    ReturnCode multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
-     */
 
     /**
      * Closes this ZooKeeper session.
