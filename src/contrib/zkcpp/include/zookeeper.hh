@@ -516,19 +516,9 @@ class ZooKeeper : boost::noncopyable {
      *                if the actual version of the znode does not match the
      *                expected version. If -1 is used the version check will not
      *                take place.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * ZBADVERSION expected version does not match actual version.
-     * ZNOTEMPTY children are present; node cannot be deleted.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * @param callback The callback to invoke when the request completes.
+     *
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type remove(const std::string& path, int32_t version,
                       boost::shared_ptr<RemoveCallback> callback);
@@ -588,60 +578,30 @@ class ZooKeeper : boost::noncopyable {
                       Stat& stat);
 
     /**
-     * Gets the data associated with a node.
+     * Gets the data associated with a znode.
      *
-     * This function is similar to \ref zoo_aget except it allows one specify 
-     * a watcher object rather than a boolean watch flag.
+     * @param path The name of the znode.
+     * @param watch If non-null, a watch will be set at the server to notify 
+     * the client if the znode changes.
+     * @param callback The callback to invoke when the request completes.
      *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param watcher if non-null, a watch will be set at the server to notify 
-     * the client if the node changes.
-     * \param watcherCtx user specific data, will be passed to the watcher callback.
-     * Unlike the global context set by \ref zookeeper_init, this watcher context
-     * is associated with the given instance of the watcher only.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either in Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type get(const std::string& path,
-                   boost::shared_ptr<Watch>,
-                   boost::shared_ptr<GetCallback> callback);
+                         boost::shared_ptr<Watch> watch,
+			 boost::shared_ptr<GetCallback> callback);
 
     /**
      * Sets the data associated with a znode.
      *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param buffer the buffer holding data to be written to the node.
-     * \param buflen the number of bytes from buffer to write.
-     * \param version the expected version of the node. The function will fail if 
-     * the actual version of the node does not match the expected version. If -1 is 
-     * used the version check will not take place. * completion: If null, 
-     * the function will execute synchronously. Otherwise, the function will return 
-     * immediately and invoke the completion routine when the request completes.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * ZBADVERSION expected version does not match actual version.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * @param path The name of the znode.
+     * @param data Data to set.
+     * @param version The expected version of the znode. This operation will fail if
+     *                the actual version of the node does not match the expected
+     *                version. If -1 is used the version check will not take place.
+     * @param callback The callback to invoke when the request completes.
+     *
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type set(const std::string& path, const std::string& data,
                    int32_t version, boost::shared_ptr<SetCallback> callback);
@@ -649,20 +609,12 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Gets the children and the stat of a znode.
      *
-     * @param path the name of the znode.
-     * @param watcher if non-null, a watch will be set at the server to notify
-     * the client if the node changes.
-     * @param completion the routine to invoke when the request completes. The
-     * completion will be triggered with one of the following codes passed in as
-     * the rc argument:
-     *   Ok operation completed successfully
-     *   NoNode the node does not exist.
-     *   ZNOAUTH the client does not have permission.
+     * @param path The name of the znode.
+     * @param watch If non-null, a watch will be set at the server to notify
+     *              the client if the node changes.
+     * @param callback The callback to invoke when the request completes.
      *
-     * @return Ok on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
@@ -671,45 +623,25 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Gets the acl associated with a znode.
      *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * @param path The name of the znode.
+     * @param callback The callback to invoke when the request completes.
+     *
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
 
     /**
-     * \brief sets the acl associated with a node.
+     * Sets the Acl associated with a znode.
      *
-     * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
-     * \param path the name of the node. Expressed as a file name with slashes 
-     * separating ancestors of the node.
-     * \param buffer the buffer holding the acls to be written to the node.
-     * \param buflen the number of bytes from buffer to write.
-     * \param completion the routine to invoke when the request completes. The completion
-     * will be triggered with one of the following codes passed in as the rc argument:
-     * ZOK operation completed successfully
-     * ZNONODE the node does not exist.
-     * ZNOAUTH the client does not have permission.
-     * ZINVALIDACL invalid ACL specified
-     * ZBADVERSION expected version does not match actual version.
-     * \param data the data that will be passed to the completion routine when 
-     * the function completes.
-     * \return ZOK on success or one of the following errcodes on failure:
-     * ZBADARGUMENTS - invalid input parameters
-     * InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     * @param path The name of the znode.
+     * @param version The expected version of the znode. This operation will fail if
+     *                the actual version of the node does not match the expected
+     *                version. If -1 is used the version check will not take place.
+     * @param acl Acl to set.
+     * @param callback The callback to invoke when the request completes.
+     *
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type setAcl(const std::string& path, int32_t version,
                       const std::vector<Acl>& acl,
@@ -795,7 +727,7 @@ class ZooKeeper : boost::noncopyable {
      * This ZooKeeper object must be in "Connected" state for this operation
      * to succeed.
      *
-     * @param(OUT) id Session ID.
+     * @param[out] id Session ID.
      */
     ReturnCode::type getSessionId(int64_t& id) {
       return ReturnCode::Unimplemented;
@@ -807,7 +739,7 @@ class ZooKeeper : boost::noncopyable {
      * This ZooKeeper object must be in "Connected" state for this operation
      * to succeed.
      *
-     * @param(OUT) password Session password.
+     * @param[out] password Session password.
      */
     ReturnCode::type getSessionPassword(std::string& password) {
       return ReturnCode::Unimplemented;
