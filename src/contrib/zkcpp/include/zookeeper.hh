@@ -244,12 +244,24 @@ namespace CreateMode {
   const std::string toString(int32_t flags);
 };
 
+/**
+ * Namespace for znode permission enum.
+ */
 namespace Permission {
   enum type {
+    /** Permission to read data on a znode. */
     Read = 1 << 0,
+
+    /** Permission to write data on a znode. */
     Write = 1 << 1,
+
+    /** Permission to create children. */
     Create = 1 << 2,
+
+    /** Permission to delete children. */
     Delete = 1 << 3,
+
+    /** Permission to set permissions on a znodes. */
     Admin = 1 << 4,
     All = Read | Write | Create | Delete | Admin,
   };
@@ -267,6 +279,9 @@ class Acl {
     int32_t permissions_;
 };
 
+/**
+ * Callback interface for watch event.
+ */
 class Watch {
   public:
     virtual void process(WatchEvent::type event, SessionState::type state,
