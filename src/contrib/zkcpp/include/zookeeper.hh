@@ -404,36 +404,6 @@ class SyncCallback {
 };
 
 /**
- * Callback interface for sync() operation.
- */
-class SyncCallback {
-  public:
-    virtual void process(ReturnCode::type rc, const std::string& path) = 0;
-};
-
-/**
- * Callback interface for addAuth() operation.
- */
-class AddAuthCallback {
-  public:
-    /**
-     * @param rc Ok if this addAuth() operation was successful.
-     * @param scheme The scheme used for this operation.
-     * @param cert The certificate used for this operation.
-     */
-    virtual void process(ReturnCode::type rc, const std::string& scheme,
-                         const std::string& cert) = 0;
-};
-
-class ZooKeeper : boost::noncopyable {
-  public:
-    ZooKeeper();
-    ~ZooKeeper();
-
-    virtual void process(ReturnCode::type rc, const std::string& path) = 0;
-};
-
-/**
  * Callback interface for addAuth() operation.
  */
 class AddAuthCallback {
