@@ -289,7 +289,7 @@ class Watch {
 };
 
 /**
- * Callback interface for set() operation.
+ * Callback interface for ZooKeeper::set() operation.
  */
 class SetCallback {
   public:
@@ -303,7 +303,7 @@ class SetCallback {
 };
 
 /**
- * Callback interface for exists() operation.
+ * Callback interface for ZooKeeper::exists() operation.
  */
 class ExistsCallback {
   public:
@@ -317,7 +317,7 @@ class ExistsCallback {
 };
 
 /**
- * Callback interface for get() operation.
+ * Callback interface for ZooKeeper::get() operation.
  */
 class GetCallback {
   public:
@@ -332,7 +332,7 @@ class GetCallback {
 };
 
 /**
- * Callback interface for getAcl() operation.
+ * Callback interface for ZooKeeper::getAcl() operation.
  */
 class GetAclCallback {
   public:
@@ -347,7 +347,7 @@ class GetAclCallback {
 };
 
 /**
- * Callback interface for getChildren() operation.
+ * Callback interface for ZooKeeper::getChildren() operation.
  */
 class GetChildrenCallback {
   public:
@@ -363,7 +363,7 @@ class GetChildrenCallback {
 };
 
 /**
- * Callback interface for create() operation.
+ * Callback interface for ZooKeeper::create() operation.
  */
 class CreateCallback {
   public:
@@ -383,7 +383,7 @@ class CreateCallback {
 };
 
 /**
- * Callback interface for remove() operation.
+ * Callback interface for ZooKeeper::remove() operation.
  */
 class RemoveCallback {
   public:
@@ -395,7 +395,7 @@ class RemoveCallback {
 };
 
 /**
- * Callback interface for setAcl() operation.
+ * Callback interface for ZooKeeper::setAcl() operation.
  */
 class SetAclCallback {
   public:
@@ -407,7 +407,7 @@ class SetAclCallback {
 };
 
 /**
- * Callback interface for sync() operation.
+ * Callback interface for ZooKeeper::sync() operation.
  */
 class SyncCallback {
   public:
@@ -419,7 +419,7 @@ class SyncCallback {
 };
 
 /**
- * Callback interface for addAuth() operation.
+ * Callback interface for ZooKeeper::addAuth() operation.
  */
 class AddAuthCallback {
   public:
