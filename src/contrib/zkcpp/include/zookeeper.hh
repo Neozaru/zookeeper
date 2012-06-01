@@ -253,9 +253,6 @@ class Acl {
     int32_t permissions_;
 };
 
-static struct ACL __OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
-static struct ACL_vector OPEN_ACL_UNSAFE = { 1, __OPEN_ACL_UNSAFE_ACL};
-
 class Watch {
   public:
     virtual void process(Event event, State state, const std::string& path) = 0;
