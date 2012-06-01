@@ -43,13 +43,13 @@ addAuth(const std::string& scheme, const std::string& cert,
 
 ReturnCode ZooKeeper::
 create(const std::string& path, const std::string& data,
-       const struct ACL_vector *acl, CreateMode mode,
+       const std::vector<Acl>& acl, CreateMode mode,
        boost::shared_ptr<CreateCallback> callback) {
   return impl_->create(path, data, acl, mode, callback);
 }
 
 ReturnCode ZooKeeper::
-remove(const std::string& path, int version,
+remove(const std::string& path, int32_t version,
        boost::shared_ptr<RemoveCallback> callback) {
   return impl_->remove(path, version, callback);
 }
@@ -74,7 +74,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeper::
 set(const std::string& path, const std::string& data,
-    int version, boost::shared_ptr<SetCallback> callback) {
+    int32_t version, boost::shared_ptr<SetCallback> callback) {
   return impl_->set(path, data, version, callback);
 }
 
@@ -90,7 +90,7 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
 }
 
 ReturnCode ZooKeeper::
-setAcl(const std::string& path, int version, struct ACL_vector *acl,
+setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
        boost::shared_ptr<SetAclCallback> callback) {
   return impl_->setAcl(path, version, acl, callback);
 }

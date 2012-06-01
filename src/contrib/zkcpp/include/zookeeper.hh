@@ -230,9 +230,29 @@ enum CreateMode {
     EphemeralSequential = 3,
 };
 
-/**
- * TODO use C++ jute.
- */
+namespace Permission {
+  enum type {
+    Read = 1 << 0,
+    Write = 1 << 1,
+    Create = 1 << 2,
+    Delete = 1 << 3,
+    Admin = 1 << 4,
+    All = Read | Write | Create | Delete | Admin,
+  };
+
+  std::string toString(int32_t flags);
+};
+
+class Acl {
+  public:
+    Acl(const std::string& scheme, const std::string& expression,
+        int32_t permissions) : scheme_(scheme), expression_(expression),
+        permissions_(permissions) {};
+    std::string scheme_;
+    std::string expression_;
+    int32_t permissions_;
+};
+
 static struct ACL __OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
 static struct ACL_vector OPEN_ACL_UNSAFE = { 1, __OPEN_ACL_UNSAFE_ACL};
 
@@ -296,7 +316,7 @@ class GetAclCallback {
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode rc, const std::string& path,
-                         const ACL_vector& acl, const Stat& stat) = 0;
+                         const std::vector<Acl>& acl, const Stat& stat) = 0;
 };
 
 /**
@@ -434,7 +454,7 @@ class ZooKeeper : boost::noncopyable {
      *         MarshallingError - failed to marshall a request; possibly, out of memory
      */
     ReturnCode create(const std::string& path, const std::string& data,
-                      const struct ACL_vector *acl, CreateMode mode,
+                      const std::vector<Acl>& acl, CreateMode mode,
                       boost::shared_ptr<CreateCallback> callback);
 
     /**
@@ -459,7 +479,7 @@ class ZooKeeper : boost::noncopyable {
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
-    ReturnCode remove(const std::string& path, int version,
+    ReturnCode remove(const std::string& path, int32_t version,
                       boost::shared_ptr<RemoveCallback> callback);
 
     /**
@@ -573,7 +593,7 @@ class ZooKeeper : boost::noncopyable {
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
      */
     ReturnCode set(const std::string& path, const std::string& data,
-                   int version, boost::shared_ptr<SetCallback> callback);
+                   int32_t version, boost::shared_ptr<SetCallback> callback);
 
     /**
      * Gets the children and the stat of a znode.
@@ -639,10 +659,10 @@ class ZooKeeper : boost::noncopyable {
      * ZBADARGUMENTS - invalid input parameters
      * InvalidState - zhandle state is either Expired or SessionAuthFailed
      * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
-     * TODO use C++ jute
      */
-    ReturnCode setAcl(const std::string& path, int version,
-            struct ACL_vector *acl, boost::shared_ptr<SetAclCallback> callback);
+    ReturnCode setAcl(const std::string& path, int32_t version,
+                      const std::vector<Acl>& acl,
+                      boost::shared_ptr<SetAclCallback> callback);
 
     /**
      * Asynchronously flushes the channel between process and leader.

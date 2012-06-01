@@ -239,8 +239,16 @@ aclCompletion(int rc, struct ACL_vector *acl,
   CompletionContext* context = (CompletionContext*)data;
   GetAclCallback* callback = (GetAclCallback*)context->callback_.get();
   if (callback) {
+    std::vector<Acl> aclVector;
+    if (acl) {
+      for (int i = 0; i < acl->count; i++) {
+        aclVector.push_back(Acl(acl->data[i].id.scheme,
+                                acl->data[i].id.id,
+                                acl->data[i].perms));
+      }
+    }
     callback->process((ReturnCode)rc, context->path_,
-                     (const ACL_vector&)acl, (const Stat&)stat);
+                     aclVector, (const Stat&)stat);
   }
   delete context;
 }
@@ -310,21 +318,31 @@ addAuth(const std::string& scheme, const std::string& cert,
 
 ReturnCode ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
-                  const struct ACL_vector *acl, CreateMode mode,
+                  const std::vector<Acl>& acl, CreateMode mode,
                   boost::shared_ptr<CreateCallback> callback) {
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
+  ACL acls[acl.size()];
+  ACL_vector aclVector;
+  aclVector.count = acl.size();
+  for (int i = 0; i < acl.size(); i++) {
+    acls[i].id.scheme = (char*) acl[i].scheme_.c_str();
+    acls[i].id.id = (char*) acl[i].expression_.c_str();
+    acls[i].perms = acl[i].permissions_;
+  }
+  aclVector.data = acls;
+
   if (callback.get()) {
     completion = &stringCompletion;
     context = new CompletionContext(callback, path);
   }
   return (ReturnCode)zoo_acreate(handle_, path.c_str(),
                                  data.c_str(), data.size(),
-                                 acl, mode, completion, (void*)context);
+                                 &aclVector, mode, completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::
-remove(const std::string& path, int version,
+remove(const std::string& path, int32_t version,
        boost::shared_ptr<RemoveCallback> callback) {
   void_completion_t completion = NULL;
   CompletionContext* context = NULL;
@@ -393,7 +411,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
-               int version, boost::shared_ptr<SetCallback> cb) {
+               int32_t version, boost::shared_ptr<SetCallback> cb) {
   stat_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {
@@ -440,16 +458,26 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
 }
 
 ReturnCode ZooKeeperImpl::
-setAcl(const std::string& path, int version, struct ACL_vector *acl,
+setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
        boost::shared_ptr<SetAclCallback> cb) {
   void_completion_t completion = NULL;
   CompletionContext* context = NULL;
+  ACL acls[acl.size()];
+  ACL_vector aclVector;
+  aclVector.count = acl.size();
+  for (int i = 0; i < acl.size(); i++) {
+    acls[i].id.scheme = (char*) acl[i].scheme_.c_str();
+    acls[i].id.id = (char*) acl[i].expression_.c_str();
+    acls[i].perms = acl[i].permissions_;
+  }
+  aclVector.data = acls;
+
   if (cb.get()) {
     completion = &setAclCompletion;
     context = new CompletionContext(cb, path);
   }
   return (ReturnCode)zoo_aset_acl(handle_, path.c_str(),
-         version, acl, completion, (void*)context);
+         version, &aclVector, completion, (void*)context);
 }
 
 ReturnCode ZooKeeperImpl::

@@ -34,7 +34,7 @@ class ZooKeeperImpl {
     ReturnCode addAuth(const std::string& scheme, const std::string& cert,
                        boost::shared_ptr<AddAuthCallback> callback);
     ReturnCode create(const std::string& path, const std::string& data,
-                      const struct ACL_vector *acl, CreateMode mode,
+                      const std::vector<Acl>& acl, CreateMode mode,
                       boost::shared_ptr<CreateCallback> callback);
     ReturnCode remove(const std::string& path, int version,
                       boost::shared_ptr<RemoveCallback> callback);
@@ -54,7 +54,8 @@ class ZooKeeperImpl {
     ReturnCode getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
     ReturnCode setAcl(const std::string& path, int version,
-            struct ACL_vector *acl, boost::shared_ptr<SetAclCallback> callback);
+                      const std::vector<Acl>& acl,
+                      boost::shared_ptr<SetAclCallback> callback);
     ReturnCode sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
     //ReturnCode multi(int count, const zoo_op_t *ops,

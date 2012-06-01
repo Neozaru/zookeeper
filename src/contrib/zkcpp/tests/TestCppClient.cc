@@ -232,7 +232,9 @@ public:
         ReturnCode rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
         CPPUNIT_ASSERT_EQUAL(NoNode, rc);
 
-        zk.create("/hello", "world",  (const ACL_vector*)&OPEN_ACL_UNSAFE,
+        std::vector<Acl> acls;
+        acls.push_back(Acl("world", "anyone", Permission::All));
+        zk.create("/hello", "world",  acls,
                   Persistent, callback);
         CPPUNIT_ASSERT(callback->waitForCreated(1000));
 
