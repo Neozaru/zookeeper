@@ -293,6 +293,10 @@ class Acl {
 };
 
 class ZnodeStatImpl;
+
+/**
+ * Metadata of a znode.
+ */
 class ZnodeStat {
   public:
     ZnodeStat();
