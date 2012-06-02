@@ -617,6 +617,15 @@ class ZooKeeper : boost::noncopyable {
                       boost::shared_ptr<CreateCallback> callback);
 
     /**
+     * Synchronously create a znode.
+     */
+    ReturnCode::type create(const std::string& path, const std::string& data,
+                      const std::vector<Acl>& acl, CreateMode::type mode,
+                      std::string& pathCreated) {
+      return ReturnCode::Unimplemented;
+    }
+
+    /**
      * Removes a znode asynchronously.
      *
      * @param path the name of the znode.
@@ -630,6 +639,13 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type remove(const std::string& path, int32_t version,
                       boost::shared_ptr<RemoveCallback> callback);
+
+    /**
+     * Removes a znode synchronously.
+     */
+    ReturnCode::type remove(const std::string& path, int32_t version) {
+      return ReturnCode::Unimplemented;
+    }
 
     /**
      * Checks the existence of a znode in zookeeper asynchronously.
@@ -690,6 +706,15 @@ class ZooKeeper : boost::noncopyable {
 			 boost::shared_ptr<GetCallback> callback);
 
     /**
+     * Gets the data associated with a znode synchronously.
+     */
+    ReturnCode::type get(const std::string& path,
+                         boost::shared_ptr<Watch> watch,
+                         ZnodeStat& stat) {
+      return ReturnCode::Unimplemented;
+    }
+
+    /**
      * Sets the data associated with a znode.
      *
      * @param path The name of the znode.
@@ -703,6 +728,14 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type set(const std::string& path, const std::string& data,
                    int32_t version, boost::shared_ptr<SetCallback> callback);
+
+    /**
+     * Sets the data associated with a znode synchronously.
+     */
+    ReturnCode::type set(const std::string& path, const std::string& data,
+                         int32_t version, ZnodeStat& stat) {
+      return ReturnCode::Unimplemented;
+    }
 
     /**
      * Gets the children and the stat of a znode.
@@ -719,6 +752,23 @@ class ZooKeeper : boost::noncopyable {
                            boost::shared_ptr<GetChildrenCallback> callback);
 
     /**
+     * Gets the children and the stat of a znode synchronously.
+     *
+     * @param path The name of the znode.
+     * @param watch If non-null, a watch will be set at the server to notify
+     *              the client if the node changes.
+     * @param callback The callback to invoke when the request completes.
+     *
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
+     */
+    ReturnCode::type getChildren(const std::string& path,
+                           boost::shared_ptr<Watch> watch,
+                           std::vector<std::string>& children,
+                           ZnodeStat& stat) {
+      return ReturnCode::Unimplemented;
+    }
+
+    /**
      * Gets the acl associated with a znode.
      *
      * @param path The name of the znode.
@@ -728,6 +778,14 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
+
+    /**
+     * Gets the acl associated with a znode synchronously.
+     */
+    ReturnCode::type getAcl(const std::string& path,
+                            std::vector<Acl>& acl, ZnodeStat& stat) {
+      return ReturnCode::Unimplemented;
+    }
 
     /**
      * Sets the Acl associated with a znode.
@@ -744,6 +802,23 @@ class ZooKeeper : boost::noncopyable {
     ReturnCode::type setAcl(const std::string& path, int32_t version,
                       const std::vector<Acl>& acl,
                       boost::shared_ptr<SetAclCallback> callback);
+
+    /**
+     * Sets the Acl associated with a znode synchronously.
+     *
+     * @param path The name of the znode.
+     * @param version The expected version of the znode. This operation will fail if
+     *                the actual version of the node does not match the expected
+     *                version. If -1 is used the version check will not take place.
+     * @param acl Acl to set.
+     * @param callback The callback to invoke when the request completes.
+     *
+     * @return ReturnCode::Ok if the request has been enqueued successfully.
+     */
+    ReturnCode::type setAcl(const std::string& path, int32_t version,
+                      const std::vector<Acl>& acl) {
+      return ReturnCode::Unimplemented;
+    }
 
     /**
      * Asynchronously flushes the channel between process and leader.
