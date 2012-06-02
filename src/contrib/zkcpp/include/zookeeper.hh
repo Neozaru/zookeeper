@@ -140,6 +140,9 @@ namespace ReturnCode {
  */
 namespace SessionState {
   enum type {
+    /**
+     * The session has been expired and is no longer valid.
+     */
     Expired = -112,
 
     /**
@@ -381,6 +384,11 @@ class ZnodeStat {
  */
 class Watch {
   public:
+    /**
+     * @param event Event type that caused this watch to trigger.
+     * @param state State of the zookeeper session.
+     * @param path Znode path where this watch was set to.
+     */
     virtual void process(WatchEvent::type event, SessionState::type state,
                          const std::string& path) = 0;
 };
@@ -465,7 +473,12 @@ class GetChildrenCallback {
 class CreateCallback {
   public:
     /**
-     * @param rc Ok if this create() operation was successful.
+     * @param rc One of the ReturnCode::type enums. Most common values are:
+     *        <ul>
+     *          <li>ReturnCode::Ok If the znode was created successfully.</li>
+     *          <li>ReturnCode::NodeExists If the znode already exists.</li>
+     *        </ul>
+     *
      * @param pathRequested The path of the znode this operation was for.
      * @param pathCreated The path of the znode that was created by this
      *                    request. Valid iff rc == Ok. This is useful only
@@ -619,7 +632,7 @@ class ZooKeeper : boost::noncopyable {
                       boost::shared_ptr<RemoveCallback> callback);
 
     /**
-     * Checks the existence of a node in zookeeper.
+     * Checks the existence of a znode in zookeeper asynchronously.
      *
      * This function allows one to specify a watch, a callback object. The callback
      * will be called once the watch has fired. The associated context data will be 
@@ -629,16 +642,23 @@ class ZooKeeper : boost::noncopyable {
      * @param watch if non-null a watch will set on the specified znode on the server.
      * The watch will be set even if the node does not exist. This allows clients 
      * to watch for nodes to appear.
-     * @param callback The callback to invoke when the request completes.
+     * @param callback The callback to invoke when the request completes. If you don't
+     *                 need to get called back, pass an empty pointer (i.e. 
+     *                 boost::shared_ptr<ExistsCallback>()). 
      *
-     * @return ReturnCode::Ok if this request has been enqueued successfully.
+     * @return One of the ReturnCode::type enums. Most common values are:
+     * <ul>
+     *   <li>ReturnCode::Ok if this request has been enqueued successfully.</li>
+     *   <li>ReturnCode::InvalidState - The session state is either in
+     *       SessionState::Expired or in SessionState::AuthFailed.</li>
+     * </ul>
      */
     ReturnCode::type exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ExistsCallback> callback);
 
     /**
-     * Synchronous version of exists().
+     * A synchronous version of exists().
      *
      * @param path The name of the node.
      * @param watch if non-null a watch will set on the specified znode on the server.
@@ -646,14 +666,10 @@ class ZooKeeper : boost::noncopyable {
      * to watch for nodes to appear.
      * @param[out] stat The stat of this znode. Valid iff rc == ReturnCode::Ok.
      *
-     * @returns
+     * @return One of the ReturnCode::type enums. Most common values are:
      * <ul>
-     * <li>Ok The node exists
-     * <li>NoNode The node does not exist.
-     * <li>ZNOAUTH the client does not have permission.
-     * <li>ZBADARGUMENTS - invalid input parameters
-     * <li>InvalidState - zhandle state is either Expired or SessionAuthFailed
-     * <li>ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+     *   <li>ReturnCode::Ok The znode exists.
+     *   <li>ReturnCode::NoNode The znode does not exist.
      * </ul>
      */
     ReturnCode::type exists(const std::string& path, boost::shared_ptr<Watch> watch,
