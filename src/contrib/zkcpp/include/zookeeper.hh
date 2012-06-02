@@ -271,7 +271,7 @@ namespace Permission {
 };
 
 class AclImpl;
-class Acl : boost::noncopyable {
+class Acl {
   public:
     Acl();
     Acl(const std::string& scheme, const std::string& expression,
@@ -290,6 +290,40 @@ class Acl : boost::noncopyable {
 
   private:
     AclImpl* impl_;
+};
+
+class ZnodeStatImpl;
+class ZnodeStat {
+  public:
+    ZnodeStat();
+    ZnodeStat(const ZnodeStat& orig);
+    ZnodeStat& operator=(const ZnodeStat& orig);
+    ~ZnodeStat();
+    int64_t getCzxid() const;
+    void setCzxid(int64_t czxid);
+    int64_t getMzxid() const;
+    void setMzxid(int64_t mzxid);
+    int64_t getCtime() const;
+    void setCtime(int64_t ctime);
+    int64_t getMtime() const;
+    void setMtime(int64_t mtime);
+    int32_t getVersion() const;
+    void setVersion(int32_t version);
+    int32_t getCversion() const;
+    void setCversion(int32_t cversion);
+    int32_t getAversion() const;
+    void setAversion(int32_t aversion);
+    int64_t getEphemeralOwner() const;
+    void setEphemeralOwner(int64_t ephemeralOwner);
+    int32_t getDataLength() const;
+    void setDataLength(int32_t dataLength);
+    int32_t getNumChildren() const;
+    void setNumChildren(int32_t numChildren);
+    int64_t getPzxid() const;
+    void setPzxid(int64_t pzxid);
+
+  private:
+    ZnodeStatImpl* impl_;
 };
 
 /**
@@ -516,7 +550,7 @@ class ZooKeeper : boost::noncopyable {
      *         MarshallingError - failed to marshall a request; possibly, out of memory
      */
     ReturnCode::type create(const std::string& path, const std::string& data,
-                      const std::vector<Acl>& acl, ::CreateMode::type mode,
+                      const std::vector<Acl>& acl, CreateMode::type mode,
                       boost::shared_ptr<CreateCallback> callback);
 
     /**

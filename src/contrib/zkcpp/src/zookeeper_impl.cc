@@ -168,6 +168,18 @@ existsCompletion(int rc, const struct Stat* stat,
   ExistsCallback* callback = (ExistsCallback*)context->callback_.get();
   if (callback) {
     if (stat) {
+      ZnodeStat statObject;
+      statObject.setCzxid(stat->czxid);
+      statObject.setMzxid(stat->mzxid);
+      statObject.setCtime(stat->ctime);
+      statObject.setMtime(stat->mtime);
+      statObject.setVersion(stat->version);
+      statObject.setCversion(stat->cversion);
+      statObject.setAversion(stat->aversion);
+      statObject.setEphemeralOwner(stat->ephemeralOwner);
+      statObject.setDataLength(stat->dataLength);
+      statObject.setNumChildren(stat->numChildren);
+      statObject.setPzxid(stat->pzxid);
       callback->process((ReturnCode::type)rc, context->path_, *stat);
     } else {
       Stat tempStat;
