@@ -555,7 +555,7 @@ class ZooKeeper : boost::noncopyable {
                     boost::shared_ptr<Watch> watch);
 
     /**
-     * Adds authentication info for this session.
+     * Adds authentication info for this session asynchronously.
      *
      * The application calls this function to specify its credentials for
      * purposes of authentication. The server will use the security provider
@@ -581,6 +581,15 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type addAuth(const std::string& scheme, const std::string& cert,
                        boost::shared_ptr<AddAuthCallback> callback);
+
+    /**
+     * Adds authentication info for this session synchronously.
+     */
+    ReturnCode::type addAuth(const std::string& scheme,
+                             const std::string& cert) {
+      return ReturnCode::Unimplemented;
+    }
+
 
     /**
      * Create a znode asynchronously.
