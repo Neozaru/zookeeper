@@ -81,9 +81,13 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
          void *watcherCtx) {
   assert(watcherCtx);
   WatchContext* context = (WatchContext*)watcherCtx;
+  WatchEvent::type eventType = (WatchEvent::type)type;
+  SessionState::type stateType = (SessionState::type)state;
 
-  if ((WatchEvent::type)type == WatchEvent::SessionStateChanged) {
-    LOG_DEBUG(boost::format("got session event %d, %d") % type % state);
+  LOG_DEBUG(boost::format("Got an watch event: type=%s, state=%s, path='%s'") %
+            WatchEvent::toString(eventType) %
+            SessionState::toString(stateType) % path);
+  if (eventType == WatchEvent::SessionStateChanged) {
     bool validState = false;
     switch((SessionState::type) state) {
       case SessionState::Expired:

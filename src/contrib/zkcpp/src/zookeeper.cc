@@ -17,7 +17,9 @@
  */
 #include <algorithm>
 #include "zookeeper.hh"
+#include "logging.hh"
 #include "zookeeper_impl.hh"
+ENABLE_LOGGING;
 
 namespace org { namespace apache { namespace zookeeper {
 
@@ -475,5 +477,45 @@ void ZnodeStat::
 setPzxid(int64_t pzxid) {
   impl_->setPzxid(pzxid);
 }
+
+namespace SessionState {
+
+const std::string toString(type state) {
+  switch(state) {
+    case Expired:
+      return "Expired";
+    case AuthFailed:
+      return "AuthFailed";
+    case Connecting:
+      return "Connecting";
+    case Connected:
+      return "Connected";
+  }
+  LOG_ERROR("Unknown session state: " << state);
+  return str(boost::format("UnknownSessionState(%d)") % state);
+}
+
+}  // namespace SessionState
+
+namespace WatchEvent {
+
+const std::string toString(type eventType) {
+  switch(eventType) {
+    case SessionStateChanged:
+      return "SessionStateChanged";
+    case NodeCreated:
+      return "NodeCreated";
+    case NodeDeleted:
+      return "NodeDeleted";
+    case NodeDataChanged:
+      return "NodeDataChanged";
+    case NodeChildrenChanged:
+      return "NodeChildrenChanged";
+  }
+  LOG_ERROR("Unknown watch event: " << eventType);
+  return str(boost::format("UnknownWatchEvent(%d)") % eventType);
+}
+
+}  // namespace WatchEvent
 
 }}}  // namespace org::apache::zookeeper

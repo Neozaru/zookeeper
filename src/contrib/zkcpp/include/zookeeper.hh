@@ -153,6 +153,11 @@ namespace SessionState {
     Connecting = 1,
     Connected = 3,
   };
+
+  /**
+   * Returns SessionState::type enum in human-readable string format.
+   */
+  const std::string toString(type state);
 };
 
 /**
@@ -204,6 +209,11 @@ namespace WatchEvent {
      */
     NodeChildrenChanged = 4,
   };
+
+  /**
+   * Returns WatchEvent::type enum in human-readable string format.
+   */
+  const std::string toString(type eventType);
 };
 
 /**
