@@ -63,7 +63,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeper::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       Stat& stat) {
+       ZnodeStat& stat) {
   return impl_->exists(path, watch, stat);
 }
 
@@ -298,7 +298,7 @@ class ZnodeStatImpl {
     }
 
     void setDataLength(int32_t dataLength) {
-      dataLength = dataLength_;
+      dataLength_ = dataLength;
     }
 
     int32_t getNumChildren() {
@@ -335,31 +335,35 @@ ZnodeStat::
 ZnodeStat() : impl_(new ZnodeStatImpl()) {
 }
 
+void copyStat(const ZnodeStat& src, ZnodeStat& dst) {
+  dst.setCzxid(src.getCzxid());
+  dst.setMzxid(src.getMzxid());
+  dst.setCtime(src.getCtime());
+  dst.setMtime(src.getMtime());
+  dst.setVersion(src.getVersion());
+  dst.setCversion(src.getCversion());
+  dst.setAversion(src.getAversion());
+  dst.setEphemeralOwner(src.getEphemeralOwner());
+  dst.setDataLength(src.getDataLength());
+  dst.setNumChildren(src.getNumChildren());
+  dst.setPzxid(src.getPzxid());
+}
+
 ZnodeStat::
 ZnodeStat(const ZnodeStat& orig) : impl_(new ZnodeStatImpl()) {
-    this->setCzxid(orig.getCzxid());
-    this->setMzxid(orig.getMzxid());
-    this->setCtime(orig.getCtime());
-    this->setMtime(orig.getMtime());
-    this->setVersion(orig.getVersion());
-    this->setCversion(orig.getCversion());
-    this->setAversion(orig.getAversion());
-    this->setEphemeralOwner(orig.getEphemeralOwner());
-    this->setDataLength(orig.getDataLength());
-    this->setNumChildren(orig.getNumChildren());
-    this->setPzxid(orig.getPzxid());
+  copyStat(orig, *this);
 }
 
 ZnodeStat& ZnodeStat::
 operator=(const ZnodeStat& orig) {
-  ZnodeStat tmp(orig);
-  std::swap(*this, tmp);
-  return *this;
+  copyStat(orig, *this);
 }
 
 ZnodeStat::
 ~ZnodeStat() {
+  assert(impl_);
   delete impl_;
+  impl_ = NULL;
 }
 
 int64_t ZnodeStat::

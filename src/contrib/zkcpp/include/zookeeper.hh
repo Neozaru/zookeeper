@@ -343,10 +343,10 @@ class SetCallback {
     /**
      * @param rc Ok if this set() operation was successful.
      * @param path The path of the znode this set() operation was for
-     * @param stat Stat stat of the resulting znode. Valid iff rc == Ok.
+     * @param stat Stat of the resulting znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const Stat& stat) = 0;
+                         const ZnodeStat& stat) = 0;
 };
 
 /**
@@ -357,10 +357,10 @@ class ExistsCallback {
     /**
      * @param rc Ok if this znode exists.
      * @param path The path of the znode this exists() operation was for
-     * @param stat Stat stat of the znode. Valid iff rc == Ok.
+     * @param stat stat of the znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const Stat& stat) = 0;
+                         const ZnodeStat& stat) = 0;
 };
 
 /**
@@ -375,7 +375,7 @@ class GetCallback {
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const std::string& data, const Stat& stat) = 0;
+                         const std::string& data, const ZnodeStat& stat) = 0;
 };
 
 /**
@@ -390,7 +390,7 @@ class GetAclCallback {
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const std::vector<Acl>& acl, const Stat& stat) = 0;
+                         const std::vector<Acl>& acl, const ZnodeStat& stat) = 0;
 };
 
 /**
@@ -406,7 +406,7 @@ class GetChildrenCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::vector<std::string>& children,
-                         const Stat& stat) = 0;
+                         const ZnodeStat& stat) = 0;
 };
 
 /**
@@ -592,7 +592,7 @@ class ZooKeeper : boost::noncopyable {
      *
      * @param path The name of the node.
      * @param watch if non-null a watch will set on the specified znode on the server.
-     * The watch will be set even if the node does not exist. This allows clients 
+     * The watch will be set even if the node does not exist. This allows clients
      * to watch for nodes to appear.
      * @param[out] stat The stat of this znode. Valid iff rc == ReturnCode::Ok.
      *
@@ -607,13 +607,13 @@ class ZooKeeper : boost::noncopyable {
      * </ul>
      */
     ReturnCode::type exists(const std::string& path, boost::shared_ptr<Watch> watch,
-                      Stat& stat);
+                            ZnodeStat& stat);
 
     /**
      * Gets the data associated with a znode.
      *
      * @param path The name of the znode.
-     * @param watch If non-null, a watch will be set at the server to notify 
+     * @param watch If non-null, a watch will be set at the server to notify
      * the client if the znode changes.
      * @param callback The callback to invoke when the request completes.
      *

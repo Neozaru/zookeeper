@@ -224,7 +224,7 @@ public:
     void testCreate() {
         startServer();
         ZooKeeper zk;
-        struct Stat stat;
+        ZnodeStat stat;
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
@@ -246,13 +246,13 @@ public:
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
                        stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
-        CPPUNIT_ASSERT_EQUAL(stat.czxid, stat.mzxid);
-        CPPUNIT_ASSERT_EQUAL(0, stat.version);
-        CPPUNIT_ASSERT_EQUAL(0, stat.cversion);
-        CPPUNIT_ASSERT_EQUAL(0, stat.aversion);
-        CPPUNIT_ASSERT_EQUAL(0, (int)stat.ephemeralOwner);
-        CPPUNIT_ASSERT_EQUAL(5, stat.dataLength);
-        CPPUNIT_ASSERT_EQUAL(0, stat.numChildren);
+        CPPUNIT_ASSERT_EQUAL(stat.getCzxid(), stat.getMzxid());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getVersion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
+        CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
+        CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
 
         // Test authentication.
         boost::shared_ptr<MyAuthCallback> authCallback(new MyAuthCallback());
@@ -280,7 +280,6 @@ public:
 
         stopServer();
     }
-
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCppClient);

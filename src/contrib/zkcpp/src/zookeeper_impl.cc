@@ -26,18 +26,11 @@ namespace org { namespace apache { namespace zookeeper {
 
 class MyExistsCallback : public ExistsCallback {
   public:
-    MyExistsCallback(Stat& stat) : stat_(stat), completed_(false) {};
-    void process(ReturnCode::type rc, const std::string& path, const Stat& stat) {
+    MyExistsCallback(ZnodeStat& stat) : stat_(stat), completed_(false) {};
+    void process(ReturnCode::type rc, const std::string& path,
+                 const ZnodeStat& stat) {
       if (rc == ReturnCode::Ok) {
-        LOG_DEBUG(
-          boost::format("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
-                        "cversion=%d aversion=%d ephemeralOwner=%ld "
-                        "dataLength=%d numChildren=%d pzxid=%ld") %
-                        stat.czxid % stat.mzxid % stat.ctime % stat.mtime %
-                        stat.version % stat.cversion % stat.aversion %
-                        stat.ephemeralOwner % stat.dataLength %
-                        stat.numChildren % stat.pzxid);
-        memmove(&stat_, &stat, sizeof(stat));
+        stat_ = stat;
       }
       rc_ = rc;
       path_ = path;
@@ -59,7 +52,7 @@ class MyExistsCallback : public ExistsCallback {
     boost::mutex mutex_;
     ReturnCode::type rc_;
     std::string path_;
-    Stat& stat_;
+    ZnodeStat& stat_;
     bool completed_;
 };
 
@@ -104,6 +97,33 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
   if (context->deleteAfterCallback_) {
     delete context;
   }
+}
+
+void ZooKeeperImpl::
+copyStat(const Stat* src, ZnodeStat& dst) {
+  if (!src) {
+    return;
+  }
+        LOG_DEBUG(
+          boost::format("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
+                        "cversion=%d aversion=%d ephemeralOwner=%ld "
+                        "dataLength=%d numChildren=%d pzxid=%ld") %
+                        src->czxid % src->mzxid % src->ctime % src->mtime %
+                        src->version % src->cversion % src->aversion %
+                        src->ephemeralOwner % src->dataLength %
+                        src->numChildren % src->pzxid);
+
+  dst.setCzxid(src->czxid);
+  dst.setMzxid(src->mzxid);
+  dst.setCtime(src->ctime);
+  dst.setMtime(src->mtime);
+  dst.setVersion(src->version);
+  dst.setCversion(src->cversion);
+  dst.setAversion(src->aversion);
+  dst.setEphemeralOwner(src->ephemeralOwner);
+  dst.setDataLength(src->dataLength);
+  dst.setNumChildren(src->numChildren);
+  dst.setPzxid(src->pzxid);
 }
 
 class CompletionContext {
@@ -167,24 +187,9 @@ existsCompletion(int rc, const struct Stat* stat,
   CompletionContext* context = (CompletionContext*)data;
   ExistsCallback* callback = (ExistsCallback*)context->callback_.get();
   if (callback) {
-    if (stat) {
-      ZnodeStat statObject;
-      statObject.setCzxid(stat->czxid);
-      statObject.setMzxid(stat->mzxid);
-      statObject.setCtime(stat->ctime);
-      statObject.setMtime(stat->mtime);
-      statObject.setVersion(stat->version);
-      statObject.setCversion(stat->cversion);
-      statObject.setAversion(stat->aversion);
-      statObject.setEphemeralOwner(stat->ephemeralOwner);
-      statObject.setDataLength(stat->dataLength);
-      statObject.setNumChildren(stat->numChildren);
-      statObject.setPzxid(stat->pzxid);
-      callback->process((ReturnCode::type)rc, context->path_, *stat);
-    } else {
-      Stat tempStat;
-      callback->process((ReturnCode::type)rc, context->path_, tempStat);
-    }
+    ZnodeStat statObject;
+    copyStat(stat, statObject);
+    callback->process((ReturnCode::type)rc, context->path_, statObject);
   }
   delete context;
 }
@@ -195,12 +200,9 @@ setCompletion(int rc, const struct Stat* stat,
   CompletionContext* context = (CompletionContext*)data;
   SetCallback* callback = (SetCallback*)context->callback_.get();
   if (callback) {
-    if (stat) {
-      callback->process((ReturnCode::type)rc, context->path_, *stat);
-    } else {
-      Stat tempStat;
-      callback->process((ReturnCode::type)rc, context->path_, tempStat);
-    }
+    ZnodeStat statObject;
+    copyStat(stat, statObject);
+    callback->process((ReturnCode::type)rc, context->path_, statObject);
   }
   delete context;
 }
@@ -210,14 +212,14 @@ dataCompletion(int rc, const char *value, int value_len,
                            const struct Stat *stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
-  Stat statCopy;
+  ZnodeStat statCopy;
   if (rc == ReturnCode::Ok) {
     assert(value);
     assert(value_len >= 0);
     assert(stat);
     // TODO avoid copy
     result.assign(value, value_len);
-    memmove(&statCopy, stat, sizeof(*stat));
+    copyStat(stat, statCopy);
   }
   GetCallback* callback = (GetCallback*)context->callback_.get();
   assert(callback);
@@ -236,10 +238,14 @@ childrenCompletion(int rc, const struct String_vector *strings,
       children.push_back(strings->data[i]);
     }
   }
-  GetChildrenCallback* callback = (GetChildrenCallback*)context->callback_.get();
+  GetChildrenCallback* callback =
+    (GetChildrenCallback*)context->callback_.get();
   if (callback) {
-    // TODO check if stat is NULL
-    callback->process((ReturnCode::type)rc, context->path_, children, *stat);
+    // TODO avoid copy
+    ZnodeStat statObject;
+    copyStat(stat, statObject);
+    callback->process((ReturnCode::type)rc, context->path_, children,
+                      statObject);
   }
   delete context;
 
@@ -259,8 +265,10 @@ aclCompletion(int rc, struct ACL_vector *acl,
                                 acl->data[i].perms));
       }
     }
+    ZnodeStat statObject;
+    copyStat(stat, statObject);
     callback->process((ReturnCode::type)rc, context->path_,
-                     aclVector, (const Stat&)stat);
+                     aclVector, statObject);
   }
   delete context;
 }
@@ -389,7 +397,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       Stat& stat) {
+       ZnodeStat& stat) {
   boost::shared_ptr<MyExistsCallback> callback(new MyExistsCallback(stat));
   ReturnCode::type rc = exists(path, watch, callback);
   if (rc != ReturnCode::Ok) {

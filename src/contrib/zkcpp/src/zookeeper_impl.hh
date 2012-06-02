@@ -42,7 +42,7 @@ class ZooKeeperImpl {
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ExistsCallback> callback);
     ReturnCode::type exists(const std::string& path, boost::shared_ptr<Watch> watch,
-                      Stat& stat);
+                            ZnodeStat& stat);
     ReturnCode::type get(const std::string& path,
                    boost::shared_ptr<Watch>,
                    boost::shared_ptr<GetCallback> callback);
@@ -67,6 +67,7 @@ class ZooKeeperImpl {
     void setState(SessionState::type state);
 
   private:
+    static void copyStat(const Stat* src, ZnodeStat& dst);
     static void watchCallback(zhandle_t *zh, int type, int state, const char *path,
                          void *watcherCtx);
     static void stringCompletion(int rc, const char *value, const void *data);
