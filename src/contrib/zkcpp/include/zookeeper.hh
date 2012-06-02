@@ -34,8 +34,6 @@ namespace apache {
 /** ZooKeeper namespace. */
 namespace zookeeper {
 
-class ZooKeeperImpl;
-
 /**
  * ZooKeeper return codes.
  */
@@ -272,14 +270,26 @@ namespace Permission {
   const std::string toString(int32_t flags);
 };
 
-class Acl {
+class AclImpl;
+class Acl : boost::noncopyable {
   public:
+    Acl();
     Acl(const std::string& scheme, const std::string& expression,
-        int32_t permissions) : scheme_(scheme), expression_(expression),
-        permissions_(permissions) {};
-    std::string scheme_;
-    std::string expression_;
-    int32_t permissions_;
+        int32_t permissions);
+    Acl(const Acl& orig);
+    Acl& operator=(const Acl& orig);
+    ~Acl();
+    const std::string getScheme() const;
+    void setScheme(const std::string& scheme);
+
+    const std::string getExpression() const;
+    void setExpression(const std::string& expression);
+
+    int32_t getPermissions() const;
+    void setPermissions(int32_t permissions);
+
+  private:
+    AclImpl* impl_;
 };
 
 /**
@@ -435,6 +445,7 @@ class AddAuthCallback {
                          const std::string& cert) = 0;
 };
 
+class ZooKeeperImpl;
 class ZooKeeper : boost::noncopyable {
   public:
     ZooKeeper();

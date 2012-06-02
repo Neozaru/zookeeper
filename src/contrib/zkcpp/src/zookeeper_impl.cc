@@ -326,9 +326,9 @@ create(const std::string& path, const std::string& data,
   ACL_vector aclVector;
   aclVector.count = acl.size();
   for (int i = 0; i < acl.size(); i++) {
-    acls[i].id.scheme = (char*) acl[i].scheme_.c_str();
-    acls[i].id.id = (char*) acl[i].expression_.c_str();
-    acls[i].perms = acl[i].permissions_;
+    acls[i].id.scheme = (char*) acl[i].getScheme().c_str();
+    acls[i].id.id = (char*) acl[i].getExpression().c_str();
+    acls[i].perms = acl[i].getPermissions();
   }
   aclVector.data = acls;
 
@@ -466,9 +466,9 @@ setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
   ACL_vector aclVector;
   aclVector.count = acl.size();
   for (int i = 0; i < acl.size(); i++) {
-    acls[i].id.scheme = (char*) acl[i].scheme_.c_str();
-    acls[i].id.id = (char*) acl[i].expression_.c_str();
-    acls[i].perms = acl[i].permissions_;
+    acls[i].id.scheme = (char*) acl[i].getScheme().c_str();
+    acls[i].id.id = (char*) acl[i].getExpression().c_str();
+    acls[i].perms = acl[i].getPermissions();
   }
   aclVector.data = acls;
 

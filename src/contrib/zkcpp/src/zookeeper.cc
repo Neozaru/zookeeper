@@ -118,4 +118,112 @@ close() {
   return impl_->close();
 }
 
+// Acl
+class AclImpl {
+  public:
+    AclImpl() {
+      scheme_ = "";
+      expression_ = "";
+      permissions_ = 0;
+    }
+
+    AclImpl(const std::string& scheme, const std::string& expression,
+            int32_t permissions) :
+            scheme_(scheme), expression_(expression),
+            permissions_(permissions) {
+    }
+
+    const std::string getScheme() const {
+      return scheme_;
+    }
+
+    void setScheme(const std::string& scheme) {
+      scheme_ = scheme;
+    }
+
+    const std::string getExpression() const {
+      return expression_;
+    }
+
+    void setExpression(const std::string& expression) {
+      expression_ = expression;
+    }
+
+    int32_t getPermissions() const {
+      return permissions_;
+    }
+
+    void setPermissions(int32_t permissions) {
+      permissions_ = permissions;
+    }
+
+
+  private:
+    std::string scheme_;
+    std::string expression_;
+    int32_t permissions_;
+};
+
+Acl::
+Acl() : impl_(new AclImpl("", "", 0)) {
+}
+
+Acl::
+Acl(const std::string& scheme, const std::string& expression,
+    int32_t permissions) : impl_(new AclImpl(scheme, expression, permissions)) {
+}
+
+Acl::
+Acl(const Acl& orig) :
+  impl_(new AclImpl(orig.getScheme(), orig.getExpression(),
+                    orig.getPermissions())) {
+}
+
+Acl& Acl::
+operator=(const Acl& orig) {
+  assert(this->impl_);
+  assert(orig.impl_);
+  if (this != &orig) {
+    this->setScheme(orig.getScheme());
+    this->setExpression(orig.getExpression());
+    this->setPermissions(orig.getPermissions());
+  }
+  return *this;
+}
+
+Acl::
+~Acl() {
+  delete impl_;
+}
+
+const std::string Acl::
+getScheme() const {
+  return impl_->getScheme();
+}
+
+void Acl::
+setScheme(const std::string& scheme) {
+  impl_->setScheme(scheme);
+}
+
+const std::string Acl::
+getExpression() const {
+  return impl_->getExpression();
+}
+
+void Acl::
+setExpression(const std::string& expression) {
+  impl_->setScheme(expression);
+}
+
+int32_t Acl::
+getPermissions() const {
+  return impl_->getPermissions();
+}
+
+void Acl::
+setPermissions(int32_t permissions) {
+  impl_->setPermissions(permissions);
+}
+
 }}}  // namespace org::apache::zookeeper
