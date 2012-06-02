@@ -299,27 +299,73 @@ class ZnodeStat {
     ZnodeStat(const ZnodeStat& orig);
     ZnodeStat& operator=(const ZnodeStat& orig);
     ~ZnodeStat();
+
+    /**
+     * Gets the zxid of the transaction that caused this znode to be created.
+     */
     int64_t getCzxid() const;
-    void setCzxid(int64_t czxid);
+
+    /**
+     * Gets the zxid of the transaction that last modified this znode.
+     */
     int64_t getMzxid() const;
-    void setMzxid(int64_t mzxid);
+
+    /**
+     * Gets the time in milliseconds from epoch when this znode was created.
+     */
     int64_t getCtime() const;
-    void setCtime(int64_t ctime);
+
+    /**
+     * Gets the time in milliseconds from epoch when this znode was last
+     * modified.
+     */
     int64_t getMtime() const;
-    void setMtime(int64_t mtime);
+
+    /**
+     * Gets the number of transactions applied to the data of this znode.
+     */
     int32_t getVersion() const;
-    void setVersion(int32_t version);
+
+    /**
+     * Gets the number of transactions that added or removed the children of
+     * this znode.
+     */
     int32_t getCversion() const;
-    void setCversion(int32_t cversion);
+
+    /**
+     * Gets the number of transactions that modified the ACL of this znode.
+     */
     int32_t getAversion() const;
-    void setAversion(int32_t aversion);
+
+    /**
+     * Gets the session id of the owner of this znode if the znode is an
+     * ephemeral node.
+     *
+     * If it is not an ephemeral node, it will be zero.
+     */
     int64_t getEphemeralOwner() const;
-    void setEphemeralOwner(int64_t ephemeralOwner);
+
+    /**
+     * Gets the data length this znode.
+     */
     int32_t getDataLength() const;
-    void setDataLength(int32_t dataLength);
+
+    /**
+     * Gets the number of children this znode has.
+     */
     int32_t getNumChildren() const;
-    void setNumChildren(int32_t numChildren);
     int64_t getPzxid() const;
+
+    void setCzxid(int64_t czxid);
+    void setMzxid(int64_t mzxid);
+    void setCtime(int64_t ctime);
+    void setMtime(int64_t mtime);
+    void setVersion(int32_t version);
+    void setCversion(int32_t cversion);
+    void setAversion(int32_t aversion);
+    void setEphemeralOwner(int64_t ephemeralOwner);
+    void setDataLength(int32_t dataLength);
+    void setNumChildren(int32_t numChildren);
     void setPzxid(int64_t pzxid);
 
   private:
