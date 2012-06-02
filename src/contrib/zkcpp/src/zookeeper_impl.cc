@@ -24,16 +24,11 @@ ENABLE_LOGGING;
 
 namespace org { namespace apache { namespace zookeeper {
 
-class MyExistsCallback : public ExistsCallback {
+class Waitable {
   public:
-    MyExistsCallback(ZnodeStat& stat) : stat_(stat), completed_(false) {};
-    void process(ReturnCode::type rc, const std::string& path,
-                 const ZnodeStat& stat) {
-      if (rc == ReturnCode::Ok) {
-        stat_ = stat;
-      }
-      rc_ = rc;
-      path_ = path;
+    Waitable() : completed_(false) {}
+
+    void notifyCompleted() {
       {
         boost::lock_guard<boost::mutex> lock(mutex_);
         completed_ = true;
@@ -42,18 +37,34 @@ class MyExistsCallback : public ExistsCallback {
     }
 
     void waitForCompleted() {
-        boost::unique_lock<boost::mutex> lock(mutex_);
-        while (!completed_) {
-          cond_.wait(lock);
-        }
+      boost::unique_lock<boost::mutex> lock(mutex_);
+      while (!completed_) {
+        cond_.wait(lock);
+      }
     }
 
+  private:
     boost::condition_variable cond_;
     boost::mutex mutex_;
+    bool completed_;
+};
+
+class MyExistsCallback : public ExistsCallback, public Waitable {
+  public:
+    MyExistsCallback(ZnodeStat& stat) : stat_(stat) {};
+    void process(ReturnCode::type rc, const std::string& path,
+                 const ZnodeStat& stat) {
+      if (rc == ReturnCode::Ok) {
+        stat_ = stat;
+      }
+      rc_ = rc;
+      path_ = path;
+      notifyCompleted();
+    }
+
     ReturnCode::type rc_;
     std::string path_;
     ZnodeStat& stat_;
-    bool completed_;
 };
 
 class WatchContext {
