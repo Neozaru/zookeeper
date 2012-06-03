@@ -140,6 +140,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testInit);
     CPPUNIT_TEST(testCreate);
     CPPUNIT_TEST(testBasic);
+    CPPUNIT_TEST(testAcl);
     CPPUNIT_TEST_SUITE_END();
     FILE *logfile;
     const std::string HOST_PORT;
@@ -414,6 +415,23 @@ public:
 
         stopServer();
     }
+
+    void testAcl() {
+        startServer();
+        ZooKeeper zk;
+        ZnodeStat stat;
+        std::vector<Acl> acl;
+
+        shared_ptr<TestInitWatch> watch(new TestInitWatch());
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+        // get acl for root ("/")
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.getAcl("/", acl, stat));
+        stopServer();
+    }
+
+
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCppClient);

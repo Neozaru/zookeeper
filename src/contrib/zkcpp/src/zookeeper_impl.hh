@@ -66,6 +66,8 @@ class ZooKeeperImpl {
                            ZnodeStat& stat);
     ReturnCode::type getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
+    ReturnCode::type getAcl(const std::string& path,
+                            std::vector<Acl>& acl, ZnodeStat& stat);
     ReturnCode::type setAcl(const std::string& path, int version,
                       const std::vector<Acl>& acl,
                       boost::shared_ptr<SetAclCallback> callback);

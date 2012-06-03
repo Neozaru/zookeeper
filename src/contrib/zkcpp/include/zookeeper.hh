@@ -502,10 +502,8 @@ class CreateCallback {
   public:
     /**
      * @param rc One of the ReturnCode::type enums. Most common values are:
-     *        <ul>
-     *          <li>ReturnCode::Ok If the znode was created successfully.</li>
-     *          <li>ReturnCode::NodeExists If the znode already exists.</li>
-     *        </ul>
+     *           - ReturnCode::Ok If the znode was created successfully.
+     *           - ReturnCode::NodeExists If the znode already exists.
      *
      * @param pathRequested The path of the znode this operation was for.
      * @param pathCreated The path of the znode that was created by this
@@ -527,11 +525,9 @@ class RemoveCallback {
   public:
     /**
      * @param rc One of the ReturnCode::type enums. Most common values are:
-     *        <ul>
-     *          <li>ReturnCode::Ok If the znode was removed successfully.</li>
-     *          <li>ReturnCode::NoNode Znode doesn't exist.</li>
-     *          <li>ReturnCode::NotEmpty Znode has one or more children.</li>
-     *        </ul>
+     *           - ReturnCode::Ok If the znode was removed successfully.
+     *           - ReturnCode::NoNode Znode doesn't exist.
+     *           - ReturnCode::NotEmpty Znode has one or more children.
      * @param path The path of the znode this operation was for.
      */
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
@@ -594,12 +590,11 @@ class ZooKeeper : boost::noncopyable {
      * purposes of authentication. The server will use the security provider
      * specified by the scheme parameter to authenticate the client connection.
      * If the authentication request has failed:
-     * <ul>
-     *   <li>The server connection is dropped, and the session state becomes
-     *       SessionState::AuthFailed</li>
-     *   <li>All the existing watchers are called for WatchEvent::Session
-     *       event with SessionState::AuthFailed as the state parameter.</li>
-     * </ul>
+     *
+     *   - The server connection is dropped, and the session state becomes
+     *     SessionState::AuthFailed</li>
+     *   - All the existing watchers are called for WatchEvent::Session
+     *     event with SessionState::AuthFailed as the state parameter.</li>
      *
      * @param scheme the id of authentication scheme. Natively supported:
      * "digest" password-based authentication
@@ -676,11 +671,9 @@ class ZooKeeper : boost::noncopyable {
      * @param callback The callback to invoke when the request completes.
      *
      * @return One of the ReturnCode::type enums. Most common values are:
-     * <ul>
-     *   <li>ReturnCode::Ok if this request has been enqueued successfully.</li>
-     *   <li>ReturnCode::InvalidState - The session state is either in
-     *       SessionState::Expired or in SessionState::AuthFailed.</li>
-     * </ul>
+     *         - ReturnCode::Ok if this request has been enqueued successfully.
+     *         - ReturnCode::InvalidState - The session state is either in
+     *           SessionState::Expired or in SessionState::AuthFailed.
      */
     ReturnCode::type remove(const std::string& path, int32_t version,
                       boost::shared_ptr<RemoveCallback> callback);
@@ -706,10 +699,9 @@ class ZooKeeper : boost::noncopyable {
      *                 boost::shared_ptr<ExistsCallback>()). 
      *
      * @return One of the ReturnCode::type enums. Most common values are:
-     * <ul>
-     *   <li>ReturnCode::Ok if this request has been enqueued successfully.</li>
-     *   <li>ReturnCode::InvalidState - The session state is either in
-     *       SessionState::Expired or in SessionState::AuthFailed.</li>
+     *         - ReturnCode::Ok if this request has been enqueued successfully.
+     *         - ReturnCode::InvalidState - The session state is either in
+     *           SessionState::Expired or in SessionState::AuthFailed.
      * </ul>
      */
     ReturnCode::type exists(const std::string& path,
@@ -726,10 +718,8 @@ class ZooKeeper : boost::noncopyable {
      * @param[out] stat The stat of this znode. Valid iff rc == ReturnCode::Ok.
      *
      * @return One of the ReturnCode::type enums. Most common values are:
-     * <ul>
-     *   <li>ReturnCode::Ok The znode exists.
-     *   <li>ReturnCode::NoNode The znode does not exist.
-     * </ul>
+     *         - ReturnCode::Ok The znode exists.
+     *         - ReturnCode::NoNode The znode does not exist.
      */
     ReturnCode::type exists(const std::string& path, boost::shared_ptr<Watch> watch,
                             ZnodeStat& stat);
@@ -820,9 +810,7 @@ class ZooKeeper : boost::noncopyable {
      * Gets the acl associated with a znode synchronously.
      */
     ReturnCode::type getAcl(const std::string& path,
-                            std::vector<Acl>& acl, ZnodeStat& stat) {
-      return ReturnCode::Unimplemented;
-    }
+                            std::vector<Acl>& acl, ZnodeStat& stat);
 
     /**
      * Sets the Acl associated with a znode.

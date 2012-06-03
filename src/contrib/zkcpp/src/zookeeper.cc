@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 #include <algorithm>
+#include <boost/algorithm/string/join.hpp>
 #include "zookeeper.hh"
 #include "logging.hh"
 #include "zookeeper_impl.hh"
@@ -120,6 +121,12 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 ReturnCode::type ZooKeeper::
 getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
   return impl_->getAcl(path, callback);
+}
+
+ReturnCode::type ZooKeeper::
+getAcl(const std::string& path,
+       std::vector<Acl>& acl, ZnodeStat& stat) {
+  return impl_->getAcl(path, acl, stat);
 }
 
 ReturnCode::type ZooKeeper::
@@ -603,5 +610,29 @@ const std::string toString(type eventType) {
 }
 
 }  // namespace WatchEvent
+
+namespace Permission {
+
+const std::string toString(int32_t permType) {
+  std::vector<std::string> permissions;
+  if (permType & Read) {
+    permissions.push_back("Read");
+  }
+  if (permType & Write) {
+    permissions.push_back("Write");
+  }
+  if (permType & Create) {
+    permissions.push_back("Create");
+  }
+  if (permType & Delete) {
+    permissions.push_back("Delete");
+  }
+  if (permType & Admin) {
+    permissions.push_back("Admin");
+  }
+  return boost::algorithm::join(permissions, " | ");
+}
+
+}  // namespace Permission
 
 }}}  // namespace org::apache::zookeeper
