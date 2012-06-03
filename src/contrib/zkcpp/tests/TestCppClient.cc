@@ -190,7 +190,7 @@ public:
 
     void testCreate() {
         startServer();
-        ZooKeeper zk;
+        ZooKeeper zk, zk2;
         ZnodeStat stat;
         std::string pathCreated;
         std::vector<Acl> acls;
@@ -199,8 +199,14 @@ public:
         CPPUNIT_ASSERT_EQUAL(SessionState::Expired, zk.getState());
         ReturnCode::type rc = zk.create("/hello", "world",  acls,
                                         CreateMode::Persistent, pathCreated);
+        CPPUNIT_ASSERT_EQUAL(rc, ReturnCode::InvalidState);
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
+
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk2.init("localhost:12346", 30000,
+                             watch));
+        CPPUNIT_ASSERT_EQUAL(rc, ReturnCode::InvalidState);
+
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);

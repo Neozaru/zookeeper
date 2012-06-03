@@ -142,7 +142,9 @@ namespace SessionState {
    * ZooKeeper session states.
    *
    * A positive value indicates that the session is in a "recoverable" state.
-   * A negative value indicates that the session is in a "unrecoverable" state.
+   * A negative value indicates that the session is in an "unrecoverable" state.
+   * Once the client is in an unrecoverable state, the session is no longer
+   * valid. You need to call ZooKeeper::init() to establish a new session.
    *
    * For more details about recoverable and unrecoverable states, see:
    *

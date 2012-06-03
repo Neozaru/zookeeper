@@ -394,6 +394,10 @@ ReturnCode::type ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
                   const std::vector<Acl>& acl, CreateMode::type mode,
                   boost::shared_ptr<CreateCallback> callback) {
+  if ((int)this->getState() < 0) {
+    return ReturnCode::InvalidState;
+  }
+
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
   ACL acls[acl.size()];
