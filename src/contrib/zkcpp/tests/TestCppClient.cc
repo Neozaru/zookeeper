@@ -48,7 +48,6 @@ class TestInitWatch : public Watch {
   public:
     void process(WatchEvent::type event, SessionState::type state,
                  const std::string& path) {
-        printf("event %d, state %d path '%s'\n", event, state, path.c_str());
         if (event == WatchEvent::SessionStateChanged) {
           if (state == SessionState::Connected) {
             {
@@ -98,42 +97,6 @@ class TestInitWatch : public Watch {
     bool authFailed_;
 };
 
-class MyAuthCallback : public AddAuthCallback {
-  public:
-    MyAuthCallback() : completed_(false), scheme_(""), cert_("") {}
-    void process(ReturnCode::type rc, const std::string& scheme,
-                 const std::string& cert) {
-      rc_ = rc;
-      scheme_ = scheme;
-      cert_ = cert;
-      {
-        boost::lock_guard<boost::mutex> lock(mutex);
-        completed_ = true;
-      }
-      cond.notify_all();
-    }
-
-    bool waitForCompleted(uint32_t timeoutMs) {
-        boost::system_time const timeout=boost::get_system_time() +
-            boost::posix_time::milliseconds(timeoutMs);
-
-        boost::mutex::scoped_lock lock(mutex);
-        while (!completed_) {
-            if(!cond.timed_wait(lock,timeout)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    boost::condition_variable cond;
-    boost::mutex mutex;
-    bool completed_;
-    ReturnCode::type rc_;
-    std::string scheme_;
-    std::string cert_;
-};
-
 class TestCppClient : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(TestCppClient);
@@ -141,13 +104,14 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testCreate);
     CPPUNIT_TEST(testBasic);
     CPPUNIT_TEST(testAcl);
+    CPPUNIT_TEST(testAddAuth);
     CPPUNIT_TEST_SUITE_END();
     FILE *logfile;
-    const std::string HOST_PORT;
+    const std::string HOSTPORT;
 
 public:
 
-    TestCppClient() : HOST_PORT("127.0.0.1:22181") {
+    TestCppClient() : HOSTPORT("127.0.0.1:22181") {
         logfile = openlogfile("TestCppClient");
     }
 
@@ -167,13 +131,13 @@ public:
 
     void startServer() {
         char cmd[1024];
-        sprintf(cmd, "%s start %s", ZKSERVER_CMD, HOST_PORT.c_str());
+        sprintf(cmd, "%s start %s", ZKSERVER_CMD, HOSTPORT.c_str());
         CPPUNIT_ASSERT(system(cmd) == 0);
     }
 
     void stopServer() {
         char cmd[1024];
-        sprintf(cmd, "%s stop %s", ZKSERVER_CMD, HOST_PORT.c_str());
+        sprintf(cmd, "%s stop %s", ZKSERVER_CMD, HOSTPORT.c_str());
         CPPUNIT_ASSERT(system(cmd) == 0);
     }
 
@@ -185,7 +149,7 @@ public:
         startServer();
         ZooKeeper zk;
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
         CPPUNIT_ASSERT(watch->waitForConnected(1000));
         CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk.getState());
         stopServer();
@@ -211,7 +175,7 @@ public:
                              watch));
         CPPUNIT_ASSERT_EQUAL(rc, ReturnCode::InvalidState);
 
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
@@ -236,34 +200,6 @@ public:
         CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
         CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
 
-        // Test authentication.
-        boost::shared_ptr<MyAuthCallback> authCallback(new MyAuthCallback());
-        std::string scheme = "digest";
-        std::string cert = "user:password";
-
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.addAuth(scheme, cert, authCallback));
-        CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, authCallback->rc_);
-        CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);
-        CPPUNIT_ASSERT_EQUAL(cert, authCallback->cert_);
-        CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk.getState());
-
-        scheme = "bogus";
-        cert = "cert";
-        authCallback.reset(new MyAuthCallback());
-        watch->authFailed_= false;
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.addAuth(scheme, cert, authCallback));
-        CPPUNIT_ASSERT(authCallback->waitForCompleted(30000));
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::AuthFailed, authCallback->rc_);
-        CPPUNIT_ASSERT_EQUAL(scheme, authCallback->scheme_);
-        CPPUNIT_ASSERT_EQUAL(cert, authCallback->cert_);
-        CPPUNIT_ASSERT(watch->waitForAuthFailed(30000));
-        CPPUNIT_ASSERT_EQUAL(SessionState::AuthFailed, zk.getState());
-
-        // Now requests will fail with InvalidState.
-        rc = zk.create("/hello", "world",  acls, CreateMode::Persistent,
-                 pathCreated);
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::InvalidState, rc);
         stopServer();
     }
 
@@ -281,7 +217,7 @@ public:
         acls.push_back(Acl("world", "anyone", Permission::All));
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
 
         // exists() on nonexistent znode.
         ReturnCode::type rc = zk.exists(znodeName, boost::shared_ptr<Watch>(),
@@ -423,7 +359,7 @@ public:
         std::vector<Acl> acl;
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
         CPPUNIT_ASSERT(watch->waitForConnected(1000));
 
         // get acl for root ("/")
@@ -431,7 +367,74 @@ public:
         stopServer();
     }
 
+    void testAddAuth() {
+        startServer();
+        ZooKeeper zk, zk2;
+        std::string pathCreated;
+        std::vector<Acl> acls;
+        ZnodeStat stat;
 
+        shared_ptr<TestInitWatch> watch(new TestInitWatch());
+        shared_ptr<TestInitWatch> watch2(new TestInitWatch());
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk2.init(HOSTPORT, 30000, watch2));
+        CPPUNIT_ASSERT(watch->waitForConnected(1000));
+        CPPUNIT_ASSERT(watch2->waitForConnected(1000));
+
+        // Test authentication.
+        std::string scheme = "digest";
+        std::string cert = "user1:password1";
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.addAuth(scheme, cert));
+        CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk.getState());
+
+        // A ssession can have multiple identities.
+        cert = "user2:password2";
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk2.addAuth(scheme, cert));
+        CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk2.getState());
+        cert = "user3:password3";
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk2.addAuth(scheme, cert));
+        CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk2.getState());
+
+        // echo -n user1:password1 |openssl dgst -sha1 -binary | base64
+        acls.clear();
+        acls.push_back(Acl("digest", "user1:XDkd2dsEuhc9ImU3q8pa8UOdtpI=",
+                           Permission::All));
+        ReturnCode::type rc = zk.create("/user1", "hello",  acls,
+                                        CreateMode::Persistent, pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+
+        // echo -n user2:password2 |openssl dgst -sha1 -binary | base64
+        acls.clear();
+        acls.push_back(Acl("digest", "user2:lo/iTtNMP+gEZlpUNaCqLYO3i5U=",
+                           Permission::All));
+        rc = zk.create("/user2", "hello",  acls,
+                                        CreateMode::Persistent, pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+
+        // echo -n user3:password3 |openssl dgst -sha1 -binary | base64
+        acls.clear();
+        acls.push_back(Acl("digest", "user3:wr5Y0kEs9nFX3bKrTMKxrlcFeWo=",
+                           Permission::All));
+        rc = zk.create("/user3", "hello",  acls,
+                                        CreateMode::Persistent, pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+
+        rc = zk.set("/user1", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        rc = zk.set("/user2", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoAuth, rc);
+        rc = zk.set("/user3", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoAuth, rc);
+
+        rc = zk2.set("/user1", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoAuth, rc);
+        rc = zk2.set("/user2", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        rc = zk2.set("/user3", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+
+        stopServer();
+    }
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCppClient);

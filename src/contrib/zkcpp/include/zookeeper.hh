@@ -613,10 +613,7 @@ class ZooKeeper : boost::noncopyable {
      * Adds authentication info for this session synchronously.
      */
     ReturnCode::type addAuth(const std::string& scheme,
-                             const std::string& cert) {
-      return ReturnCode::Unimplemented;
-    }
-
+                             const std::string& cert);
 
     /**
      * Create a znode asynchronously.

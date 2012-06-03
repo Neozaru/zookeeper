@@ -49,6 +49,25 @@ class Waitable {
     bool completed_;
 };
 
+class MyAddAuthCallback : public AddAuthCallback, public Waitable {
+  public:
+    MyAddAuthCallback(const std::string& scheme, const std::string& cert) :
+                     scheme_(scheme), cert_(cert) {}
+
+    void process(ReturnCode::type rc,
+                const std::string& scheme,
+                const std::string& cert) {
+      assert(scheme == scheme_);
+      assert(cert == cert_);
+      rc_ = rc;
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    const std::string& scheme_;
+    const std::string& cert_;
+};
+
 class MyCreateCallback : public CreateCallback, public Waitable {
   public:
     MyCreateCallback(const std::string& pathRequested,
@@ -388,23 +407,23 @@ childrenCompletion(int rc, const struct String_vector *strings,
   CompletionContext* context = (CompletionContext*)data;
   LOG_DEBUG("getChildren() for " << context->path_ << " returned: " <<
             ReturnCode::toString((ReturnCode::type)rc));
+  GetChildrenCallback* callback =
+    (GetChildrenCallback*)context->callback_.get();
+  assert(callback);
   std::vector<std::string> children;
   if (rc == ReturnCode::Ok) {
+    assert(strings);
     for (int i = 0; i < strings->count; i++) {
       children.push_back(strings->data[i]);
       LOG_DEBUG("Got a child for " << context->path_ << ": " <<
                 strings->data[i]);
     }
   }
-  GetChildrenCallback* callback =
-    (GetChildrenCallback*)context->callback_.get();
-  if (callback) {
-    // TODO avoid copy
-    ZnodeStat statObject;
-    copyStat(stat, statObject);
-    callback->process((ReturnCode::type)rc, context->path_, children,
-                      statObject);
-  }
+  // TODO avoid copy
+  ZnodeStat statObject;
+  copyStat(stat, statObject);
+  callback->process((ReturnCode::type)rc, context->path_, children,
+                    statObject);
   delete context;
 
 }
@@ -416,25 +435,25 @@ aclCompletion(int rc, struct ACL_vector *acl,
   LOG_DEBUG("getAcl() for " << context->path_ << " returned: " <<
             ReturnCode::toString((ReturnCode::type)rc));
   GetAclCallback* callback = (GetAclCallback*)context->callback_.get();
-  if (callback) {
-    std::vector<Acl> aclVector;
-    if (acl) {
-      for (int i = 0; i < acl->count; i++) {
-        aclVector.push_back(Acl(acl->data[i].id.scheme,
-                                acl->data[i].id.id,
-                                acl->data[i].perms));
-        LOG_DEBUG(
-          boost::format("Got an ACL for %s: %s:%s:'%s'") %
-                        context->path_ % acl->data[i].id.scheme %
-                        acl->data[i].id.id %
-                        Permission::toString(acl->data[i].perms));
-      }
+  assert(callback);
+  std::vector<Acl> aclVector;
+  if (rc == ReturnCode::Ok) {
+    assert(acl);
+    for (int i = 0; i < acl->count; i++) {
+      aclVector.push_back(Acl(acl->data[i].id.scheme,
+                              acl->data[i].id.id,
+                              acl->data[i].perms));
+      LOG_DEBUG(
+        boost::format("Got an ACL for %s: %s:%s:'%s'") %
+                      context->path_ % acl->data[i].id.scheme %
+                      acl->data[i].id.id %
+                      Permission::toString(acl->data[i].perms));
     }
-    ZnodeStat statObject;
-    copyStat(stat, statObject);
-    callback->process((ReturnCode::type)rc, context->path_,
-                     aclVector, statObject);
   }
+  ZnodeStat statObject;
+  copyStat(stat, statObject);
+  callback->process((ReturnCode::type)rc, context->path_,
+                     aclVector, statObject);
   delete context;
 }
 
@@ -496,8 +515,21 @@ addAuth(const std::string& scheme, const std::string& cert,
     completion = &authCompletion;
     context = new AuthCompletionContext(callback, scheme, cert);
   }
-  return (ReturnCode::type)zoo_add_auth(handle_, scheme.c_str(), cert.c_str(),
-                                  cert.size(), completion, (void*)context);
+  int rc = zoo_add_auth(handle_, scheme.c_str(), cert.c_str(),
+                        cert.size(), completion, (void*)context);
+  return intToReturnCode(rc);
+}
+
+ReturnCode::type ZooKeeperImpl::
+addAuth(const std::string& scheme, const std::string& cert) {
+  boost::shared_ptr<MyAddAuthCallback> callback(
+    new MyAddAuthCallback(scheme, cert));
+  ReturnCode::type rc = addAuth(scheme, cert, callback);
+  if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  return callback->rc_;
 }
 
 

@@ -33,6 +33,8 @@ class ZooKeeperImpl {
                     boost::shared_ptr<Watch> watch);
     ReturnCode::type addAuth(const std::string& scheme, const std::string& cert,
                        boost::shared_ptr<AddAuthCallback> callback);
+    ReturnCode::type addAuth(const std::string& scheme,
+                             const std::string& cert);
     ReturnCode::type create(const std::string& path, const std::string& data,
                       const std::vector<Acl>& acl, CreateMode::type mode,
                       boost::shared_ptr<CreateCallback> callback);

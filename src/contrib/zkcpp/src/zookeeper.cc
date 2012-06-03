@@ -46,6 +46,11 @@ addAuth(const std::string& scheme, const std::string& cert,
 }
 
 ReturnCode::type ZooKeeper::
+addAuth(const std::string& scheme, const std::string& cert) {
+  return impl_->addAuth(scheme, cert);
+}
+
+ReturnCode::type ZooKeeper::
 create(const std::string& path, const std::string& data,
        const std::vector<Acl>& acl, CreateMode::type mode,
        boost::shared_ptr<CreateCallback> callback) {
