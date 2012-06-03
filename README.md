@@ -12,3 +12,4 @@ is to port the code to C++ over time. More specifically:
 * Use better logging system (either google-glog or log4cxx).
 * Use C++ version of jute generated code.
 * Use unordered_map instead of hashtable.
+* Better documentation.
