@@ -269,6 +269,8 @@ public:
         ZooKeeper zk;
         ZnodeStat stat;
         std::string znodeName = "/testBasic";
+        std::string dataInput = "hello";
+        std::string dataOutput;
         std::string pathCreated;
         std::vector<Acl> acls;
         acls.push_back(Acl("world", "anyone", Permission::All));
@@ -276,26 +278,41 @@ public:
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
 
-        // exists() on non-existent znode.
+        // exists() on nonexistent znode.
         ReturnCode::type rc = zk.exists(znodeName, boost::shared_ptr<Watch>(),
                                         stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
+        // get() on onexistent znode.
+        rc = zk.get(znodeName, boost::shared_ptr<Watch>(), dataOutput, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
+
         // create()
-        rc = zk.create(znodeName, "world",  acls, CreateMode::Persistent,
+        rc = zk.create(znodeName, dataInput,  acls, CreateMode::Persistent,
                  pathCreated);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
         CPPUNIT_ASSERT_EQUAL(znodeName, pathCreated);
 
-        // create() on existing node.
-        rc = zk.create(znodeName, "world",  acls, CreateMode::Persistent,
+        // create() on existing znode.
+        rc = zk.create(znodeName, dataInput,  acls, CreateMode::Persistent,
                  pathCreated);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NodeExists, rc);
 
         // exists()
         rc = zk.exists(znodeName, boost::shared_ptr<Watch>(), stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(stat.getCzxid(), stat.getMzxid());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getVersion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
+        CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
+        CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+
+        // get()
+        rc = zk.get(znodeName, boost::shared_ptr<Watch>(), dataOutput, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(dataInput, dataOutput);
         CPPUNIT_ASSERT_EQUAL(stat.getCzxid(), stat.getMzxid());
         CPPUNIT_ASSERT_EQUAL(0, stat.getVersion());
         CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());

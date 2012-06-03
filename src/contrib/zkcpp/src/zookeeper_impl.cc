@@ -93,6 +93,28 @@ class MyExistsCallback : public ExistsCallback, public Waitable {
     ZnodeStat& stat_;
 };
 
+class MyGetCallback : public GetCallback, public Waitable {
+  public:
+    MyGetCallback(std::string& data, ZnodeStat& stat) :
+      data_(data), stat_(stat) {};
+    void process(ReturnCode::type rc, const std::string& path,
+                 const std::string& data, const ZnodeStat& stat) {
+      if (rc == ReturnCode::Ok) {
+        data_ = data;
+        stat_ = stat;
+      }
+      rc_ = rc;
+      path_ = path;
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    std::string path_;
+    std::string& data_;
+    ZnodeStat& stat_;
+};
+
+
 class MyRemoveCallback : public RemoveCallback, public Waitable {
   public:
     MyRemoveCallback() {};
@@ -284,13 +306,14 @@ dataCompletion(int rc, const char *value, int value_len,
     assert(value);
     assert(value_len >= 0);
     assert(stat);
+  }
+  GetCallback* callback = (GetCallback*)context->callback_.get();
+  if (callback) {
     // TODO avoid copy
     result.assign(value, value_len);
     copyStat(stat, statCopy);
+    callback->process((ReturnCode::type)rc, context->path_, result, statCopy);
   }
-  GetCallback* callback = (GetCallback*)context->callback_.get();
-  assert(callback);
-  callback->process((ReturnCode::type)rc, context->path_, result, statCopy);
   delete context;
 
 }
@@ -497,7 +520,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
        ZnodeStat& stat) {
   boost::shared_ptr<MyExistsCallback> callback(new MyExistsCallback(stat));
   ReturnCode::type rc = exists(path, watch, callback);
- if (rc != ReturnCode::Ok) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
   callback->waitForCompleted();
@@ -522,8 +545,20 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
   }
 
   return (ReturnCode::type)zoo_awget(handle_, path.c_str(),
-         &watchCallback, (void*)watchContext,
+         watcher, (void*)watchContext,
          completion, (void*)context);
+}
+
+ReturnCode::type ZooKeeperImpl::
+get(const std::string& path, boost::shared_ptr<Watch> watch,
+    std::string& data, ZnodeStat& stat) {
+  boost::shared_ptr<MyGetCallback> callback(new MyGetCallback(data, stat));
+  ReturnCode::type rc = get(path, watch, callback);
+ if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  return callback->rc_;
 }
 
 ReturnCode::type ZooKeeperImpl::

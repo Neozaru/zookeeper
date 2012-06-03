@@ -743,9 +743,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type get(const std::string& path,
                          boost::shared_ptr<Watch> watch,
-                         ZnodeStat& stat) {
-      return ReturnCode::Unimplemented;
-    }
+                         std::string& data, ZnodeStat& stat);
 
     /**
      * Sets the data associated with a znode.

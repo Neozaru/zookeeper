@@ -88,6 +88,12 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 }
 
 ReturnCode::type ZooKeeper::
+get(const std::string& path, boost::shared_ptr<Watch> watch,
+    std::string& data, ZnodeStat& stat) {
+  return impl_->get(path, watch, data, stat);
+}
+
+ReturnCode::type ZooKeeper::
 set(const std::string& path, const std::string& data,
     int32_t version, boost::shared_ptr<SetCallback> callback) {
   return impl_->set(path, data, version, callback);
