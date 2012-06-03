@@ -49,6 +49,32 @@ class Waitable {
     bool completed_;
 };
 
+class MyCreateCallback : public CreateCallback, public Waitable {
+  public:
+    MyCreateCallback(const std::string& pathRequested,
+                     std::string& pathCreated) :
+                     pathRequested_(pathRequested),
+                     pathCreated_(pathCreated) {
+    }
+
+    void process(ReturnCode::type rc,
+                const std::string& pathRequested,
+                const std::string& pathCreated) {
+      LOG_DEBUG(boost::format("rc=%s pathRequested='%s' pathCreated='%s'") %
+                ReturnCode::toString(rc) % pathRequested % pathCreated);
+      assert(pathRequested_ == pathRequested);
+      rc_ = rc;
+      if (rc == ReturnCode::Ok) {
+        pathCreated_ = pathCreated;
+      }
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    const std::string& pathRequested_;
+    std::string& pathCreated_;
+};
+
 class MyExistsCallback : public ExistsCallback, public Waitable {
   public:
     MyExistsCallback(ZnodeStat& stat) : stat_(stat) {};
@@ -84,7 +110,7 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
   WatchEvent::type eventType = (WatchEvent::type)type;
   SessionState::type stateType = (SessionState::type)state;
 
-  LOG_DEBUG(boost::format("Got an watch event: type=%s, state=%s, path='%s'") %
+  LOG_DEBUG(boost::format("Got a watch event: type=%s, state=%s, path='%s'") %
             WatchEvent::toString(eventType) %
             SessionState::toString(stateType) % path);
   if (eventType == WatchEvent::SessionStateChanged) {
@@ -112,6 +138,19 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
   if (context->deleteAfterCallback_) {
     delete context;
   }
+}
+
+ReturnCode::type ZooKeeperImpl::
+intToReturnCode(int rc) {
+  /**
+   * ZINVALIDSTATE is a C client specific error, but it was put under system
+   * error range (between -1 and -100). To avoid future collision, I moved it
+   * to C++ error range (greater than 0).
+   */
+  if (rc == ZINVALIDSTATE) {
+    return ReturnCode::InvalidState;
+  }
+  return (ReturnCode::type)rc;
 }
 
 void ZooKeeperImpl::
@@ -371,9 +410,23 @@ create(const std::string& path, const std::string& data,
     completion = &stringCompletion;
     context = new CompletionContext(callback, path);
   }
-  return (ReturnCode::type)zoo_acreate(handle_, path.c_str(),
-                                 data.c_str(), data.size(),
-                                 &aclVector, mode, completion, (void*)context);
+  int rc = zoo_acreate(handle_, path.c_str(), data.c_str(), data.size(),
+                       &aclVector, mode, completion, (void*)context);
+  return intToReturnCode(rc);
+}
+
+ReturnCode::type ZooKeeperImpl::
+create(const std::string& path, const std::string& data,
+       const std::vector<Acl>& acl, CreateMode::type mode,
+       std::string& pathCreated) {
+  boost::shared_ptr<MyCreateCallback> callback(
+    new MyCreateCallback(path, pathCreated));
+  ReturnCode::type rc = create(path, data, acl, mode, callback);
+  if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  return callback->rc_;
 }
 
 ReturnCode::type ZooKeeperImpl::

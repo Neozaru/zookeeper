@@ -132,39 +132,6 @@ class MyAuthCallback : public AddAuthCallback {
     std::string cert_;
 };
 
-class MyCreateCallback : public CreateCallback {
-  public:
-    void process(ReturnCode::type rc, const std::string& pathRequested,
-                 const std::string& pathCreated) {
-      printf("%d %s %s\n", rc, pathRequested.c_str(),
-             pathCreated.c_str());
-      if (rc == ReturnCode::Ok) {
-        {
-          boost::lock_guard<boost::mutex> lock(mutex);
-          created = true;
-        }
-        cond.notify_all();
-      }
-    }
-
-    bool waitForCreated(uint32_t timeoutMs) {
-        boost::system_time const timeout=boost::get_system_time() +
-            boost::posix_time::milliseconds(timeoutMs);
-
-        boost::mutex::scoped_lock lock(mutex);
-        while (!created) {
-            if(!cond.timed_wait(lock,timeout)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    boost::condition_variable cond;
-    boost::mutex mutex;
-    bool created;
-};
-
 class TestCppClient : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(TestCppClient);
@@ -225,19 +192,24 @@ public:
         startServer();
         ZooKeeper zk;
         ZnodeStat stat;
+        std::string pathCreated;
+        std::vector<Acl> acls;
+        acls.push_back(Acl("world", "anyone", Permission::All));
+
+        CPPUNIT_ASSERT_EQUAL(SessionState::Expired, zk.getState());
+        ReturnCode::type rc = zk.create("/hello", "world",  acls,
+                                        CreateMode::Persistent, pathCreated);
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
 
-        shared_ptr<MyCreateCallback> callback(new MyCreateCallback());
-        ReturnCode::type rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
+        rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
-        std::vector<Acl> acls;
-        acls.push_back(Acl("world", "anyone", Permission::All));
-        zk.create("/hello", "world",  acls,
-                  CreateMode::Persistent, callback);
-        CPPUNIT_ASSERT(callback->waitForCreated(1000));
+        rc = zk.create("/hello", "world",  acls, CreateMode::Persistent,
+                 pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(std::string("/hello"), pathCreated);
 
         rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
                        stat);
@@ -278,6 +250,10 @@ public:
         CPPUNIT_ASSERT(watch->waitForAuthFailed(30000));
         CPPUNIT_ASSERT_EQUAL(SessionState::AuthFailed, zk.getState());
 
+        // Now requests will fail with InvalidState.
+        rc = zk.create("/hello", "world",  acls, CreateMode::Persistent,
+                 pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::InvalidState, rc);
         stopServer();
     }
 };

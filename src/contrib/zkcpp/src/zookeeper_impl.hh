@@ -36,6 +36,9 @@ class ZooKeeperImpl {
     ReturnCode::type create(const std::string& path, const std::string& data,
                       const std::vector<Acl>& acl, CreateMode::type mode,
                       boost::shared_ptr<CreateCallback> callback);
+    ReturnCode::type create(const std::string& path, const std::string& data,
+                      const std::vector<Acl>& acl, CreateMode::type mode,
+                      std::string& pathCreated);
     ReturnCode::type remove(const std::string& path, int version,
                       boost::shared_ptr<RemoveCallback> callback);
     ReturnCode::type exists(const std::string& path,
@@ -67,6 +70,7 @@ class ZooKeeperImpl {
     void setState(SessionState::type state);
 
   private:
+    static ReturnCode::type intToReturnCode(int rc);
     static void copyStat(const Stat* src, ZnodeStat& dst);
     static void watchCallback(zhandle_t *zh, int type, int state, const char *path,
                          void *watcherCtx);

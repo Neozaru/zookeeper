@@ -131,14 +131,23 @@ namespace ReturnCode {
     Error = 3,
   };
 
-  const std::string toString();
+  const std::string toString(type rc);
 };
 
 /**
- * These constants represent the states of a zookeeper connection. They are
- * possible parameters of the watcher callback.
+ * Namespace for session state enums.
  */
 namespace SessionState {
+  /**
+   * ZooKeeper session states.
+   *
+   * A positive value indicates that the session is in a "recoverable" state.
+   * A negative value indicates that the session is in a "unrecoverable" state.
+   *
+   * For more details about recoverable and unrecoverable states, see:
+   *
+   * http://wiki.apache.org/hadoop/ZooKeeper/ErrorHandling
+   */
   enum type {
     /**
      * The session has been expired and is no longer valid.
@@ -146,11 +155,18 @@ namespace SessionState {
     Expired = -112,
 
     /**
-     * Session Authentication failed. The client is no longer connected to the
-     * server. You must call ZooKeeper::init() to re-establish the connection.
+     * Session Authentication failed.
      */
     AuthFailed = -113,
+
+    /**
+     * The session is not connected to any ZooKeeper server.
+     */
     Connecting = 1,
+
+    /**
+     * The session is connected to a ZooKeeper server.
+     */
     Connected = 3,
   };
 
@@ -640,9 +656,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type create(const std::string& path, const std::string& data,
                       const std::vector<Acl>& acl, CreateMode::type mode,
-                      std::string& pathCreated) {
-      return ReturnCode::Unimplemented;
-    }
+                      std::string& pathCreated);
 
     /**
      * Removes a znode asynchronously.

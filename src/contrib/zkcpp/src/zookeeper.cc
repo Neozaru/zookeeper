@@ -52,6 +52,13 @@ create(const std::string& path, const std::string& data,
 }
 
 ReturnCode::type ZooKeeper::
+create(const std::string& path, const std::string& data,
+       const std::vector<Acl>& acl, CreateMode::type mode,
+       std::string& pathCreated) {
+  return impl_->create(path, data, acl, mode, pathCreated);
+}
+
+ReturnCode::type ZooKeeper::
 remove(const std::string& path, int32_t version,
        boost::shared_ptr<RemoveCallback> callback) {
   return impl_->remove(path, version, callback);
@@ -477,6 +484,62 @@ void ZnodeStat::
 setPzxid(int64_t pzxid) {
   impl_->setPzxid(pzxid);
 }
+
+namespace ReturnCode {
+
+const std::string toString(type rc) {
+  switch(rc) {
+    case Ok:
+      return "Ok";
+    case SystemError:
+      return "SystemError";
+    case RuntimeInconsistency:
+      return "RuntimeInconsistency";
+    case DataInconsistency:
+      return "DataInconsistency";
+    case ConnectionLoss:
+      return "ConnectionLoss";
+    case MarshallingError:
+      return "MarshallingError";
+    case Unimplemented:
+      return "Unimplemented";
+    case OperationTimeout:
+      return "OperationTimeout";
+    case BadArguments:
+      return "BadArguments";
+    case ApiError:
+      return "ApiError";
+    case NoNode:
+      return "NoNode";
+    case NoAuth:
+      return "NoAuth";
+    case BadVersion:
+      return "BadVersion";
+    case NoChildrenForEphemerals:
+      return "NoChildrenForEphemerals";
+    case NodeExists:
+      return "NodeExists";
+    case NotEmpty:
+      return "NotEmpty";
+    case SessionExpired:
+      return "SessionExpired";
+    case InvalidCallback:
+      return "InvalidCallback";
+    case InvalidAcl:
+      return "InvalidAcl";
+    case AuthFailed:
+      return "AuthFailed";
+    case SessionMoved:
+      return "SessionMoved";
+    case CppError:
+      return "CppError";
+    case InvalidState:
+      return "InvalidState";
+    case Error:
+      return "Error";
+  }
+}
+}  // namespace ReturnCode
 
 namespace SessionState {
 
