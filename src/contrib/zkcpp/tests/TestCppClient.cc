@@ -270,6 +270,7 @@ public:
         ZnodeStat stat;
         std::string znodeName = "/testBasic";
         std::string dataInput = "hello";
+        std::string dataInput2 = "goodbye";
         std::string dataOutput;
         std::string pathCreated;
         std::vector<Acl> acls;
@@ -285,6 +286,10 @@ public:
 
         // get() on onexistent znode.
         rc = zk.get(znodeName, boost::shared_ptr<Watch>(), dataOutput, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
+
+        // set() on onexistent znode.
+        rc = zk.set(znodeName, dataInput, -1, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
         // create()
@@ -321,16 +326,45 @@ public:
         CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
         CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
 
+        // set() with bad version
+        rc = zk.set(znodeName, dataInput2, 10, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, rc);
+
+        // set()
+        rc = zk.set(znodeName, dataInput2, 0, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(dataInput, dataOutput);
+        CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
+        CPPUNIT_ASSERT_EQUAL(1, stat.getVersion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
+        CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
+        CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+
+        // get() to verify
+        rc = zk.get(znodeName, boost::shared_ptr<Watch>(), dataOutput, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(dataInput2, dataOutput);
+        CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
+        CPPUNIT_ASSERT_EQUAL(1, stat.getVersion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
+        CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
+        CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+
         // remove() with bad version
         rc = zk.remove(znodeName, 10);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, rc);
 
         // remove()
-        rc = zk.remove(znodeName, 0);
+        rc = zk.remove(znodeName, 1);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
         // remove() nonexistent znode.
-        rc = zk.remove(znodeName, 0);
+        rc = zk.remove(znodeName, 1);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
         stopServer();

@@ -100,6 +100,12 @@ set(const std::string& path, const std::string& data,
 }
 
 ReturnCode::type ZooKeeper::
+set(const std::string& path, const std::string& data,
+    int32_t version, ZnodeStat& stat) {
+  return impl_->set(path, data, version, stat);
+}
+
+ReturnCode::type ZooKeeper::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
             boost::shared_ptr<GetChildrenCallback> callback) {
   return impl_->getChildren(path, watch, callback);

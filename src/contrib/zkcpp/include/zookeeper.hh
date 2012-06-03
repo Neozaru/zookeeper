@@ -764,9 +764,7 @@ class ZooKeeper : boost::noncopyable {
      * Sets the data associated with a znode synchronously.
      */
     ReturnCode::type set(const std::string& path, const std::string& data,
-                         int32_t version, ZnodeStat& stat) {
-      return ReturnCode::Unimplemented;
-    }
+                         int32_t version, ZnodeStat& stat);
 
     /**
      * Gets the children and the stat of a znode.

@@ -114,6 +114,23 @@ class MyGetCallback : public GetCallback, public Waitable {
     ZnodeStat& stat_;
 };
 
+class MySetCallback : public SetCallback, public Waitable {
+  public:
+    MySetCallback(ZnodeStat& stat) : stat_(stat) {};
+    void process(ReturnCode::type rc, const std::string& path,
+                 const ZnodeStat& stat) {
+      if (rc == ReturnCode::Ok) {
+        stat_ = stat;
+      }
+      rc_ = rc;
+      path_ = path;
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    std::string path_;
+    ZnodeStat& stat_;
+};
 
 class MyRemoveCallback : public RemoveCallback, public Waitable {
   public:
@@ -511,8 +528,9 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
     watchContext = new WatchContext(this, watch, true);
   }
 
-  return (ReturnCode::type)zoo_awexists(handle_, path.c_str(),
-         watcher, (void*)watchContext, completion,  (void*)completionContext);
+  int rc = zoo_awexists(handle_, path.c_str(), watcher, (void*)watchContext,
+                        completion,  (void*)completionContext);
+  return intToReturnCode(rc);
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -544,9 +562,9 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
     context = new CompletionContext(cb, path);
   }
 
-  return (ReturnCode::type)zoo_awget(handle_, path.c_str(),
-         watcher, (void*)watchContext,
-         completion, (void*)context);
+  int rc = zoo_awget(handle_, path.c_str(), watcher, (void*)watchContext,
+                    completion, (void*)context);
+  return intToReturnCode(rc);
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -554,7 +572,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
     std::string& data, ZnodeStat& stat) {
   boost::shared_ptr<MyGetCallback> callback(new MyGetCallback(data, stat));
   ReturnCode::type rc = get(path, watch, callback);
- if (rc != ReturnCode::Ok) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
   callback->waitForCompleted();
@@ -571,9 +589,23 @@ set(const std::string& path, const std::string& data,
     context = new CompletionContext(cb, path);
   }
 
-  return (ReturnCode::type)zoo_aset(handle_, path.c_str(),
-         data.c_str(), data.size(), version,
-         completion, (void*)context);
+  int rc = zoo_aset(handle_, path.c_str(), data.c_str(), data.size(), version,
+                    completion, (void*)context);
+  return intToReturnCode(rc);
+}
+
+
+ReturnCode::type ZooKeeperImpl::
+set(const std::string& path, const std::string& data,
+    int32_t version, ZnodeStat& stat) {
+  boost::shared_ptr<MySetCallback> callback(new MySetCallback(stat));
+  ReturnCode::type rc = set(path, data, version, callback);
+  if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  assert(path == callback->path_);
+  return callback->rc_;
 }
 
 ReturnCode::type ZooKeeperImpl::
