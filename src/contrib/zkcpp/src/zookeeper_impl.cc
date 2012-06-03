@@ -93,6 +93,19 @@ class MyExistsCallback : public ExistsCallback, public Waitable {
     ZnodeStat& stat_;
 };
 
+class MyRemoveCallback : public RemoveCallback, public Waitable {
+  public:
+    MyRemoveCallback() {};
+    void process(ReturnCode::type rc, const std::string& path) {
+      rc_ = rc;
+      path_ = path;
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    std::string path_;
+};
+
 class WatchContext {
 public:
   WatchContext(ZooKeeperImpl* zk, boost::shared_ptr<Watch> watch, bool deleteAfterCallback) :
@@ -442,8 +455,20 @@ remove(const std::string& path, int32_t version,
     completion = &removeCompletion;
     context = new CompletionContext(callback, path);
   }
-  return (ReturnCode::type)zoo_adelete(handle_, path.c_str(), version,
+  int rc = zoo_adelete(handle_, path.c_str(), version,
          completion, (void*)context);
+  return intToReturnCode(rc);
+}
+
+ReturnCode::type ZooKeeperImpl::
+remove(const std::string& path, int32_t version) {
+  boost::shared_ptr<MyRemoveCallback> callback(new MyRemoveCallback());
+  ReturnCode::type rc = remove(path, version, callback);
+ if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  return callback->rc_;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -472,7 +497,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
        ZnodeStat& stat) {
   boost::shared_ptr<MyExistsCallback> callback(new MyExistsCallback(stat));
   ReturnCode::type rc = exists(path, watch, callback);
-  if (rc != ReturnCode::Ok) {
+ if (rc != ReturnCode::Ok) {
     return rc;
   }
   callback->waitForCompleted();

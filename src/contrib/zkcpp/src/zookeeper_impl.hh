@@ -41,6 +41,7 @@ class ZooKeeperImpl {
                       std::string& pathCreated);
     ReturnCode::type remove(const std::string& path, int version,
                       boost::shared_ptr<RemoveCallback> callback);
+    ReturnCode::type remove(const std::string& path, int version);
     ReturnCode::type exists(const std::string& path,
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ExistsCallback> callback);

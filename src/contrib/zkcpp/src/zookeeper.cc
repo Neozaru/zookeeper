@@ -65,6 +65,11 @@ remove(const std::string& path, int32_t version,
 }
 
 ReturnCode::type ZooKeeper::
+remove(const std::string& path, int32_t version) {
+  return impl_->remove(path, version);
+}
+
+ReturnCode::type ZooKeeper::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        boost::shared_ptr<ExistsCallback> callback) {
   return impl_->exists(path, watch, callback);

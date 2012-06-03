@@ -137,6 +137,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST_SUITE(TestCppClient);
     CPPUNIT_TEST(testInit);
     CPPUNIT_TEST(testCreate);
+    CPPUNIT_TEST(testBasic);
     CPPUNIT_TEST_SUITE_END();
     FILE *logfile;
     const std::string HOST_PORT;
@@ -260,6 +261,61 @@ public:
         rc = zk.create("/hello", "world",  acls, CreateMode::Persistent,
                  pathCreated);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::InvalidState, rc);
+        stopServer();
+    }
+
+    void testBasic() {
+        startServer();
+        ZooKeeper zk;
+        ZnodeStat stat;
+        std::string znodeName = "/testBasic";
+        std::string pathCreated;
+        std::vector<Acl> acls;
+        acls.push_back(Acl("world", "anyone", Permission::All));
+
+        shared_ptr<TestInitWatch> watch(new TestInitWatch());
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOST_PORT, 30000, watch));
+
+        // exists() on non-existent znode.
+        ReturnCode::type rc = zk.exists(znodeName, boost::shared_ptr<Watch>(),
+                                        stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
+
+        // create()
+        rc = zk.create(znodeName, "world",  acls, CreateMode::Persistent,
+                 pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(znodeName, pathCreated);
+
+        // create() on existing node.
+        rc = zk.create(znodeName, "world",  acls, CreateMode::Persistent,
+                 pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NodeExists, rc);
+
+        // exists()
+        rc = zk.exists(znodeName, boost::shared_ptr<Watch>(), stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        CPPUNIT_ASSERT_EQUAL(stat.getCzxid(), stat.getMzxid());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getVersion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
+        CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
+        CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
+        CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+
+        // remove() with bad version
+        rc = zk.remove(znodeName, 10);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, rc);
+
+        // remove()
+        rc = zk.remove(znodeName, 0);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+
+        // remove() nonexistent znode.
+        rc = zk.remove(znodeName, 0);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
+
         stopServer();
     }
 };

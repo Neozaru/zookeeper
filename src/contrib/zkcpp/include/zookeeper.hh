@@ -678,9 +678,7 @@ class ZooKeeper : boost::noncopyable {
     /**
      * Removes a znode synchronously.
      */
-    ReturnCode::type remove(const std::string& path, int32_t version) {
-      return ReturnCode::Unimplemented;
-    }
+    ReturnCode::type remove(const std::string& path, int32_t version);
 
     /**
      * Checks the existence of a znode in zookeeper asynchronously.
