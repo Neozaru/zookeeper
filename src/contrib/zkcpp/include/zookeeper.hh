@@ -530,7 +530,7 @@ class RemoveCallback {
      *        <ul>
      *          <li>ReturnCode::Ok If the znode was removed successfully.</li>
      *          <li>ReturnCode::NoNode Znode doesn't exist.</li>
-     *          <li>ReturnCode::NotEmpty Znode has one more children.</li>
+     *          <li>ReturnCode::NotEmpty Znode has one or more children.</li>
      *        </ul>
      * @param path The path of the znode this operation was for.
      */
