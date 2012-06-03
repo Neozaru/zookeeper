@@ -590,11 +590,10 @@ class ZooKeeper : boost::noncopyable {
      * purposes of authentication. The server will use the security provider
      * specified by the scheme parameter to authenticate the client connection.
      * If the authentication request has failed:
-     *
      *   - The server connection is dropped, and the session state becomes
-     *     SessionState::AuthFailed</li>
-     *   - All the existing watchers are called for WatchEvent::Session
-     *     event with SessionState::AuthFailed as the state parameter.</li>
+     *     SessionState::AuthFailed.
+     *   - All the existing watchers are called for WatchEvent::Session event
+     *     with SessionState::AuthFailed as the state parameter.
      *
      * @param scheme the id of authentication scheme. Natively supported:
      * "digest" password-based authentication
