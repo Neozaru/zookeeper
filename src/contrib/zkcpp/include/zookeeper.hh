@@ -526,7 +526,12 @@ class CreateCallback {
 class RemoveCallback {
   public:
     /**
-     * @param rc ReturnCode::Ok if this remove() operation was successful.
+     * @param rc One of the ReturnCode::type enums. Most common values are:
+     *        <ul>
+     *          <li>ReturnCode::Ok If the znode was removed successfully.</li>
+     *          <li>ReturnCode::NoNode Znode doesn't exist.</li>
+     *          <li>ReturnCode::NotEmpty Znode has one more children.</li>
+     *        </ul>
      * @param path The path of the znode this operation was for.
      */
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
@@ -670,7 +675,12 @@ class ZooKeeper : boost::noncopyable {
      *                take place.
      * @param callback The callback to invoke when the request completes.
      *
-     * @return ReturnCode::Ok if the request has been enqueued successfully.
+     * @return One of the ReturnCode::type enums. Most common values are:
+     * <ul>
+     *   <li>ReturnCode::Ok if this request has been enqueued successfully.</li>
+     *   <li>ReturnCode::InvalidState - The session state is either in
+     *       SessionState::Expired or in SessionState::AuthFailed.</li>
+     * </ul>
      */
     ReturnCode::type remove(const std::string& path, int32_t version,
                       boost::shared_ptr<RemoveCallback> callback);
@@ -767,7 +777,7 @@ class ZooKeeper : boost::noncopyable {
                          int32_t version, ZnodeStat& stat);
 
     /**
-     * Gets the children and the stat of a znode.
+     * Gets the children and the stat of a znode asynchronously.
      *
      * @param path The name of the znode.
      * @param watch If non-null, a watch will be set at the server to notify
@@ -793,9 +803,7 @@ class ZooKeeper : boost::noncopyable {
     ReturnCode::type getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
                            std::vector<std::string>& children,
-                           ZnodeStat& stat) {
-      return ReturnCode::Unimplemented;
-    }
+                           ZnodeStat& stat);
 
     /**
      * Gets the acl associated with a znode.

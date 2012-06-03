@@ -114,6 +114,30 @@ class MyGetCallback : public GetCallback, public Waitable {
     ZnodeStat& stat_;
 };
 
+class MyGetChildrenCallback : public GetChildrenCallback, public Waitable {
+  public:
+    MyGetChildrenCallback(std::vector<std::string>& children, ZnodeStat& stat) :
+      children_(children), stat_(stat) {};
+
+    void process(ReturnCode::type rc, const std::string& path,
+                 const std::vector<std::string>& children,
+                 const ZnodeStat& stat) {
+      if (rc == ReturnCode::Ok) {
+        children_ = children;
+        stat_ = stat;
+      }
+      rc_ = rc;
+      path_ = path;
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    std::string path_;
+    std::vector<std::string>& children_;
+    ZnodeStat& stat_;
+};
+
+
 class MySetCallback : public SetCallback, public Waitable {
   public:
     MySetCallback(ZnodeStat& stat) : stat_(stat) {};
@@ -339,10 +363,14 @@ void ZooKeeperImpl::
 childrenCompletion(int rc, const struct String_vector *strings,
                    const struct Stat *stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
+  LOG_DEBUG("getChildren() for " << context->path_ << " returned: " <<
+            ReturnCode::toString((ReturnCode::type)rc));
   std::vector<std::string> children;
   if (rc == ReturnCode::Ok) {
     for (int i = 0; i < strings->count; i++) {
       children.push_back(strings->data[i]);
+      LOG_DEBUG("Got a child for " << context->path_ << ": " <<
+                strings->data[i]);
     }
   }
   GetChildrenCallback* callback =
@@ -625,8 +653,23 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
     context = new CompletionContext(cb, path);
   }
 
-  return (ReturnCode::type)zoo_awget_children2(handle_, path.c_str(),
-         watcher, (void*)watchContext, completion, (void*)context);
+  int rc = zoo_awget_children2(handle_, path.c_str(), watcher,
+                               (void*)watchContext, completion, (void*)context);
+  return intToReturnCode(rc);
+}
+
+ReturnCode::type ZooKeeperImpl::
+getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
+            std::vector<std::string>& children, ZnodeStat& stat) {
+  boost::shared_ptr<MyGetChildrenCallback>
+    callback(new MyGetChildrenCallback(children, stat));
+  ReturnCode::type rc = getChildren(path, watch, callback);
+  if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  assert(path == callback->path_);
+  return callback->rc_;
 }
 
 ReturnCode::type ZooKeeperImpl::

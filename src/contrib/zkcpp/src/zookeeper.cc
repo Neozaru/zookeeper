@@ -112,6 +112,12 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 }
 
 ReturnCode::type ZooKeeper::
+getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
+            std::vector<std::string>& children, ZnodeStat& stat) {
+  return impl_->getChildren(path, watch, children, stat);
+}
+
+ReturnCode::type ZooKeeper::
 getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
   return impl_->getAcl(path, callback);
 }

@@ -60,6 +60,10 @@ class ZooKeeperImpl {
     ReturnCode::type getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
                            boost::shared_ptr<GetChildrenCallback> callback);
+    ReturnCode::type getChildren(const std::string& path,
+                           boost::shared_ptr<Watch> watch,
+                           std::vector<std::string>& children,
+                           ZnodeStat& stat);
     ReturnCode::type getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
     ReturnCode::type setAcl(const std::string& path, int version,

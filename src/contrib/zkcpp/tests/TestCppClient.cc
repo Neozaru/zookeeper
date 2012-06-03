@@ -19,6 +19,8 @@
 #include <boost/thread/condition.hpp>
 #include <cppunit/extensions/HelperMacros.h>
 #include "CppAssertHelper.h"
+#include "logging.hh"
+ENABLE_LOGGING;
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -273,6 +275,7 @@ public:
         std::string dataInput2 = "goodbye";
         std::string dataOutput;
         std::string pathCreated;
+        std::vector<std::string> children;
         std::vector<Acl> acls;
         acls.push_back(Acl("world", "anyone", Permission::All));
 
@@ -286,6 +289,11 @@ public:
 
         // get() on onexistent znode.
         rc = zk.get(znodeName, boost::shared_ptr<Watch>(), dataOutput, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
+
+        // getChildren() on onexistent znode.
+        rc = zk.getChildren(znodeName, boost::shared_ptr<Watch>(),
+                            children, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
         // set() on onexistent znode.
@@ -326,13 +334,12 @@ public:
         CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
         CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
 
-        // set() with bad version
+       // set() with bad version
         rc = zk.set(znodeName, dataInput2, 10, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, rc);
 
         // set()
         rc = zk.set(znodeName, dataInput2, 0, stat);
-        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
         CPPUNIT_ASSERT_EQUAL(dataInput, dataOutput);
         CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
@@ -343,17 +350,55 @@ public:
         CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
         CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
 
-        // get() to verify
-        rc = zk.get(znodeName, boost::shared_ptr<Watch>(), dataOutput, stat);
+        // add some children
+        int numChildren = 10;
+        for (int i = 0; i < numChildren; i++) {
+          std::string child = str(boost::format("%s/child%d") % znodeName % i);
+          rc = zk.create(child, dataInput,  acls, CreateMode::Persistent,
+                         pathCreated);
+          CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+          CPPUNIT_ASSERT_EQUAL(child, pathCreated);
+        }
+
+        // getChildren()
+        rc = zk.getChildren(znodeName, boost::shared_ptr<Watch>(),
+                            children, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
-        CPPUNIT_ASSERT_EQUAL(dataInput2, dataOutput);
+        CPPUNIT_ASSERT_EQUAL(10, (int)children.size());
+        for (int i = 0; i < numChildren; i++) {
+          std::string child = str(boost::format("child%d") % i);
+          std::vector<std::string>::iterator itr;
+          itr = find(children.begin(), children.end(), child);
+          CPPUNIT_ASSERT(itr != children.end());
+        }
+
         CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
         CPPUNIT_ASSERT_EQUAL(1, stat.getVersion());
-        CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
+        CPPUNIT_ASSERT_EQUAL(numChildren, stat.getCversion());
         CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
         CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
         CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
-        CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+        CPPUNIT_ASSERT_EQUAL(numChildren, stat.getNumChildren());
+
+        // remove() with children
+        rc = zk.remove(znodeName, 1);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::NotEmpty, rc);
+
+        // remove all the children
+        for (int i = 0; i < numChildren; i++) {
+          std::string child = str(boost::format("%s/child%d") % znodeName % i);
+          rc = zk.remove(child, -1);
+          CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+          rc = zk.exists(znodeName, boost::shared_ptr<Watch>(), stat);
+          CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+          CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
+          CPPUNIT_ASSERT_EQUAL(1, stat.getVersion());
+          CPPUNIT_ASSERT_EQUAL(numChildren + i + 1, stat.getCversion());
+          CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
+          CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
+          CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
+          CPPUNIT_ASSERT_EQUAL(numChildren - i - 1, stat.getNumChildren());
+        }
 
         // remove() with bad version
         rc = zk.remove(znodeName, 10);
