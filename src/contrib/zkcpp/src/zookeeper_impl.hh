@@ -73,6 +73,8 @@ class ZooKeeperImpl {
     ReturnCode::type setAcl(const std::string& path, int version,
                       const std::vector<Acl>& acl,
                       boost::shared_ptr<SetAclCallback> callback);
+    ReturnCode::type setAcl(const std::string& path, int32_t version,
+                      const std::vector<Acl>& acl);
     ReturnCode::type sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
     //ReturnCode::type multi(int count, const zoo_op_t *ops,

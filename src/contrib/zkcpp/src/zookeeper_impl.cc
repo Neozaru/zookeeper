@@ -156,6 +156,20 @@ class MyGetAclCallback : public GetAclCallback, public Waitable {
     ZnodeStat& stat_;
 };
 
+class MySetAclCallback : public SetAclCallback, public Waitable {
+  public:
+    MySetAclCallback() {}
+
+    void process(ReturnCode::type rc, const std::string& path) {
+      rc_ = rc;
+      path_ = path;
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    std::string path_;
+};
+
 class MyGetChildrenCallback : public GetChildrenCallback, public Waitable {
   public:
     MyGetChildrenCallback(std::vector<std::string>& children, ZnodeStat& stat) :
@@ -779,8 +793,21 @@ setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
     completion = &setAclCompletion;
     context = new CompletionContext(cb, path);
   }
+
   return (ReturnCode::type)zoo_aset_acl(handle_, path.c_str(),
          version, &aclVector, completion, (void*)context);
+}
+
+ReturnCode::type ZooKeeperImpl::
+setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl) {
+  boost::shared_ptr<MySetAclCallback> callback(new MySetAclCallback());
+  ReturnCode::type rc = setAcl(path, version, acl, callback);
+  if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  assert(path == callback->path_);
+  return callback->rc_;
 }
 
 ReturnCode::type ZooKeeperImpl::

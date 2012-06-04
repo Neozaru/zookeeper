@@ -141,6 +141,11 @@ setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
 }
 
 ReturnCode::type ZooKeeper::
+setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl) {
+  return impl_->setAcl(path, version, acl);
+}
+
+ReturnCode::type ZooKeeper::
 sync(const std::string& path, boost::shared_ptr<SyncCallback> callback) {
   return impl_->sync(path, callback);
 }
@@ -176,6 +181,12 @@ class AclImpl {
             int32_t permissions) :
             scheme_(scheme), expression_(expression),
             permissions_(permissions) {
+    }
+
+    bool operator==(const AclImpl& orig) const {
+      return this->getScheme() == orig.getScheme() &&
+             this->getExpression() == orig.getExpression() &&
+             this->getPermissions() == orig.getPermissions();
     }
 
     const std::string getScheme() const {
@@ -234,6 +245,11 @@ operator=(const Acl& orig) {
     this->setPermissions(orig.getPermissions());
   }
   return *this;
+}
+
+bool Acl::
+operator==(const Acl& orig) const {
+  return *(this->impl_) == *(orig.impl_);
 }
 
 Acl::

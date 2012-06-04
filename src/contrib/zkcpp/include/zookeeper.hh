@@ -309,6 +309,7 @@ class Acl {
         int32_t permissions);
     Acl(const Acl& orig);
     Acl& operator=(const Acl& orig);
+    bool operator==(const Acl& orig) const;
     ~Acl();
     const std::string getScheme() const;
     void setScheme(const std::string& scheme);
@@ -837,9 +838,7 @@ class ZooKeeper : boost::noncopyable {
      * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type setAcl(const std::string& path, int32_t version,
-                      const std::vector<Acl>& acl) {
-      return ReturnCode::Unimplemented;
-    }
+                      const std::vector<Acl>& acl);
 
     /**
      * Asynchronously flushes the channel between process and leader.

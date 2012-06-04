@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 
+#include <algorithm>
 #include <boost/thread/condition.hpp>
 #include <cppunit/extensions/HelperMacros.h>
 #include "CppAssertHelper.h"
@@ -356,7 +357,7 @@ public:
         startServer();
         ZooKeeper zk;
         ZnodeStat stat;
-        std::vector<Acl> acl;
+        std::vector<Acl> acl, aclOut;
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
@@ -364,6 +365,35 @@ public:
 
         // get acl for root ("/")
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.getAcl("/", acl, stat));
+        CPPUNIT_ASSERT_EQUAL(1, (int)acl.size());
+        CPPUNIT_ASSERT_EQUAL(std::string("world"), acl[0].getScheme());
+        CPPUNIT_ASSERT_EQUAL(std::string("anyone"), acl[0].getExpression());
+        zk.set("/", "test", -1, stat);
+        acl.clear();
+        // echo -n user1:password1 |openssl dgst -sha1 -binary | base64
+        acl.push_back(Acl("digest", "user1:XDkd2dsEuhc9ImU3q8pa8UOdtpI=",
+                           Permission::All));
+        // echo -n user2:password2 |openssl dgst -sha1 -binary | base64
+        acl.push_back(Acl("digest", "user2:lo/iTtNMP+gEZlpUNaCqLYO3i5U=",
+                           Permission::All));
+        // echo -n user3:password3 |openssl dgst -sha1 -binary | base64
+        acl.push_back(Acl("digest", "user3:wr5Y0kEs9nFX3bKrTMKxrlcFeWo=",
+                           Permission::All));
+
+        // setAcl() with bad version
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.setAcl("/", 10, acl));
+
+        // setAcl()
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.setAcl("/", -1, acl));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.getAcl("/", aclOut, stat));
+
+        // ACL of "/" has been modified once.
+        CPPUNIT_ASSERT_EQUAL(1, stat.getAversion());
+        CPPUNIT_ASSERT_EQUAL(acl.size(), aclOut.size());
+        for (int i = 0; i < acl.size(); i++) {
+          CPPUNIT_ASSERT(std::find(aclOut.begin(), aclOut.end(), acl[i]) !=
+                         aclOut.end());
+        }
         stopServer();
     }
 
