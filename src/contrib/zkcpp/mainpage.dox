@@ -2,10 +2,10 @@
 
 @mainpage
 
+\section model Data Model
+\section async Asynchronous and Synchronous APIs
+\section watch Watches
+\section stat Znode Stat
 \section auth Authentication and Authorization
-
-- test
-- test
-- test
 
 */
