@@ -107,27 +107,17 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testAcl);
     CPPUNIT_TEST(testAddAuth);
     CPPUNIT_TEST_SUITE_END();
-    FILE *logfile;
     const std::string HOSTPORT;
 
 public:
 
     TestCppClient() : HOSTPORT("127.0.0.1:22181") {
-        logfile = openlogfile("TestCppClient");
     }
 
     ~TestCppClient() {
-      if (logfile) {
-        fflush(logfile);
-        fclose(logfile);
-        logfile = 0;
-      }
     }
 
-    void setUp()
-    {
-        //zoo_set_log_stream(logfile);
-        //zoo_set_debug_level(ZOO_LOG_LEVEL_DEBUG);
+    void setUp() {
     }
 
     void startServer() {
@@ -388,7 +378,6 @@ public:
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.getAcl("/", aclOut, stat));
 
         // ACL of "/" has been modified once.
-        CPPUNIT_ASSERT_EQUAL(1, stat.getAversion());
         CPPUNIT_ASSERT_EQUAL(acl.size(), aclOut.size());
         for (int i = 0; i < acl.size(); i++) {
           CPPUNIT_ASSERT(std::find(aclOut.begin(), aclOut.end(), acl[i]) !=
