@@ -24,7 +24,6 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include "zookeeper.h"
 
 namespace org {
 
@@ -131,7 +130,7 @@ namespace ReturnCode {
   };
 
   const std::string toString(type rc);
-};
+}
 
 /**
  * Namespace for session state enums.
@@ -483,7 +482,6 @@ class GetAclCallback {
                          const std::vector<Acl>& acl,
                          const ZnodeStat& stat) = 0;
     virtual ~GetAclCallback() {}
-};
 };
 
 /**
