@@ -15,9 +15,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <algorithm>
-#include <boost/algorithm/string/join.hpp>
 #include "zookeeper.hh"
+#include <boost/algorithm/string/join.hpp>
+#include <algorithm>
 #include "logging.hh"
 #include "zookeeper_impl.hh"
 ENABLE_LOGGING;
@@ -150,12 +150,12 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> callback) {
   return impl_->sync(path, callback);
 }
 
-//ReturnCode::type ZooKeeper::
-//multi(int count, const zoo_op_t *ops,
-//        zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
+//  ReturnCode::type ZooKeeper::
+//  multi(int count, const zoo_op_t *ops,
+//          zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
 
-//ReturnCode::type ZooKeeper::
-//multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
+//  ReturnCode::type ZooKeeper::
+//  multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
 SessionState::type ZooKeeper::
 getState() {
@@ -230,9 +230,8 @@ Acl(const std::string& scheme, const std::string& expression,
 }
 
 Acl::
-Acl(const Acl& orig) :
-  impl_(new AclImpl(orig.getScheme(), orig.getExpression(),
-                    orig.getPermissions())) {
+Acl(const Acl& orig) : impl_(new AclImpl(orig.getScheme(), orig.getExpression(),
+                       orig.getPermissions())) {
 }
 
 Acl& Acl::
@@ -539,7 +538,7 @@ setPzxid(int64_t pzxid) {
 namespace ReturnCode {
 
 const std::string toString(type rc) {
-  switch(rc) {
+  switch (rc) {
     case Ok:
       return "Ok";
     case SystemError:
@@ -595,7 +594,7 @@ const std::string toString(type rc) {
 namespace SessionState {
 
 const std::string toString(type state) {
-  switch(state) {
+  switch (state) {
     case Expired:
       return "Expired";
     case AuthFailed:
@@ -614,7 +613,7 @@ const std::string toString(type state) {
 namespace WatchEvent {
 
 const std::string toString(type eventType) {
-  switch(eventType) {
+  switch (eventType) {
     case SessionStateChanged:
       return "SessionStateChanged";
     case NodeCreated:

@@ -19,13 +19,12 @@
 #ifndef SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_H_
 #define SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_H_
 
+#include <boost/shared_ptr.hpp>
+#include <boost/utility.hpp>
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include <boost/shared_ptr.hpp>
-#include <boost/utility.hpp>
 #include "zookeeper.h"
-#include "zookeeper.jute.h"
 
 namespace org {
 
@@ -420,6 +419,7 @@ class Watch {
      */
     virtual void process(WatchEvent::type event, SessionState::type state,
                          const std::string& path) = 0;
+    virtual ~Watch() {}
 };
 
 /**
@@ -434,6 +434,7 @@ class SetCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
                          const ZnodeStat& stat) = 0;
+    virtual ~SetCallback() {}
 };
 
 /**
@@ -448,6 +449,7 @@ class ExistsCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
                          const ZnodeStat& stat) = 0;
+    virtual ~ExistsCallback() {}
 };
 
 /**
@@ -463,6 +465,7 @@ class GetCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::string& data, const ZnodeStat& stat) = 0;
+    virtual ~GetCallback() {}
 };
 
 /**
@@ -477,7 +480,10 @@ class GetAclCallback {
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const std::vector<Acl>& acl, const ZnodeStat& stat) = 0;
+                         const std::vector<Acl>& acl,
+                         const ZnodeStat& stat) = 0;
+    virtual ~GetAclCallback() {}
+};
 };
 
 /**
@@ -494,6 +500,7 @@ class GetChildrenCallback {
     virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::vector<std::string>& children,
                          const ZnodeStat& stat) = 0;
+    virtual ~GetChildrenCallback() {}
 };
 
 /**
@@ -517,6 +524,7 @@ class CreateCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& pathRequested,
                          const std::string& pathCreated) = 0;
+    virtual ~CreateCallback() {}
 };
 
 /**
@@ -532,6 +540,7 @@ class RemoveCallback {
      * @param path The path of the znode this operation was for.
      */
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
+    virtual ~RemoveCallback() {}
 };
 
 /**
@@ -544,6 +553,7 @@ class SetAclCallback {
      * @param path The path of the znode this operation was for.
      */
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
+    virtual ~SetAclCallback() {}
 };
 
 /**
@@ -556,6 +566,7 @@ class SyncCallback {
      * @param path The path of the znode this operation was for.
      */
     virtual void process(ReturnCode::type rc, const std::string& path) = 0;
+    virtual ~SyncCallback() {}
 };
 
 /**
@@ -570,6 +581,7 @@ class AddAuthCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& scheme,
                          const std::string& cert) = 0;
+    virtual ~AddAuthCallback() {}
 };
 
 class ZooKeeperImpl;
@@ -718,8 +730,8 @@ class ZooKeeper : boost::noncopyable {
      *         - ReturnCode::Ok The znode exists.
      *         - ReturnCode::NoNode The znode does not exist.
      */
-    ReturnCode::type exists(const std::string& path, boost::shared_ptr<Watch> watch,
-                            ZnodeStat& stat);
+    ReturnCode::type exists(const std::string& path,
+                            boost::shared_ptr<Watch> watch, ZnodeStat& stat);
 
     /**
      * Gets the data associated with a znode.
@@ -733,7 +745,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type get(const std::string& path,
                          boost::shared_ptr<Watch> watch,
-			 boost::shared_ptr<GetCallback> callback);
+                         boost::shared_ptr<GetCallback> callback);
 
     /**
      * Gets the data associated with a znode synchronously.

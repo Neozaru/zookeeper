@@ -15,10 +15,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <cstring>
-#include <cerrno>
-#include <boost/thread/condition.hpp>
 #include "zookeeper_impl.hh"
+#include <boost/thread/condition.hpp>
+#include <cerrno>
+#include <cstring>
 #include "logging.hh"
 ENABLE_LOGGING;
 
@@ -96,7 +96,7 @@ class MyCreateCallback : public CreateCallback, public Waitable {
 
 class MyExistsCallback : public ExistsCallback, public Waitable {
   public:
-    MyExistsCallback(ZnodeStat& stat) : stat_(stat) {};
+    MyExistsCallback(ZnodeStat& stat) : stat_(stat) {}
     void process(ReturnCode::type rc, const std::string& path,
                  const ZnodeStat& stat) {
       if (rc == ReturnCode::Ok) {
@@ -115,7 +115,7 @@ class MyExistsCallback : public ExistsCallback, public Waitable {
 class MyGetCallback : public GetCallback, public Waitable {
   public:
     MyGetCallback(std::string& data, ZnodeStat& stat) :
-      data_(data), stat_(stat) {};
+      data_(data), stat_(stat) {}
     void process(ReturnCode::type rc, const std::string& path,
                  const std::string& data, const ZnodeStat& stat) {
       if (rc == ReturnCode::Ok) {
@@ -136,7 +136,7 @@ class MyGetCallback : public GetCallback, public Waitable {
 class MyGetAclCallback : public GetAclCallback, public Waitable {
   public:
     MyGetAclCallback(std::vector<Acl>& acl, ZnodeStat& stat) :
-      acl_(acl), stat_(stat) {};
+      acl_(acl), stat_(stat) {}
 
     void process(ReturnCode::type rc, const std::string& path,
                  const std::vector<Acl>& acl,
@@ -173,7 +173,7 @@ class MySetAclCallback : public SetAclCallback, public Waitable {
 class MyGetChildrenCallback : public GetChildrenCallback, public Waitable {
   public:
     MyGetChildrenCallback(std::vector<std::string>& children, ZnodeStat& stat) :
-      children_(children), stat_(stat) {};
+      children_(children), stat_(stat) {}
 
     void process(ReturnCode::type rc, const std::string& path,
                  const std::vector<std::string>& children,
@@ -196,7 +196,7 @@ class MyGetChildrenCallback : public GetChildrenCallback, public Waitable {
 
 class MySetCallback : public SetCallback, public Waitable {
   public:
-    MySetCallback(ZnodeStat& stat) : stat_(stat) {};
+    MySetCallback(ZnodeStat& stat) : stat_(stat) {}
     void process(ReturnCode::type rc, const std::string& path,
                  const ZnodeStat& stat) {
       if (rc == ReturnCode::Ok) {
@@ -214,7 +214,7 @@ class MySetCallback : public SetCallback, public Waitable {
 
 class MyRemoveCallback : public RemoveCallback, public Waitable {
   public:
-    MyRemoveCallback() {};
+    MyRemoveCallback() {}
     void process(ReturnCode::type rc, const std::string& path) {
       rc_ = rc;
       path_ = path;
@@ -226,12 +226,13 @@ class MyRemoveCallback : public RemoveCallback, public Waitable {
 };
 
 class WatchContext {
-public:
-  WatchContext(ZooKeeperImpl* zk, boost::shared_ptr<Watch> watch, bool deleteAfterCallback) :
-      zk_(zk), watch_(watch), deleteAfterCallback_(deleteAfterCallback) {};
-  ZooKeeperImpl* zk_;
-  boost::shared_ptr<Watch> watch_;
-  bool deleteAfterCallback_;
+  public:
+    WatchContext(ZooKeeperImpl* zk, boost::shared_ptr<Watch> watch,
+                 bool deleteAfterCallback) :
+        zk_(zk), watch_(watch), deleteAfterCallback_(deleteAfterCallback) {}
+    ZooKeeperImpl* zk_;
+    boost::shared_ptr<Watch> watch_;
+    bool deleteAfterCallback_;
 };
 
 void ZooKeeperImpl::
@@ -247,7 +248,7 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
             SessionState::toString(stateType) % path);
   if (eventType == WatchEvent::SessionStateChanged) {
     bool validState = false;
-    switch((SessionState::type) state) {
+    switch ((SessionState::type) state) {
       case SessionState::Expired:
       case SessionState::AuthFailed:
       case SessionState::Connecting:
@@ -313,22 +314,22 @@ copyStat(const Stat* src, ZnodeStat& dst) {
 }
 
 class CompletionContext {
-public:
-  CompletionContext(boost::shared_ptr<void> callback,
-                  std::string path) : callback_(callback), path_(path) {};
-  boost::shared_ptr<void> callback_;
-  std::string path_;
+  public:
+    CompletionContext(boost::shared_ptr<void> callback,
+                    std::string path) : callback_(callback), path_(path) {}
+    boost::shared_ptr<void> callback_;
+    std::string path_;
 };
 
 class AuthCompletionContext {
-public:
-  AuthCompletionContext(boost::shared_ptr<void> callback,
-                        const std::string& scheme,
-                        const std::string& cert) :
-    callback_(callback), scheme_(scheme), cert_(cert) {}
-  boost::shared_ptr<void> callback_;
-  std::string scheme_;
-  std::string cert_;
+  public:
+    AuthCompletionContext(boost::shared_ptr<void> callback,
+                          const std::string& scheme,
+                          const std::string& cert) :
+      callback_(callback), scheme_(scheme), cert_(cert) {}
+    boost::shared_ptr<void> callback_;
+    std::string scheme_;
+    std::string cert_;
 };
 
 
@@ -406,13 +407,12 @@ dataCompletion(int rc, const char *value, int value_len,
   }
   GetCallback* callback = (GetCallback*)context->callback_.get();
   if (callback) {
-    // TODO avoid copy
+    // TODO(michim) avoid copy
     result.assign(value, value_len);
     copyStat(stat, statCopy);
     callback->process((ReturnCode::type)rc, context->path_, result, statCopy);
   }
   delete context;
-
 }
 
 void ZooKeeperImpl::
@@ -433,13 +433,12 @@ childrenCompletion(int rc, const struct String_vector *strings,
                 strings->data[i]);
     }
   }
-  // TODO avoid copy
+  // TODO(michim) avoid copy
   ZnodeStat statObject;
   copyStat(stat, statObject);
   callback->process((ReturnCode::type)rc, context->path_, children,
                     statObject);
   delete context;
-
 }
 
 void ZooKeeperImpl::
@@ -608,7 +607,7 @@ ReturnCode::type ZooKeeperImpl::
 remove(const std::string& path, int32_t version) {
   boost::shared_ptr<MyRemoveCallback> callback(new MyRemoveCallback());
   ReturnCode::type rc = remove(path, version, callback);
- if (rc != ReturnCode::Ok) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
   callback->waitForCompleted();
@@ -822,12 +821,12 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
          completion, context);
 }
 
-//ReturnCode::type ZooKeeperImpl::
-//multi(int count, const zoo_op_t *ops,
+// ReturnCode::type ZooKeeperImpl::
+// multi(int count, const zoo_op_t *ops,
 //        zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
 
-//ReturnCode::type ZooKeeperImpl::
-//multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
+// ReturnCode::type ZooKeeperImpl::
+// multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
 ReturnCode::type ZooKeeperImpl::
 close() {
@@ -851,4 +850,4 @@ setState(SessionState::type state) {
   state_ = state;
 }
 
-}}} // namespace org::apache::zookeeper
+}}}  // namespace org::apache::zookeeper
