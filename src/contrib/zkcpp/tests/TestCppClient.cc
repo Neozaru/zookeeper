@@ -373,6 +373,7 @@ public:
         std::string pathCreated;
         std::vector<Acl> acls;
         ZnodeStat stat;
+        ReturnCode::type rc;
 
         shared_ptr<TestInitWatch> watch(new TestInitWatch());
         shared_ptr<TestInitWatch> watch2(new TestInitWatch());
@@ -399,7 +400,7 @@ public:
         acls.clear();
         acls.push_back(Acl("digest", "user1:XDkd2dsEuhc9ImU3q8pa8UOdtpI=",
                            Permission::All));
-        ReturnCode::type rc = zk.create("/user1", "hello",  acls,
+        rc = zk.create("/user1", "hello",  acls,
                                         CreateMode::Persistent, pathCreated);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
@@ -419,6 +420,16 @@ public:
                                         CreateMode::Persistent, pathCreated);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
+        acls.clear();
+        acls.push_back(Acl("auth", "", Permission::All));
+        rc = zk2.create("/auth", "hello",  acls,
+                                        CreateMode::Persistent, pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        rc = zk2.set("/auth", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+
+        zk2.getAcl("/auth", acls, stat);
+
         rc = zk.set("/user1", "new data", -1, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
         rc = zk.set("/user2", "new data", -1, stat);
@@ -431,6 +442,15 @@ public:
         rc = zk2.set("/user2", "new data", -1, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
         rc = zk2.set("/user3", "new data", -1, stat);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+
+        acls.clear();
+        acls.push_back(Acl("ip", "127.0.0.1", Permission::All));
+        rc = zk2.create("/ip", "hello",  acls,
+                                        CreateMode::Persistent, pathCreated);
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
+        zk2.getAcl("/ip", acls, stat);
+        rc = zk2.set("/ip", "new data", -1, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
         stopServer();
