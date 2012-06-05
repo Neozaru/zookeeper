@@ -20,14 +20,11 @@
 #define ZK_ADAPTOR_H_
 #include <zookeeper.jute.h>
 #ifdef THREADED
+#include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/condition.hpp>
-#ifndef WIN32
-#include <pthread.h>
-#else
 #include "winport.h"
-#endif
 #endif
 #include "zookeeper.h"
 #include "zk_hashtable.h"
@@ -150,8 +147,8 @@ struct prime_struct {
 #ifdef THREADED
 /* this is used by mt_adaptor internally for thread management */
 struct adaptor_threads {
-     pthread_t io;
-     pthread_t completion;
+     boost::thread io;
+     boost::thread completion;
      int threadsToWait;         // barrier
      boost::condition_variable cond;  // barrier's conditional   
      boost::mutex lock;               // ... and a lock

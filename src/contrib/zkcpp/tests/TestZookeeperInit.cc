@@ -25,21 +25,12 @@
 #include "LibCMocks.h"
 #include "ZKMocks.h"
 
-#ifdef THREADED
-#include "PthreadMocks.h"
-#else
-class MockPthreadsNull;
-#endif
-
 using namespace std;
 
 class Zookeeper_init : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(Zookeeper_init);
-    // disable pthread mock tests.
-    #if 0
     CPPUNIT_TEST(testBasic);
-    #endif
     CPPUNIT_TEST(testAddressResolution);
     CPPUNIT_TEST(testMultipleAddressResolution);
     CPPUNIT_TEST(testNullAddressString);
@@ -57,45 +48,28 @@ class Zookeeper_init : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testPermuteAddrsList);
     CPPUNIT_TEST_SUITE_END();
     zhandle_t *zh;
-    MockPthreadsNull* pthreadMock;
     static void watcher(zhandle_t *, int , int , const char *,void*){}
-    FILE *logfile;
 public:
-    Zookeeper_init():zh(0),pthreadMock(0){
-      logfile = openlogfile("Zookeeper_init");
+    Zookeeper_init():zh(0) {
     }
 
     ~Zookeeper_init() {
-      if (logfile) {
-        fflush(logfile);
-        fclose(logfile);
-        logfile = 0;
-      }
     }
 
     void setUp()
     {
-        //zoo_set_log_stream(logfile);
-
         zoo_deterministic_conn_order(0);
-#ifdef THREADED
-        // disable threading
-        //pthreadMock=new MockPthreadZKNull;
-#endif
         zh=0;
     }
 
     void tearDown()
     {
         zookeeper_close(zh);
-#ifdef THREADED
-        //delete pthreadMock;
-#endif
     }
 
     void testBasic()
     {
-        const string EXPECTED_HOST("127.0.0.1:2121");
+        const string EXPECTED_HOST("127.0.0.1:21212");
         const int EXPECTED_ADDRS_COUNT =1;
         const int EXPECTED_RECV_TIMEOUT=10000;
         clientid_t cid;
@@ -103,10 +77,10 @@ public:
 
         zh=zookeeper_init(EXPECTED_HOST.c_str(),watcher,EXPECTED_RECV_TIMEOUT,
                 &cid,(void*)1,0);
-                printf("HIHI\n");
 
         CPPUNIT_ASSERT(zh!=0);
-        CPPUNIT_ASSERT(zh->fd == -1);
+        // TODO fix timing.
+        //CPPUNIT_ASSERT_EQUAL(-1, zh->fd);
         CPPUNIT_ASSERT(zh->hostname!=0);
         CPPUNIT_ASSERT_EQUAL(EXPECTED_ADDRS_COUNT,zh->addrs_count);
         CPPUNIT_ASSERT_EQUAL(EXPECTED_HOST,string(zh->hostname));
@@ -126,13 +100,6 @@ public:
         // thread specific checks
         adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
         CPPUNIT_ASSERT(adaptor!=0);
-        CPPUNIT_ASSERT(pthreadMock->pthread_createCounter==2);
-        CPPUNIT_ASSERT(MockPthreadsNull::isInitialized(adaptor->io));
-        CPPUNIT_ASSERT(MockPthreadsNull::isInitialized(adaptor->completion));
-        CPPUNIT_ASSERT(MockPthreadsNull::isInitialized(&zh->sent_requests.lock));
-        CPPUNIT_ASSERT(MockPthreadsNull::isInitialized(&zh->completions_to_process.lock));
-        CPPUNIT_ASSERT(MockPthreadsNull::isInitialized(&zh->sent_requests.cond));
-        CPPUNIT_ASSERT(MockPthreadsNull::isInitialized(&zh->completions_to_process.cond));
 #endif
     }
     void testAddressResolution()

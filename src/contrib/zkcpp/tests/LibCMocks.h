@@ -125,7 +125,7 @@ public:
 // no-op free; keeps track of all deallocation requests
 class Mock_free_noop: public Mock
 {
-    Mutex mx;
+    boost::mutex mx;
     std::vector<void*> requested;
 public:
     Mock_free_noop():nested(0),callCounter(0){mock_=this;}

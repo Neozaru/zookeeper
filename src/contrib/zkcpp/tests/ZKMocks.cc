@@ -22,9 +22,6 @@
 #include <zookeeper.h>
 #include <proto.h>
 
-#ifdef THREADED
-#include "PthreadMocks.h"
-#endif
 #include "ZKMocks.h"
 
 using namespace std;
@@ -119,18 +116,6 @@ void asyncCompletion(int rc, const void *data){
     static_cast<AsyncCompletion*>((void*)data)->voidCompl(rc);
 }
 
-// *****************************************************************************
-// a predicate implementation
-bool IOThreadStopped::operator()() const{
-#ifdef THREADED
-    adaptor_threads* adaptor=(adaptor_threads*)zh_->adaptor_priv;
-    return CheckedPthread::isTerminated(adaptor->io);
-#else
-    assert("IOThreadStopped predicate is only for use with THREADED client"&& false);
-    return false;
-#endif
-}
-
 //******************************************************************************
 //
 DECLARE_WRAPPER(int,flush_send_queue,(zhandle_t*zh, int timeout))
@@ -188,7 +173,7 @@ public:
     SyncedBoolCondition isActivated() const{
         return SyncedBoolCondition(activated_,mx_);
     }
-    mutable Mutex mx_;
+    mutable boost::mutex mx_;
     void* ctx_;
     bool activated_;
 };
@@ -224,7 +209,7 @@ DECLARE_WRAPPER(void,deliverWatchers,(zhandle_t* zh,int type,int state, const ch
 Mock_deliverWatchers* Mock_deliverWatchers::mock_=0;
 
 struct RefCounterValue{
-    RefCounterValue(zhandle_t* const& zh,int32_t expectedCounter,Mutex& mx):
+    RefCounterValue(zhandle_t* const& zh,int32_t expectedCounter,boost::mutex& mx):
         zh_(zh),expectedCounter_(expectedCounter),mx_(mx){}
     bool operator()() const{
         {
@@ -236,7 +221,7 @@ struct RefCounterValue{
     }
     zhandle_t* const& zh_;
     int32_t expectedCounter_;
-    Mutex& mx_;
+    boost::mutex& mx_;
 };
 
 
@@ -285,7 +270,7 @@ public:
     }
     int type_;
     int state_;
-    mutable Mutex mx_;
+    mutable boost::mutex mx_;
     bool allDelivered_;
     bool terminate_;
     zhandle_t* zh_;

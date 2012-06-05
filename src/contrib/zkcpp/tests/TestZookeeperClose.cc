@@ -20,21 +20,14 @@
 
 #include "ZKMocks.h"
 
-#ifdef THREADED
-#include "PthreadMocks.h"
-#endif
-
 using namespace std;
 
 class Zookeeper_close : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(Zookeeper_close);
-    // XXX(michim) Disabled tests with pthread mock.
-#if 0
     CPPUNIT_TEST(testIOThreadStoppedOnExpire);
     CPPUNIT_TEST(testCloseUnconnected);
     CPPUNIT_TEST(testCloseFromWatcher1);
-#endif
     CPPUNIT_TEST(testCloseUnconnected1);
     CPPUNIT_TEST(testCloseConnected1);
     CPPUNIT_TEST_SUITE_END();
@@ -85,7 +78,6 @@ public:
     void testCloseUnconnected()
     {
         // disable threading
-        MockPthreadZKNull pthreadMock;
         zh=zookeeper_init("localhost:2121",watcher,10000,0,0,0); 
         
         CPPUNIT_ASSERT(zh!=0);
@@ -111,14 +103,6 @@ public:
         CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.addrs));
         CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
         // Cannot be maintained accurately: CPPUNIT_ASSERT_EQUAL(10,freeMock.callCounter);
-        // threads
-        CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(adaptor->io));
-        CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(adaptor->completion));
-        // conditionals
-        CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(&savezh->sent_requests.cond));
-        CPPUNIT_ASSERT_EQUAL(0,MockPthreadsNull::getInvalidAccessCounter(&savezh->sent_requests.cond));
-        CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(&savezh->completions_to_process.cond));
-        CPPUNIT_ASSERT_EQUAL(0,MockPthreadsNull::getInvalidAccessCounter(&savezh->completions_to_process.cond));
     }
     void testCloseUnconnected1()
     {
@@ -140,8 +124,6 @@ public:
         for(int i=0;i<100;i++){
             ZookeeperServer zkServer;
             Mock_poll pollMock(&zkServer,ZookeeperServer::FD);
-            // use a checked version of pthread calls
-            CheckedPthread threadMock;
             // do not actually free the memory while in zookeeper_close()
             Mock_free_noop freeMock;
             
@@ -165,9 +147,6 @@ public:
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.hostname));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.addrs));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
-            // threads
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->io));
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->completion));
         }
     }
     
@@ -191,8 +170,6 @@ public:
             zkServer.returnSessionExpired();
             
             Mock_poll pollMock(&zkServer,ZookeeperServer::FD);
-            // use a checked version of pthread calls
-            CheckedPthread threadMock;
             // do not actually free the memory while in zookeeper_close()
             Mock_free_noop freeMock;
 
@@ -216,9 +193,6 @@ public:
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.hostname));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.addrs));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
-            // threads
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->io));
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->completion));
         }
     }
 
@@ -233,8 +207,6 @@ public:
             zkServer.returnSessionExpired();
             
             Mock_poll pollMock(&zkServer,ZookeeperServer::FD);
-            // use a checked version of pthread calls
-            CheckedPthread threadMock;
             // do not call zookeeper_close() from the watcher
             CloseOnSessionExpired closeAction(false);
             zh=zookeeper_init("localhost:2121",activeWatcher,10000,
@@ -246,13 +218,12 @@ public:
 
             CPPUNIT_ASSERT(zh!=0);
             CPPUNIT_ASSERT(ensureCondition(SessionExpired(zh),1000)<1000);
-            CPPUNIT_ASSERT(ensureCondition(IOThreadStopped(zh),1000)<1000);
+            // TODO(michim) check if the thread is stopped
+            //CPPUNIT_ASSERT(ensureCondition(IOThreadStopped(zh),1000)<1000);
             // make sure the watcher has been processed
             CPPUNIT_ASSERT(ensureCondition(closeAction.isWatcherTriggered(),1000)<1000);
             // make sure the threads have not been destroyed yet
             adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getDestroyCounter(adaptor->io));
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getDestroyCounter(adaptor->completion));
             // about to call zookeeper_close() -- no longer need the guard
             guard.disarm();
             
@@ -268,9 +239,6 @@ public:
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.hostname));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.addrs));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
-            // threads
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->io));
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->completion));
         }
     }
 

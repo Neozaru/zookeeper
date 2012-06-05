@@ -20,10 +20,9 @@
 #define THREADINGUTIL_H_
 
 #include <vector>
-
-#ifdef THREADED
-#include "pthread.h"
-#endif
+#include <boost/thread.hpp>
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/condition_variable.hpp>
 
 // *****************************************************************************
 // Threading primitives
@@ -81,24 +80,11 @@ private:
 #define VALIDATE_JOBS(jm) jm.validateJobs(__FILE__,__LINE__)
 #define VALIDATE_JOB(j) j.validate(__FILE__,__LINE__)
 
-class Mutex{
-public:
-    Mutex();
-    ~Mutex();
-    void acquire();
-    void release();
-private:
-    Mutex(const Mutex&);
-    Mutex& operator=(const Mutex&);
-    struct Impl;
-    Impl* impl_;
-};
-
 class MTLock{
 public:
-    MTLock(Mutex& m):m_(m){m.acquire();}
-    ~MTLock(){m_.release();}
-    Mutex& m_;
+    MTLock(boost::mutex& m):m_(m){m.lock();}
+    ~MTLock(){m_.unlock();}
+    boost::mutex& m_;
 };
 
 #define synchronized(m) MTLock __lock(m)
@@ -115,51 +101,40 @@ public:
 class CountDownLatch: public Latch {
 public:
     CountDownLatch(int count):count_(count) {
-        pthread_cond_init(&cond_,0);
-        pthread_mutex_init(&mut_,0);
     }
     virtual ~CountDownLatch() {
-        pthread_mutex_lock(&mut_);
+        boost::unique_lock<boost::mutex> lock(mut_);
         if(count_!=0) {
             count_=0;
-            pthread_cond_broadcast(&cond_);
+            cond_.notify_all();
         }
-        pthread_mutex_unlock(&mut_);
-
-        pthread_cond_destroy(&cond_);
-        pthread_mutex_destroy(&mut_);
     }
 
     virtual void await() const {
-        pthread_mutex_lock(&mut_);
-        awaitImpl();
-        pthread_mutex_unlock(&mut_);
+        boost::unique_lock<boost::mutex> lock(mut_);
+        while(count_!=0)
+          cond_.wait(lock);
     }
     virtual void signalAndWait() {
-        pthread_mutex_lock(&mut_);
+        boost::unique_lock<boost::mutex> lock(mut_);
         signalImpl();
-        awaitImpl();
-        pthread_mutex_unlock(&mut_);
+        while(count_!=0)
+          cond_.wait(lock);
     }
     virtual void signal() {
-        pthread_mutex_lock(&mut_);
+        boost::unique_lock<boost::mutex> lock(mut_);
         signalImpl();
-        pthread_mutex_unlock(&mut_);
     }
 private:
-    void awaitImpl() const{
-        while(count_!=0)
-        pthread_cond_wait(&cond_,&mut_);
-    }
     void signalImpl() {
         if(count_>0) {
             count_--;
-            pthread_cond_broadcast(&cond_);
+            cond_.notify_all();
         }
     }
     int count_;
-    mutable pthread_mutex_t mut_;
-    mutable pthread_cond_t cond_;
+    mutable boost::mutex mut_;
+    mutable boost::condition_variable cond_;
 };
 
 class TestJob {
@@ -177,18 +152,16 @@ public:
     virtual void start(Latch* startLatch=0,Latch* endLatch=0) {
         startLatch_=startLatch;endLatch_=endLatch;
         hasRun_=true;
-        pthread_create(&thread_, 0, thread, this);
-    }
-    virtual JobId getJobId() const {
-        return (JobId)thread_;
+        thread_ = boost::thread(thread, this);
     }
     virtual void join() {
         if(!hasRun_)
         return;
-        if(!pthread_equal(thread_,pthread_self()))
-        pthread_join(thread_,0);
-        else
-        pthread_detach(thread_);
+        if(boost::this_thread::get_id() == thread_.get_id()) {
+            thread_.join();
+        } else {
+            thread_.detach();
+        }
     }
 private:
     void awaitStart() {
@@ -209,7 +182,7 @@ private:
     bool hasRun_;
     Latch* startLatch_;
     Latch* endLatch_;
-    pthread_t thread_;
+    boost::thread thread_;
 };
 
 class TestJobManager {

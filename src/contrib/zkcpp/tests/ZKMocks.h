@@ -20,6 +20,7 @@
 #define ZKMOCKS_H_
 
 #include <zookeeper.h>
+#include <boost/thread/mutex.hpp>
 #include "src/zk_adaptor.h"
 
 #include "Util.h"
@@ -60,7 +61,7 @@ public:
     }
 
 protected:
-    mutable Mutex mx_;
+    mutable boost::mutex mx_;
     bool triggered_;
 };
 // zh->context is a pointer to a WatcherAction instance
@@ -115,18 +116,18 @@ struct IOThreadStopped{
 
 // a synchronized boolean condition
 struct SyncedBoolCondition{
-    SyncedBoolCondition(const bool& cond,Mutex& mx):cond_(cond),mx_(mx){}
+    SyncedBoolCondition(const bool& cond, boost::mutex& mx):cond_(cond),mx_(mx){}
     bool operator()() const{
         synchronized(mx_);
         return cond_;
     }
     const bool& cond_;
-    Mutex& mx_;
+    boost::mutex& mx_;
 };
 
 // a synchronized integer comparison
 struct SyncedIntegerEqual{
-    SyncedIntegerEqual(const int& cond,int expected,Mutex& mx):
+    SyncedIntegerEqual(const int& cond,int expected, boost::mutex& mx):
         cond_(cond),expected_(expected),mx_(mx){}
     bool operator()() const{
         synchronized(mx_);
@@ -134,7 +135,7 @@ struct SyncedIntegerEqual{
     }
     const int& cond_;
     const int expected_;
-    Mutex& mx_;
+    boost::mutex& mx_;
 };
 
 // *****************************************************************************
@@ -450,7 +451,7 @@ public:
     typedef std::pair<Response*,int> Element;
     typedef std::deque<Element> ResponseList;
     ResponseList recvQueue;
-    mutable Mutex recvQMx;
+    mutable boost::mutex recvQMx;
     AtomicInt recvHasMore;
     ZookeeperServer& addRecvResponse(Response* resp, int errnum=0){
         synchronized(recvQMx);
@@ -487,7 +488,7 @@ public:
     // the next recv() system call
     // send operation doesn't try to match request to the response
     ResponseList respQueue;
-    mutable Mutex respQMx;
+    mutable boost::mutex respQMx;
     ZookeeperServer& addOperationResponse(Response* resp, int errnum=0){
         synchronized(respQMx);
         respQueue.push_back(Element(resp,errnum));

@@ -107,7 +107,7 @@ private:
 public:
     bool connected;
     zhandle_t *zh;
-    Mutex mutex;
+    boost::mutex mutex;
 
     watchCtx() {
         connected = false;
@@ -122,26 +122,26 @@ public:
 
     evt_t getEvent() {
         evt_t evt;
-        mutex.acquire();
+        mutex.lock();
         CPPUNIT_ASSERT( events.size() > 0);
         evt = events.front();
         events.pop_front();
-        mutex.release();
+        mutex.unlock();
         return evt;
     }
 
     int countEvents() {
         int count;
-        mutex.acquire();
+        mutex.lock();
         count = events.size();
-        mutex.release();
+        mutex.unlock();
         return count;
     }
 
     void putEvent(evt_t evt) {
-        mutex.acquire();
+        mutex.lock();
         events.push_back(evt);
-        mutex.release();
+        mutex.unlock();
     }
 
     bool waitForConnected(zhandle_t *zh) {

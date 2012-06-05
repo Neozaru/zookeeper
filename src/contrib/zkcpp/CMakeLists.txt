@@ -55,9 +55,6 @@ configure_file(
   ${CMAKE_CURRENT_BINARY_DIR}/config.h
 )
 
-# Look for threading library (e.g. pthread)
-find_package(Threads)
-
 # Look for log4cpp
 find_path(LOG4CXX_INCLUDE_DIR log4cxx/log4cxx.h)
 find_library(LOG4CXX_LIBRARY NAMES log4cxx)
@@ -106,7 +103,7 @@ target_link_libraries (zkcpp
 )
 
 set(CMAKE_EXE_LINKER_FLAGS
-"-Wl,--wrap -Wl,calloc -Wl,--wrap -Wl,free -Wl,--wrap -Wl,flush_send_queue -Wl,--wrap -Wl,get_xid -Wl,--wrap -Wl,deliverWatchers -Wl,--wrap -Wl,activateWatcher -Wl,--wrap -Wl,pthread_mutex_lock -Wl,--wrap -Wl,pthread_mutex_trylock -Wl,--wrap -Wl,pthread_mutex_unlock"
+"-Wl,--wrap -Wl,calloc -Wl,--wrap -Wl,free -Wl,--wrap -Wl,flush_send_queue -Wl,--wrap -Wl,get_xid -Wl,--wrap -Wl,deliverWatchers -Wl,--wrap -Wl,activateWatcher"
 )
 
 add_executable(zktest ${testsrc})

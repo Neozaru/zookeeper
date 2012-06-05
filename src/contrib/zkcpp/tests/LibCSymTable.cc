@@ -51,22 +51,6 @@ LibCSymTable::LibCSymTable()
     LOAD_SYM(select);
     LOAD_SYM(poll);
     LOAD_SYM(gettimeofday);
-#ifdef THREADED
-    LOAD_SYM(pthread_create);
-    LOAD_SYM(pthread_detach);
-    LOAD_SYM(pthread_cond_broadcast);
-    LOAD_SYM(pthread_cond_destroy);
-    LOAD_SYM(pthread_cond_init);
-    LOAD_SYM(pthread_cond_signal);
-    LOAD_SYM(pthread_cond_timedwait);
-    LOAD_SYM(pthread_cond_wait);
-    LOAD_SYM(pthread_join);
-    LOAD_SYM(pthread_mutex_destroy);
-    LOAD_SYM(pthread_mutex_init);
-    LOAD_SYM(pthread_mutex_lock);
-    LOAD_SYM(pthread_mutex_trylock);
-    LOAD_SYM(pthread_mutex_unlock);
-#endif
 }
 
 void* LibCSymTable::getHandle(){

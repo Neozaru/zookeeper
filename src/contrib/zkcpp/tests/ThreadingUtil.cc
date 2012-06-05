@@ -20,29 +20,6 @@
 #include "ThreadingUtil.h"
 #include "LibCSymTable.h"
 
-#ifdef THREADED
-
-// ****************************************************************************
-// Mutex wrapper
-struct Mutex::Impl{
-    Impl(){
-        LIBC_SYMBOLS.pthread_mutex_init(&mut_, 0);        
-    }
-    ~Impl(){
-        LIBC_SYMBOLS.pthread_mutex_destroy(&mut_);        
-    }
-    pthread_mutex_t mut_;
-};
-
-Mutex::Mutex():impl_(new Impl) {}
-Mutex::~Mutex() { delete impl_;}
-void Mutex::acquire() {
-    LIBC_SYMBOLS.pthread_mutex_lock(&impl_->mut_);
-}
-void Mutex::release() {
-    LIBC_SYMBOLS.pthread_mutex_unlock(&impl_->mut_);
-}
-
 // ****************************************************************************
 // Atomics
 int32_t atomic_post_incr(volatile int32_t* operand, int32_t incr)
@@ -72,16 +49,3 @@ int32_t atomic_fetch_store(volatile int32_t *ptr, int32_t value)
    return result; 
 #endif
 }
-#else
-int32_t atomic_post_incr(volatile int32_t* operand, int32_t incr){
-    int32_t v=*operand;
-    *operand+=incr;
-    return v;
-}
-int32_t atomic_fetch_store(volatile int32_t *ptr, int32_t value)
-{
-    int32_t result=*ptr;
-    *ptr=value;
-    return result;
-}
-#endif // THREADED

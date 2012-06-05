@@ -797,6 +797,7 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->completions_to_process.cond.reset(new boost::condition_variable());
 
     zh->fd = -1;
+    printf("SET file desc to %d\n", zh->fd);
     zh->state = NOTCONNECTED_STATE_DEF;
     zh->context = context;
     zh->recv_timeout = recv_timeout;

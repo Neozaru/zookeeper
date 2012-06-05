@@ -31,6 +31,7 @@
 #include "logging.hh"
 ENABLE_LOGGING;
 
+#include <boost/thread.hpp>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
@@ -179,17 +180,15 @@ void start_threads(zhandle_t* zh)
     int rc = 0;
     struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
     adaptor->threadsToWait=2;  // wait for 2 threads before opening the barrier
-    
+
     // use api_prolog() to make sure zhandle doesn't get destroyed
     // while initialization is in progress
     api_prolog(zh);
     LOG_DEBUG("starting threads...");
-    rc=pthread_create(&adaptor->io, 0, do_io, zh);
-    assert("pthread_create() failed for the IO thread"&&!rc);
-    rc=pthread_create(&adaptor->completion, 0, do_completion, zh);
-    assert("pthread_create() failed for the completion thread"&&!rc);
+    adaptor->io = boost::thread(do_io, zh);
+    adaptor->completion = boost::thread(do_completion, zh);
     wait_for_others(zh);
-    api_epilog(zh, 0);    
+    api_epilog(zh, 0);
 }
 
 int adaptor_init(zhandle_t *zh)
@@ -223,27 +222,28 @@ void adaptor_finish(zhandle_t *zh)
 {
     struct adaptor_threads *adaptor_threads;
     // make sure zh doesn't get destroyed until after we're done here
-    api_prolog(zh); 
+    api_prolog(zh);
     adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
     if(adaptor_threads==0) {
         api_epilog(zh,0);
         return;
     }
 
-    if(!pthread_equal(adaptor_threads->io,pthread_self())){
+    if(boost::this_thread::get_id() == adaptor_threads->io.get_id()) {
+        adaptor_threads->io.detach();
+    } else {
         wakeup_io_thread(zh);
-        pthread_join(adaptor_threads->io, 0);
-    }else
-        pthread_detach(adaptor_threads->io);
-    
-    if(!pthread_equal(adaptor_threads->completion,pthread_self())){
-      boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
-      (*(zh->completions_to_process.cond)).notify_all();
-      lock.unlock();
-      pthread_join(adaptor_threads->completion, 0);
-    }else
-        pthread_detach(adaptor_threads->completion);
-    
+        adaptor_threads->io.join();
+    }
+
+    if(boost::this_thread::get_id() == adaptor_threads->completion.get_id()) {
+        adaptor_threads->completion.detach();
+    } else {
+        boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
+        (*(zh->completions_to_process.cond)).notify_all();
+        lock.unlock();
+        adaptor_threads->completion.join();
+    }
     api_epilog(zh,0);
 }
 

@@ -86,7 +86,7 @@ public:
             synchronized(mx_);
             return called_;
         }
-        mutable Mutex mx_;
+        mutable boost::mutex mx_;
         bool called_;
         int rc_;
         string value_;
