@@ -24,6 +24,7 @@
 #define USE_IPV6
 #endif
 
+#include <boost/thread/locks.hpp>
 #include <string>
 #include <zookeeper.h>
 #include <zookeeper.jute.h>
@@ -325,6 +326,7 @@ static void add_last_auth(auth_list_head_t *auth_list, auth_info *add_el) {
 static void init_auth_info(auth_list_head_t *auth_list)
 {
     auth_list->auth = NULL;
+    auth_list->mutex_.reset(new boost::mutex());
 }
 
 static void mark_active_auth(zhandle_t *zh) {
@@ -1193,9 +1195,10 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
     }
     a_list.completion = NULL;
     a_list.next = NULL;
-    zoo_lock_auth(zh);
-    get_auth_completions(&zh->auth_h, &a_list);
-    zoo_unlock_auth(zh);
+    {
+        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        get_auth_completions(&zh->auth_h, &a_list);
+    }
     a_tmp = &a_list;
     // chain call user's completion function
     while (a_tmp->completion != NULL) {
@@ -1262,18 +1265,18 @@ static void auth_completion_func(int rc, zhandle_t* zh)
     if(zh==NULL)
         return;
 
-    zoo_lock_auth(zh);
-
-    if(rc!=0){
-        zh->state=ZOO_AUTH_FAILED_STATE;
-    }else{
-        //change state for all auths
-        mark_active_auth(zh);
+    {
+        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        if(rc!=0){
+            zh->state=ZOO_AUTH_FAILED_STATE;
+        }else{
+            //change state for all auths
+            mark_active_auth(zh);
+        }
+        a_list.completion = NULL;
+        a_list.next = NULL;
+        get_auth_completions(&zh->auth_h, &a_list);
     }
-    a_list.completion = NULL;
-    a_list.next = NULL;
-    get_auth_completions(&zh->auth_h, &a_list);
-    zoo_unlock_auth(zh);
     if (rc) {
         LOG_ERROR("Authentication scheme " << zh->auth_h.auth->scheme <<
                   " failed. Connection closed.");
@@ -1319,17 +1322,17 @@ static int send_auth_info(zhandle_t *zh) {
     int rc = 0;
     auth_info *auth = NULL;
 
-    zoo_lock_auth(zh);
-    auth = zh->auth_h.auth;
-    if (auth == NULL) {
-        zoo_unlock_auth(zh);
-        return ZOK;
+    {
+        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        auth = zh->auth_h.auth;
+        if (auth == NULL) {
+            return ZOK;
+        }
+        while (auth != NULL) {
+            rc = send_info_packet(zh, auth);
+            auth = auth->next;
+        }
     }
-    while (auth != NULL) {
-        rc = send_info_packet(zh, auth);
-        auth = auth->next;
-    }
-    zoo_unlock_auth(zh);
     LOG_DEBUG("Sending all auth info request to " << format_current_endpoint_info(zh));
     return (rc <0) ? ZMARSHALLINGERROR:ZOK;
 }
@@ -1338,15 +1341,14 @@ static int send_last_auth_info(zhandle_t *zh)
 {    
     int rc = 0;
     auth_info *auth = NULL;
-
-    zoo_lock_auth(zh);
-    auth = get_last_auth(&zh->auth_h);
-    if(auth==NULL) {
-      zoo_unlock_auth(zh);
-      return ZOK; // there is nothing to send
+    {
+        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        auth = get_last_auth(&zh->auth_h);
+        if(auth==NULL) {
+          return ZOK; // there is nothing to send
+        }
+        rc = send_info_packet(zh, auth);
     }
-    rc = send_info_packet(zh, auth);
-    zoo_unlock_auth(zh);
     LOG_DEBUG("Sending auth info request to " << format_current_endpoint_info(zh));
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
@@ -3381,15 +3383,16 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
         auth.len = 0;
     }
 
-    zoo_lock_auth(zh);
-    authinfo = (auth_info*) malloc(sizeof(auth_info));
-    authinfo->scheme=strdup(scheme);
-    authinfo->auth=auth;
-    authinfo->completion=completion;
-    authinfo->data=(const char*)data;
-    authinfo->next = NULL;
-    add_last_auth(&zh->auth_h, authinfo);
-    zoo_unlock_auth(zh);
+    {
+        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        authinfo = (auth_info*) malloc(sizeof(auth_info));
+        authinfo->scheme=strdup(scheme);
+        authinfo->auth=auth;
+        authinfo->completion=completion;
+        authinfo->data=(const char*)data;
+        authinfo->next = NULL;
+        add_last_auth(&zh->auth_h, authinfo);
+    }
 
     if(zh->state == ZOO_CONNECTED_STATE || zh->state == ZOO_ASSOCIATING_STATE)
         return send_last_auth_info(zh);

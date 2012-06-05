@@ -20,6 +20,7 @@
 #define ZK_ADAPTOR_H_
 #include <zookeeper.jute.h>
 #ifdef THREADED
+#include <boost/thread/mutex.hpp>
 #ifndef WIN32
 #include <pthread.h>
 #else
@@ -171,9 +172,7 @@ struct adaptor_threads {
 /** the auth list for adding auth */
 typedef struct _auth_list_head {
      auth_info *auth;
-#ifdef THREADED
-     pthread_mutex_t lock;
-#endif
+     boost::shared_ptr<boost::mutex> mutex_;
 } auth_list_head_t;
 
 /**
@@ -243,8 +242,6 @@ void process_completions(zhandle_t *zh);
 int flush_send_queue(zhandle_t*zh, int timeout);
 char* sub_string(zhandle_t *zh, const char* server_path);
 void free_duplicate_path(const char* free_path, const char* path);
-void zoo_lock_auth(zhandle_t *zh);
-void zoo_unlock_auth(zhandle_t *zh);
 
 // critical section guards
 void enter_critical(zhandle_t* zh);

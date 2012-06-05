@@ -29,13 +29,14 @@ using namespace std;
 class Zookeeper_close : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(Zookeeper_close);
-#ifdef THREADED
+    // XXX(michim) Disabled tests with pthread mock.
+#if 0
     CPPUNIT_TEST(testIOThreadStoppedOnExpire);
-#endif
     CPPUNIT_TEST(testCloseUnconnected);
+    CPPUNIT_TEST(testCloseFromWatcher1);
+#endif
     CPPUNIT_TEST(testCloseUnconnected1);
     CPPUNIT_TEST(testCloseConnected1);
-    CPPUNIT_TEST(testCloseFromWatcher1);
     CPPUNIT_TEST_SUITE_END();
     zhandle_t *zh;
     static void watcher(zhandle_t *, int, int, const char *,void*){}

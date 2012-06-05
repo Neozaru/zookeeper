@@ -45,14 +45,6 @@ ENABLE_LOGGING;
 #include <sys/time.h>
 #endif
 
-void zoo_lock_auth(zhandle_t *zh)
-{
-    pthread_mutex_lock(&zh->auth_h.lock);
-}
-void zoo_unlock_auth(zhandle_t *zh)
-{
-    pthread_mutex_unlock(&zh->auth_h.lock);
-}
 void lock_buffer_list(buffer_head_t *l)
 {
     pthread_mutex_lock(&l->lock);
@@ -251,8 +243,6 @@ int adaptor_init(zhandle_t *zh)
     set_nonblock(adaptor_threads->self_pipe[1]);
     set_nonblock(adaptor_threads->self_pipe[0]);
 
-    pthread_mutex_init(&zh->auth_h.lock,0);
-
     zh->adaptor_priv = adaptor_threads;
     pthread_mutex_init(&zh->to_process.lock,0);
     pthread_mutex_init(&adaptor_threads->zh_lock,0);
@@ -312,8 +302,6 @@ void adaptor_destroy(zhandle_t *zh)
     pthread_mutex_destroy(&zh->completions_to_process.lock);
     pthread_cond_destroy(&zh->completions_to_process.cond);
     pthread_mutex_destroy(&adaptor->zh_lock);
-
-    pthread_mutex_destroy(&zh->auth_h.lock);
 
     close(adaptor->self_pipe[0]);
     close(adaptor->self_pipe[1]);
