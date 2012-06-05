@@ -21,6 +21,7 @@
 #include <zookeeper.jute.h>
 #ifdef THREADED
 #include <boost/thread/mutex.hpp>
+#include <boost/thread/recursive_mutex.hpp>
 #ifndef WIN32
 #include <pthread.h>
 #else
@@ -62,9 +63,8 @@ struct _completion_list;
 typedef struct _buffer_head {
     struct _buffer_list *volatile head;
     struct _buffer_list *last;
-#ifdef THREADED
-    pthread_mutex_t lock;
-#endif
+    // XXX(michim) Why does the mutex for to_send have to be recursive?
+    boost::shared_ptr<boost::recursive_mutex> mutex_;
 } buffer_head_t;
 
 typedef struct _completion_head {
@@ -76,8 +76,6 @@ typedef struct _completion_head {
 #endif
 } completion_head_t;
 
-void lock_buffer_list(buffer_head_t *l);
-void unlock_buffer_list(buffer_head_t *l);
 void lock_completion_list(completion_head_t *l);
 void unlock_completion_list(completion_head_t *l);
 

@@ -798,6 +798,8 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->context = context;
     zh->recv_timeout = recv_timeout;
     init_auth_info(&zh->auth_h);
+    zh->to_process.mutex_.reset(new boost::recursive_mutex());
+    zh->to_send.mutex_.reset(new boost::recursive_mutex());
     if (watcher) {
        zh->watcher = watcher;
     } else {
@@ -947,16 +949,18 @@ static void free_buffer(buffer_list_t *b)
 static buffer_list_t *dequeue_buffer(buffer_head_t *list)
 {
     buffer_list_t *b;
-    lock_buffer_list(list);
-    b = list->head;
-    if (b) {
-        list->head = b->next;
-        if (!list->head) {
-            assert(b == list->last);
-            list->last = 0;
+
+    {
+        boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+        b = list->head;
+        if (b) {
+            list->head = b->next;
+            if (!list->head) {
+                assert(b == list->last);
+                list->last = 0;
+            }
         }
     }
-    unlock_buffer_list(list);
     return b;
 }
 
@@ -973,24 +977,25 @@ static int remove_buffer(buffer_head_t *list)
 static void queue_buffer(buffer_head_t *list, buffer_list_t *b, int add_to_front)
 {
     b->next = 0;
-    lock_buffer_list(list);
-    if (list->head) {
-        assert(list->last);
-        // The list is not empty
-        if (add_to_front) {
-            b->next = list->head;
+    {
+        boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+        if (list->head) {
+            assert(list->last);
+            // The list is not empty
+            if (add_to_front) {
+                b->next = list->head;
+                list->head = b;
+            } else {
+                list->last->next = b;
+                list->last = b;
+            }
+        }else{
+            // The list is empty
+            assert(!list->head);
             list->head = b;
-        } else {
-            list->last->next = b;
             list->last = b;
         }
-    }else{
-        // The list is empty
-        assert(!list->head);
-        list->head = b;
-        list->last = b;
     }
-    unlock_buffer_list(list);
 }
 
 static int queue_buffer_bytes(buffer_head_t *list, char *buff, int len)
@@ -1015,11 +1020,12 @@ static __attribute__ ((unused)) int get_queue_len(buffer_head_t *list)
 {
     int i;
     buffer_list_t *ptr;
-    lock_buffer_list(list);
-    ptr = list->head;
-    for (i=0; ptr!=0; ptr=ptr->next, i++)
-        ;
-    unlock_buffer_list(list);
+    {
+        boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+        ptr = list->head;
+        for (i=0; ptr!=0; ptr=ptr->next, i++)
+            ;
+    }
     return i;
 }
 /* returns:
@@ -3244,55 +3250,56 @@ int flush_send_queue(zhandle_t*zh, int timeout)
     // returns EWOULDBLOCK we'd have to put the buffer back on the queue.
     // we use a recursive lock instead and only dequeue the buffer if a send was
     // successful
-    lock_buffer_list(&zh->to_send);
-    while (zh->to_send.head != 0&& zh->state == ZOO_CONNECTED_STATE) {
-        if(timeout!=0){
-            int elapsed;
-            struct timeval now;
-            gettimeofday(&now,0);
-            elapsed=calculate_interval(&started,&now);
-            if (elapsed>timeout) {
-                rc = ZOPERATIONTIMEOUT;
-                break;
-            }
+    {
+        boost::lock_guard<boost::recursive_mutex> lock(*(zh->to_send.mutex_));
+        while (zh->to_send.head != 0&& zh->state == ZOO_CONNECTED_STATE) {
+            if(timeout!=0){
+                int elapsed;
+                struct timeval now;
+                gettimeofday(&now,0);
+                elapsed=calculate_interval(&started,&now);
+                if (elapsed>timeout) {
+                    rc = ZOPERATIONTIMEOUT;
+                    break;
+                }
 
 #ifdef WIN32
-            wait = get_timeval(timeout-elapsed);
-            FD_ZERO(&pollSet);
-            FD_SET(zh->fd, &pollSet);
-            // Poll the socket
-            rc = select((int)(zh->fd)+1, NULL,  &pollSet, NULL, &wait);      
+                wait = get_timeval(timeout-elapsed);
+                FD_ZERO(&pollSet);
+                FD_SET(zh->fd, &pollSet);
+                // Poll the socket
+                rc = select((int)(zh->fd)+1, NULL,  &pollSet, NULL, &wait);      
 #else
-            struct pollfd fds;
-            fds.fd = zh->fd;
-            fds.events = POLLOUT;
-            fds.revents = 0;
-            rc = poll(&fds, 1, timeout-elapsed);
+                struct pollfd fds;
+                fds.fd = zh->fd;
+                fds.events = POLLOUT;
+                fds.revents = 0;
+                rc = poll(&fds, 1, timeout-elapsed);
 #endif
-            if (rc<=0) {
-                /* timed out or an error or POLLERR */
-                rc = rc==0 ? ZOPERATIONTIMEOUT : ZSYSTEMERROR;
+                if (rc<=0) {
+                    /* timed out or an error or POLLERR */
+                    rc = rc==0 ? ZOPERATIONTIMEOUT : ZSYSTEMERROR;
+                    break;
+                }
+            }
+
+            rc = send_buffer(zh->fd, zh->to_send.head);
+            if(rc==0 && timeout==0){
+                /* send_buffer would block while sending this buffer */
+                rc = ZOK;
                 break;
             }
-        }
-
-        rc = send_buffer(zh->fd, zh->to_send.head);
-        if(rc==0 && timeout==0){
-            /* send_buffer would block while sending this buffer */
+            if (rc < 0) {
+                rc = ZCONNECTIONLOSS;
+                break;
+            }
+            // if the buffer has been sent successfully, remove it from the queue
+            if (rc > 0)
+                remove_buffer(&zh->to_send);
+            gettimeofday(&zh->last_send, 0);
             rc = ZOK;
-            break;
         }
-        if (rc < 0) {
-            rc = ZCONNECTIONLOSS;
-            break;
-        }
-        // if the buffer has been sent successfully, remove it from the queue
-        if (rc > 0)
-            remove_buffer(&zh->to_send);
-        gettimeofday(&zh->last_send, 0);
-        rc = ZOK;
     }
-    unlock_buffer_list(&zh->to_send);
     return rc;
 }
 

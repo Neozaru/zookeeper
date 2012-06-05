@@ -82,148 +82,6 @@ public:
         int rc;
     };
     
-#ifndef THREADED
-    void testCloseUnconnected()
-    {       
-        zh=zookeeper_init("localhost:2121",watcher,10000,0,0,0);       
-        CPPUNIT_ASSERT(zh!=0);
-        
-        // do not actually free the memory while in zookeeper_close()
-        Mock_free_noop freeMock;
-        // make a copy of zhandle before close() overwrites some of 
-        // it members with NULLs
-        zhandle_t lzh;
-        memcpy(&lzh,zh,sizeof(lzh));
-        int rc=zookeeper_close(zh);
-        zhandle_t* savezh=zh; zh=0;
-        freeMock.disable(); // disable mock's fake free()- use libc's free() instead
-        
-        // verify that zookeeper_close has done its job
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);
-        // memory
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(savezh));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.hostname));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.addrs));
-        // This cannot be maintained properly CPPUNIT_ASSERT_EQUAL(9,freeMock.callCounter);
-    }
-    void testCloseUnconnected1()
-    {
-        zh=zookeeper_init("localhost:2121",watcher,10000,0,0,0);       
-        CPPUNIT_ASSERT(zh!=0);
-        // simulate connected state 
-        zh->fd=ZookeeperServer::FD;
-        zh->state=ZOO_CONNECTED_STATE;
-        Mock_flush_send_queue zkMock;
-        // do not actually free the memory while in zookeeper_close()
-        Mock_free_noop freeMock;
-        // make a copy of zhandle before close() overwrites some of 
-        // it members with NULLs
-        zhandle_t lzh;
-        memcpy(&lzh,zh,sizeof(lzh));
-        int rc=zookeeper_close(zh);
-        zhandle_t* savezh=zh; zh=0;
-        freeMock.disable(); // disable mock's fake free()- use libc's free() instead
-
-        // verify that zookeeper_close has done its job
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);
-        // memory
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(savezh));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.hostname));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.addrs));
-        // the close request sent?
-        CPPUNIT_ASSERT_EQUAL(1,zkMock.counter);
-    }
-    void testCloseConnected1()
-    {
-        ZookeeperServer zkServer;
-        // poll() will called from zookeeper_close()
-        Mock_poll pollMock(&zkServer,ZookeeperServer::FD);
-
-        zh=zookeeper_init("localhost:2121",watcher,10000,TEST_CLIENT_ID,0,0);
-        CPPUNIT_ASSERT(zh!=0);
-
-        Mock_gettimeofday timeMock;
-        
-        int fd=0;
-        int interest=0;
-        timeval tv;
-        int rc=zookeeper_interest(zh,&fd,&interest,&tv);
-        
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);        
-        CPPUNIT_ASSERT_EQUAL(ZOO_CONNECTING_STATE,zoo_state(zh));
-        CPPUNIT_ASSERT_EQUAL(ZOOKEEPER_READ|ZOOKEEPER_WRITE,interest);
-        
-        rc=zookeeper_process(zh,interest);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);        
-        CPPUNIT_ASSERT_EQUAL(ZOO_ASSOCIATING_STATE,zoo_state(zh));
-        
-        rc=zookeeper_interest(zh,&fd,&interest,&tv);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);
-        rc=zookeeper_process(zh,interest);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);        
-        CPPUNIT_ASSERT_EQUAL(ZOO_CONNECTED_STATE,zoo_state(zh));
-        // do not actually free the memory while in zookeeper_close()
-        Mock_free_noop freeMock;
-        // make a copy of zhandle before close() overwrites some of 
-        // it members with NULLs
-        zhandle_t lzh;
-        memcpy(&lzh,zh,sizeof(lzh));
-        zookeeper_close(zh);
-        zhandle_t* savezh=zh; zh=0;
-        freeMock.disable(); // disable mock's fake free()- use libc's free() instead
-        // memory
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(savezh));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.hostname));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.addrs));
-        // the close request sent?
-        CPPUNIT_ASSERT_EQUAL(1,(int)zkServer.closeSent);
-    }
-    void testCloseFromWatcher1()
-    {
-        Mock_gettimeofday timeMock;
-
-        ZookeeperServer zkServer;
-        // make the server return a non-matching session id
-        zkServer.returnSessionExpired();
-        // poll() will called from zookeeper_close()
-        Mock_poll pollMock(&zkServer,ZookeeperServer::FD);
-
-        CloseOnSessionExpired closeAction;
-        zh=zookeeper_init("localhost:2121",activeWatcher,10000,
-                TEST_CLIENT_ID,&closeAction,0);
-        CPPUNIT_ASSERT(zh!=0);
-        
-        int fd=0;
-        int interest=0;
-        timeval tv;
-        // initiate connection
-        int rc=zookeeper_interest(zh,&fd,&interest,&tv);        
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);        
-        CPPUNIT_ASSERT_EQUAL(ZOO_CONNECTING_STATE,zoo_state(zh));
-        CPPUNIT_ASSERT_EQUAL(ZOOKEEPER_READ|ZOOKEEPER_WRITE,interest);
-        rc=zookeeper_process(zh,interest);
-        // make sure the handshake in progress 
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);        
-        CPPUNIT_ASSERT_EQUAL(ZOO_ASSOCIATING_STATE,zoo_state(zh));
-        rc=zookeeper_interest(zh,&fd,&interest,&tv);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);
-        
-        // do not actually free the memory while in zookeeper_close()
-        Mock_free_noop freeMock;
-        // should call the watcher with ZOO_EXPIRED_SESSION_STATE state
-        rc=zookeeper_process(zh,interest);
-        zhandle_t* savezh=zh; zh=0;
-        freeMock.disable(); // disable mock's fake free()- use libc's free() instead
-        
-        CPPUNIT_ASSERT_EQUAL(ZOO_EXPIRED_SESSION_STATE,zoo_state(savezh));
-        // memory
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(savezh));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.hostname));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.addrs));
-        // make sure the close request NOT sent
-        CPPUNIT_ASSERT_EQUAL(0,(int)zkServer.closeSent);
-    }
-#else
     void testCloseUnconnected()
     {
         // disable threading
@@ -257,10 +115,6 @@ public:
         CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(adaptor->io));
         CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(adaptor->completion));
         // mutexes
-        CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(&savezh->to_process.lock));
-        CPPUNIT_ASSERT_EQUAL(0,MockPthreadsNull::getInvalidAccessCounter(&savezh->to_process.lock));
-        CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(&savezh->to_send.lock));
-        CPPUNIT_ASSERT_EQUAL(0,MockPthreadsNull::getInvalidAccessCounter(&savezh->to_send.lock));
         CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(&savezh->sent_requests.lock));
         CPPUNIT_ASSERT_EQUAL(0,MockPthreadsNull::getInvalidAccessCounter(&savezh->sent_requests.lock));
         CPPUNIT_ASSERT_EQUAL(1,MockPthreadsNull::getDestroyCounter(&savezh->completions_to_process.lock));
@@ -320,10 +174,6 @@ public:
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->io));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->completion));
             // mutexes
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&savezh->to_process.lock));
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&savezh->to_process.lock));
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&savezh->to_send.lock));
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&savezh->to_send.lock));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&savezh->sent_requests.lock));
             CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&savezh->sent_requests.lock));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&savezh->completions_to_process.lock));
@@ -385,10 +235,6 @@ public:
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->io));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->completion));
             // mutexes
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->to_process.lock));
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&lzh->to_process.lock));
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->to_send.lock));
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&lzh->to_send.lock));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->sent_requests.lock));
             CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&lzh->sent_requests.lock));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->completions_to_process.lock));
@@ -451,10 +297,6 @@ public:
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->io));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(adaptor->completion));
             // mutexes
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->to_process.lock));
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&lzh->to_process.lock));
-            CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->to_send.lock));
-            CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&lzh->to_send.lock));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->sent_requests.lock));
             CPPUNIT_ASSERT_EQUAL(0,CheckedPthread::getInvalidAccessCounter(&lzh->sent_requests.lock));
             CPPUNIT_ASSERT_EQUAL(1,CheckedPthread::getDestroyCounter(&lzh->completions_to_process.lock));
@@ -467,7 +309,6 @@ public:
         }
     }
 
-#endif
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(Zookeeper_close);

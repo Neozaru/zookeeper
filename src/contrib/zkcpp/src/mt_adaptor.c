@@ -45,14 +45,6 @@ ENABLE_LOGGING;
 #include <sys/time.h>
 #endif
 
-void lock_buffer_list(buffer_head_t *l)
-{
-    pthread_mutex_lock(&l->lock);
-}
-void unlock_buffer_list(buffer_head_t *l)
-{
-    pthread_mutex_unlock(&l->lock);
-}
 void lock_completion_list(completion_head_t *l)
 {
     pthread_mutex_lock(&l->lock);
@@ -222,7 +214,6 @@ void start_threads(zhandle_t* zh)
 
 int adaptor_init(zhandle_t *zh)
 {
-    pthread_mutexattr_t recursive_mx_attr;
     struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)calloc(1, sizeof(*adaptor_threads));
     if (!adaptor_threads) {
         LOG_ERROR("Out of memory");
@@ -244,14 +235,8 @@ int adaptor_init(zhandle_t *zh)
     set_nonblock(adaptor_threads->self_pipe[0]);
 
     zh->adaptor_priv = adaptor_threads;
-    pthread_mutex_init(&zh->to_process.lock,0);
     pthread_mutex_init(&adaptor_threads->zh_lock,0);
-    // to_send must be recursive mutex    
-    pthread_mutexattr_init(&recursive_mx_attr);
-    pthread_mutexattr_settype(&recursive_mx_attr, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init(&zh->to_send.lock,&recursive_mx_attr);
-    pthread_mutexattr_destroy(&recursive_mx_attr);
-    
+
     pthread_mutex_init(&zh->sent_requests.lock,0);
     pthread_cond_init(&zh->sent_requests.cond,0);
     pthread_mutex_init(&zh->completions_to_process.lock,0);
@@ -295,8 +280,6 @@ void adaptor_destroy(zhandle_t *zh)
     
     pthread_cond_destroy(&adaptor->cond);
     pthread_mutex_destroy(&adaptor->lock);
-    pthread_mutex_destroy(&zh->to_process.lock);
-    pthread_mutex_destroy(&zh->to_send.lock);
     pthread_mutex_destroy(&zh->sent_requests.lock);
     pthread_cond_destroy(&zh->sent_requests.cond);
     pthread_mutex_destroy(&zh->completions_to_process.lock);
