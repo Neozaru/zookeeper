@@ -22,6 +22,7 @@
 #ifdef THREADED
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
+#include <boost/thread/condition.hpp>
 #ifndef WIN32
 #include <pthread.h>
 #else
@@ -70,10 +71,8 @@ typedef struct _buffer_head {
 typedef struct _completion_head {
     struct _completion_list *volatile head;
     struct _completion_list *last;
-#ifdef THREADED
-    pthread_cond_t cond;
-    pthread_mutex_t lock;
-#endif
+    boost::shared_ptr<boost::condition_variable> cond;
+    boost::shared_ptr<boost::mutex> lock;
 } completion_head_t;
 
 void lock_completion_list(completion_head_t *l);
@@ -170,7 +169,7 @@ struct adaptor_threads {
 /** the auth list for adding auth */
 typedef struct _auth_list_head {
      auth_info *auth;
-     boost::shared_ptr<boost::mutex> mutex_;
+     boost::mutex mutex_;
 } auth_list_head_t;
 
 /**

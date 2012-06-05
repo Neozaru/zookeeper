@@ -326,16 +326,14 @@ static void add_last_auth(auth_list_head_t *auth_list, auth_info *add_el) {
 static void init_auth_info(auth_list_head_t *auth_list)
 {
     auth_list->auth = NULL;
-    auth_list->mutex_.reset(new boost::mutex());
 }
 
 static void mark_active_auth(zhandle_t *zh) {
-    auth_list_head_t auth_h = zh->auth_h;
     auth_info *element;
-    if (auth_h.auth == NULL) {
+    if (zh->auth_h.auth == NULL) {
         return;
     }
-    element = auth_h.auth;
+    element = zh->auth_h.auth;
     while (element != NULL) {
         element->state = 1;
         element = element->next;
@@ -793,6 +791,11 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     if (!zh) {
         return 0;
     }
+    zh->sent_requests.lock.reset(new boost::mutex());
+    zh->sent_requests.cond.reset(new boost::condition_variable());
+    zh->completions_to_process.lock.reset(new boost::mutex());
+    zh->completions_to_process.cond.reset(new boost::condition_variable());
+
     zh->fd = -1;
     zh->state = NOTCONNECTED_STATE_DEF;
     zh->context = context;
@@ -1160,12 +1163,13 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
     struct ReplyHeader h;
     void_completion_t auth_completion = NULL;
     auth_completion_list_t a_list, *a_tmp;
-
-    lock_completion_list(&zh->sent_requests);
-    tmp_list = zh->sent_requests;
-    zh->sent_requests.head = 0;
-    zh->sent_requests.last = 0;
-    unlock_completion_list(&zh->sent_requests);
+    {
+        boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
+        tmp_list = zh->sent_requests;
+        zh->sent_requests.head = 0;
+        zh->sent_requests.last = 0;
+        (*(zh->sent_requests.cond)).notify_all();
+    }
     while (tmp_list.head) {
         completion_list_t *cptr = tmp_list.head;
 
@@ -1202,7 +1206,7 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
     a_list.completion = NULL;
     a_list.next = NULL;
     {
-        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
         get_auth_completions(&zh->auth_h, &a_list);
     }
     a_tmp = &a_list;
@@ -1272,7 +1276,7 @@ static void auth_completion_func(int rc, zhandle_t* zh)
         return;
 
     {
-        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
         if(rc!=0){
             zh->state=ZOO_AUTH_FAILED_STATE;
         }else{
@@ -1329,7 +1333,7 @@ static int send_auth_info(zhandle_t *zh) {
     auth_info *auth = NULL;
 
     {
-        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
         auth = zh->auth_h.auth;
         if (auth == NULL) {
             return ZOK;
@@ -1348,7 +1352,7 @@ static int send_last_auth_info(zhandle_t *zh)
     int rc = 0;
     auth_info *auth = NULL;
     {
-        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
         auth = get_last_auth(&zh->auth_h);
         if(auth==NULL) {
           return ZOK; // there is nothing to send
@@ -1828,16 +1832,18 @@ error:
 completion_list_t *dequeue_completion(completion_head_t *list)
 {
     completion_list_t *cptr;
-    lock_completion_list(list);
-    cptr = list->head;
-    if (cptr) {
-        list->head = cptr->next;
-        if (!list->head) {
-            assert(list->last == cptr);
-            list->last = 0;
+    {
+        boost::lock_guard<boost::mutex> lock(*(list->lock));
+        cptr = list->head;
+        if (cptr) {
+            list->head = cptr->next;
+            if (!list->head) {
+                assert(list->last == cptr);
+                list->last = 0;
+            }
         }
+        list->cond->notify_all();
     }
-    unlock_completion_list(list);
     return cptr;
 }
 
@@ -2384,9 +2390,9 @@ static void queue_completion(completion_head_t *list, completion_list_t *c,
         int add_to_front)
 {
 
-    lock_completion_list(list);
+    boost::lock_guard<boost::mutex> lock(*(list->lock));
     queue_completion_nolock(list, c, add_to_front);
-    unlock_completion_list(list);
+    list->cond->notify_all();
 }
 
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
@@ -2398,18 +2404,20 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
     int rc = 0;
     if (!c)
         return ZSYSTEMERROR;
-    lock_completion_list(&zh->sent_requests);
-    if (zh->close_requested != 1) {
-        queue_completion_nolock(&zh->sent_requests, c, add_to_front);
-        if (dc == SYNCHRONOUS_MARKER) {
-            zh->outstanding_sync++;
+    {
+        boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
+        if (zh->close_requested != 1) {
+            queue_completion_nolock(&zh->sent_requests, c, add_to_front);
+            if (dc == SYNCHRONOUS_MARKER) {
+                zh->outstanding_sync++;
+            }
+            rc = ZOK;
+        } else {
+            free(c);
+            rc = ZINVALIDSTATE;
         }
-        rc = ZOK;
-    } else {
-        free(c);
-        rc = ZINVALIDSTATE;
+        (*(zh->sent_requests.cond)).notify_all();
     }
-    unlock_completion_list(&zh->sent_requests);
     return rc;
 }
 
@@ -3073,6 +3081,8 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
     struct MultiHeader mh = { STRUCT_INITIALIZER(type, -1), STRUCT_INITIALIZER(done, 1), STRUCT_INITIALIZER(err, -1) };
     struct oarchive *oa = create_buffer_oarchive();
     completion_head_t clist = { 0 };
+    clist.lock.reset(new boost::mutex());
+    clist.cond.reset(new boost::condition_variable());
 
     int rc = serialize_RequestHeader(oa, "header", &h);
 
@@ -3391,7 +3401,7 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
     }
 
     {
-        boost::lock_guard<boost::mutex> lock(*(zh->auth_h.mutex_));
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
         authinfo = (auth_info*) malloc(sizeof(auth_info));
         authinfo->scheme=strdup(scheme);
         authinfo->auth=auth;

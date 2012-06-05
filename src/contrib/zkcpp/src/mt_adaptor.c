@@ -45,15 +45,6 @@ ENABLE_LOGGING;
 #include <sys/time.h>
 #endif
 
-void lock_completion_list(completion_head_t *l)
-{
-    pthread_mutex_lock(&l->lock);
-}
-void unlock_completion_list(completion_head_t *l)
-{
-    pthread_cond_broadcast(&l->cond);
-    pthread_mutex_unlock(&l->lock);
-}
 struct sync_completion *alloc_sync_completion(void)
 {
     struct sync_completion *sc = (struct sync_completion*)calloc(1, sizeof(struct sync_completion));
@@ -236,11 +227,6 @@ int adaptor_init(zhandle_t *zh)
 
     zh->adaptor_priv = adaptor_threads;
     pthread_mutex_init(&adaptor_threads->zh_lock,0);
-
-    pthread_mutex_init(&zh->sent_requests.lock,0);
-    pthread_cond_init(&zh->sent_requests.cond,0);
-    pthread_mutex_init(&zh->completions_to_process.lock,0);
-    pthread_cond_init(&zh->completions_to_process.cond,0);
     start_threads(zh);
     return 0;
 }
@@ -263,10 +249,10 @@ void adaptor_finish(zhandle_t *zh)
         pthread_detach(adaptor_threads->io);
     
     if(!pthread_equal(adaptor_threads->completion,pthread_self())){
-        pthread_mutex_lock(&zh->completions_to_process.lock);
-        pthread_cond_broadcast(&zh->completions_to_process.cond);
-        pthread_mutex_unlock(&zh->completions_to_process.lock);
-        pthread_join(adaptor_threads->completion, 0);
+      boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
+      (*(zh->completions_to_process.cond)).notify_all();
+      lock.unlock();
+      pthread_join(adaptor_threads->completion, 0);
     }else
         pthread_detach(adaptor_threads->completion);
     
@@ -280,10 +266,6 @@ void adaptor_destroy(zhandle_t *zh)
     
     pthread_cond_destroy(&adaptor->cond);
     pthread_mutex_destroy(&adaptor->lock);
-    pthread_mutex_destroy(&zh->sent_requests.lock);
-    pthread_cond_destroy(&zh->sent_requests.cond);
-    pthread_mutex_destroy(&zh->completions_to_process.lock);
-    pthread_cond_destroy(&zh->completions_to_process.cond);
     pthread_mutex_destroy(&adaptor->zh_lock);
 
     close(adaptor->self_pipe[0]);
@@ -430,11 +412,11 @@ void *do_completion(void *v)
     notify_thread_ready(zh);
     LOG_DEBUG("started completion thread");
     while(!zh->close_requested) {
-        pthread_mutex_lock(&zh->completions_to_process.lock);
+        boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
         while(!zh->completions_to_process.head && !zh->close_requested) {
-            pthread_cond_wait(&zh->completions_to_process.cond, &zh->completions_to_process.lock);
+            (*(zh->completions_to_process.cond)).wait(lock);
         }
-        pthread_mutex_unlock(&zh->completions_to_process.lock);
+        lock.unlock();
         process_completions(zh);
     }
     api_epilog(zh, 0);    
