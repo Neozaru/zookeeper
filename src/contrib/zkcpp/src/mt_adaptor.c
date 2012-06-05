@@ -47,38 +47,29 @@ ENABLE_LOGGING;
 
 struct sync_completion *alloc_sync_completion(void)
 {
-    struct sync_completion *sc = (struct sync_completion*)calloc(1, sizeof(struct sync_completion));
-    if (sc) {
-       pthread_cond_init(&sc->cond, 0);
-       pthread_mutex_init(&sc->lock, 0);
-    }
-    return sc;
+    return (struct sync_completion*)calloc(1, sizeof(struct sync_completion));
 }
 int wait_sync_completion(struct sync_completion *sc)
 {
-    pthread_mutex_lock(&sc->lock);
+    boost::unique_lock<boost::mutex> lock(sc->lock_);
     while (!sc->complete) {
-        pthread_cond_wait(&sc->cond, &sc->lock);
+        sc->cond_.wait(lock);
     }
-    pthread_mutex_unlock(&sc->lock);
     return 0;
 }
 
 void free_sync_completion(struct sync_completion *sc)
 {
     if (sc) {
-        pthread_mutex_destroy(&sc->lock);
-        pthread_cond_destroy(&sc->cond);
         free(sc);
     }
 }
 
 void notify_sync_completion(struct sync_completion *sc)
 {
-    pthread_mutex_lock(&sc->lock);
+    boost::unique_lock<boost::mutex> lock(sc->lock_);
     sc->complete = 1;
-    pthread_cond_broadcast(&sc->cond);
-    pthread_mutex_unlock(&sc->lock);
+    sc->cond_.notify_all();
 }
 
 int process_async(int outstanding_sync)
@@ -165,21 +156,21 @@ static int set_nonblock(int fd){
 void wait_for_others(zhandle_t* zh)
 {
     struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-    pthread_mutex_lock(&adaptor->lock);
-    while(adaptor->threadsToWait>0) 
-        pthread_cond_wait(&adaptor->cond,&adaptor->lock);
-    pthread_mutex_unlock(&adaptor->lock);    
+    boost::unique_lock<boost::mutex> lock(adaptor->lock);
+    while(adaptor->threadsToWait>0) {
+        adaptor->cond.wait(lock);
+    }
 }
 
 void notify_thread_ready(zhandle_t* zh)
 {
     struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-    pthread_mutex_lock(&adaptor->lock);
+    boost::unique_lock<boost::mutex> lock(adaptor->lock);
     adaptor->threadsToWait--;
-    pthread_cond_broadcast(&adaptor->cond);
-    while(adaptor->threadsToWait>0) 
-        pthread_cond_wait(&adaptor->cond,&adaptor->lock);
-    pthread_mutex_unlock(&adaptor->lock);
+    adaptor->cond.notify_all();
+    while(adaptor->threadsToWait>0) {
+        adaptor->cond.wait(lock);
+    }
 }
 
 
@@ -187,8 +178,6 @@ void start_threads(zhandle_t* zh)
 {
     int rc = 0;
     struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-    pthread_cond_init(&adaptor->cond,0);
-    pthread_mutex_init(&adaptor->lock,0);
     adaptor->threadsToWait=2;  // wait for 2 threads before opening the barrier
     
     // use api_prolog() to make sure zhandle doesn't get destroyed
@@ -226,7 +215,6 @@ int adaptor_init(zhandle_t *zh)
     set_nonblock(adaptor_threads->self_pipe[0]);
 
     zh->adaptor_priv = adaptor_threads;
-    pthread_mutex_init(&adaptor_threads->zh_lock,0);
     start_threads(zh);
     return 0;
 }
@@ -263,10 +251,6 @@ void adaptor_destroy(zhandle_t *zh)
 {
     struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
     if(adaptor==0) return;
-    
-    pthread_cond_destroy(&adaptor->cond);
-    pthread_mutex_destroy(&adaptor->lock);
-    pthread_mutex_destroy(&adaptor->zh_lock);
 
     close(adaptor->self_pipe[0]);
     close(adaptor->self_pipe[1]);
@@ -472,13 +456,15 @@ __attribute__((constructor)) int32_t get_xid()
 void enter_critical(zhandle_t* zh)
 {
     struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
-    if(adaptor)
-        pthread_mutex_lock(&adaptor->zh_lock);
+    if(adaptor) {
+        adaptor->zh_lock.lock();
+    }
 }
 
 void leave_critical(zhandle_t* zh)
 {
     struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
-    if(adaptor)
-        pthread_mutex_unlock(&adaptor->zh_lock);    
+    if(adaptor) {
+        adaptor->zh_lock.unlock();
+    }
 }

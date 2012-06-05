@@ -102,10 +102,8 @@ struct sync_completion {
         } strs_stat;
     } u;
     int complete;
-#ifdef THREADED
-    pthread_cond_t cond;
-    pthread_mutex_t lock;
-#endif
+    boost::condition_variable cond_;
+    boost::mutex lock_;
 };
 
 typedef struct _auth_info {
@@ -155,9 +153,10 @@ struct adaptor_threads {
      pthread_t io;
      pthread_t completion;
      int threadsToWait;         // barrier
-     pthread_cond_t cond;       // barrier's conditional
-     pthread_mutex_t lock;      // ... and a lock
-     pthread_mutex_t zh_lock;   // critical section lock
+     boost::condition_variable cond;  // barrier's conditional   
+     boost::mutex lock;               // ... and a lock
+     boost::mutex zh_lock;            // critical section lock
+
 #ifdef WIN32
      SOCKET self_pipe[2];
 #else
