@@ -102,13 +102,11 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(TestCppClient);
     // figure out why these tests mess up others.
-    #if 0
     CPPUNIT_TEST(testInit);
     CPPUNIT_TEST(testCreate);
     CPPUNIT_TEST(testBasic);
     CPPUNIT_TEST(testAcl);
     CPPUNIT_TEST(testAddAuth);
-    #endif
     CPPUNIT_TEST_SUITE_END();
     const std::string HOSTPORT;
 
@@ -148,10 +146,10 @@ public:
         CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk.getState());
         stopServer();
         CPPUNIT_ASSERT_EQUAL(SessionState::Connecting, zk.getState());
+        startServer();
     }
 
     void testCreate() {
-        startServer();
         ZooKeeper zk, zk2;
         ZnodeStat stat;
         std::string pathCreated;
@@ -193,12 +191,9 @@ public:
         CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
         CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
         CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
-
-        stopServer();
     }
 
     void testBasic() {
-        startServer();
         ZooKeeper zk;
         ZnodeStat stat;
         std::string znodeName = "/testBasic";
@@ -342,12 +337,9 @@ public:
         // remove() nonexistent znode.
         rc = zk.remove(znodeName, 1);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
-
-        stopServer();
     }
 
     void testAcl() {
-        startServer();
         ZooKeeper zk;
         ZnodeStat stat;
         std::vector<Acl> acl, aclOut;
@@ -380,17 +372,23 @@ public:
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.setAcl("/", -1, acl));
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.getAcl("/", aclOut, stat));
 
-        // ACL of "/" has been modified once.
+        // ACL of "/" has been modified.
         CPPUNIT_ASSERT_EQUAL(acl.size(), aclOut.size());
         for (int i = 0; i < acl.size(); i++) {
           CPPUNIT_ASSERT(std::find(aclOut.begin(), aclOut.end(), acl[i]) !=
                          aclOut.end());
         }
-        stopServer();
+
+        // Reset root acl to world anyone.
+        std::string scheme = "digest";
+        std::string cert = "user1:password1";
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.addAuth(scheme, cert));
+        acl.clear();
+        acl.push_back(Acl("world", "anyone", Permission::All));
+        CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.setAcl("/", -1, acl));
     }
 
     void testAddAuth() {
-        startServer();
         ZooKeeper zk, zk2;
         std::string pathCreated;
         std::vector<Acl> acls;
@@ -474,8 +472,6 @@ public:
         zk2.getAcl("/ip", acls, stat);
         rc = zk2.set("/ip", "new data", -1, stat);
         CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
-
-        stopServer();
     }
 };
 

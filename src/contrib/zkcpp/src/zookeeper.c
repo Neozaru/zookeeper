@@ -1323,7 +1323,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
             get_buffer_len(oa));
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
-
+    adaptor_send_queue(zh, 0);
     return rc;
 }
 
