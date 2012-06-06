@@ -8,7 +8,6 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/generated
   ${PROJECT_SOURCE_DIR}/src
-  ${PROJECT_SOURCE_DIR}/src/hashtable
   ${PROJECT_SOURCE_DIR}/tests
 )
 
@@ -16,13 +15,11 @@ file(GLOB header
   ${PROJECT_SOURCE_DIR}/include/*h
   ${PROJECT_SOURCE_DIR}/generated/*h
   ${PROJECT_SOURCE_DIR}/src/*h
-  ${PROJECT_SOURCE_DIR}/src/hashtable/*h
 )
 
 file(GLOB source
   ${PROJECT_SOURCE_DIR}/src/*.cc
   ${PROJECT_SOURCE_DIR}/src/*.c
-  ${PROJECT_SOURCE_DIR}/src/hashtable/*.c
   ${PROJECT_SOURCE_DIR}/generated/*.c
 )
 
@@ -30,7 +27,6 @@ file(GLOB source
 file(GLOB testsrc
   ${PROJECT_SOURCE_DIR}/src/*.cc
   ${PROJECT_SOURCE_DIR}/src/*.c
-  ${PROJECT_SOURCE_DIR}/src/hashtable/*.c
   ${PROJECT_SOURCE_DIR}/generated/*.c
   ${PROJECT_SOURCE_DIR}/tests/*.cc
   ${PROJECT_SOURCE_DIR}/tests/*.c

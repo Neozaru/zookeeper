@@ -18,8 +18,7 @@
 
 #include "zk_hashtable.h"
 #include "zk_adaptor.h"
-#include "hashtable/hashtable.h"
-#include "hashtable/hashtable_itr.h"
+#include <boost/unordered_map.hpp>
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -32,26 +31,21 @@ typedef struct _watcher_object {
 
 
 struct _zk_hashtable {
-    struct hashtable* ht;
+    boost::unordered_map<std::string, watcher_object_list_t*> map;
 };
 
 struct watcher_object_list {
     watcher_object_t* head;
 };
 
-/* the following functions are for testing only */
-typedef struct hashtable hashtable_impl;
-
-hashtable_impl* getImpl(zk_hashtable* ht){
-    return ht->ht;
-}
-
 watcher_object_t* getFirstWatcher(zk_hashtable* ht,const char* path)
 {
-    watcher_object_list_t* wl=(watcher_object_list_t*)hashtable_search(ht->ht,(void*)path);
-    if(wl!=0)
-        return wl->head;
-    return 0;
+    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+    itr = ht->map.find(path);
+    if (itr == ht->map.end()) {
+        return 0;
+    }
+    return itr->second->head;
 }
 /* end of testing functions */
 
@@ -116,30 +110,23 @@ zk_hashtable* create_zk_hashtable()
 {
     struct _zk_hashtable *ht=(_zk_hashtable*)calloc(1,sizeof(struct _zk_hashtable));
     assert(ht);
-    ht->ht=create_hashtable(32,string_hash_djb2,string_equal);
+    ht->map = boost::unordered_map<std::string, watcher_object_list_t*>();
     return ht;
 }
 
 static void do_clean_hashtable(zk_hashtable* ht)
 {
-    struct hashtable_itr *it;
-    int hasMore;
-    if(hashtable_count(ht->ht)==0)
-        return;
-    it=hashtable_iterator(ht->ht);
-    do {
-        watcher_object_list_t* w=(watcher_object_list_t*)hashtable_iterator_value(it);
-        destroy_watcher_object_list(w);
-        hasMore=hashtable_iterator_remove(it);
-    } while(hasMore);
-    free(it);
+    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+    for (itr = ht->map.begin(); itr != ht->map.end(); itr++) {
+        destroy_watcher_object_list(itr->second);
+    }
+    ht->map.clear();
 }
 
 void destroy_zk_hashtable(zk_hashtable* ht)
 {
     if(ht!=0){
         do_clean_hashtable(ht);
-        hashtable_destroy(ht->ht,0);
         free(ht);
     }
 }
@@ -180,36 +167,33 @@ static int add_to_list(watcher_object_list_t **wl, watcher_object_t *wo,
 static int do_insert_watcher_object(zk_hashtable *ht, const char *path, watcher_object_t* wo)
 {
     int res=1;
-    watcher_object_list_t* wl;
-
-    wl=(watcher_object_list_t*)hashtable_search(ht->ht,(void*)path);
-    if(wl==0){
-        int res;
-        /* inserting a new path element */
-        res=hashtable_insert(ht->ht,strdup(path),create_watcher_object_list(wo));
-        assert(res);
-    }else{
-        /* path already exists; check if the watcher already exists */
-        res = add_to_list(&wl, wo, 1);
+    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+    itr = ht->map.find(path);
+    if (itr == ht->map.end()) {
+        ht->map[path] = create_watcher_object_list(wo);
+    } else {
+        res = add_to_list(&(itr->second), wo, 1);
     }
-    return res;    
+    return res;
 }
 
 
 char **collect_keys(zk_hashtable *ht, int *count)
 {
+
     char **list;
     struct hashtable_itr *it;
-    int i;
+    int i = 0;
 
-    *count = hashtable_count(ht->ht);
+    *count = ht->map.size();
+    if (*count == 0) return NULL;
     list = (char**)calloc(*count, sizeof(char*));
-    it=hashtable_iterator(ht->ht);
-    for(i = 0; i < *count; i++) {
-        list[i] = (char*)strdup((const char*)hashtable_iterator_key(it));
-        hashtable_iterator_advance(it);
+    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+    for (itr = ht->map.begin(); itr != ht->map.end(); itr++) {
+        list[i] = strdup(itr->first.c_str());
+        i++;
     }
-    free(it);
+    assert(i == *count);
     return list;
 }
 
@@ -232,17 +216,12 @@ static void copy_watchers(watcher_object_list_t *from, watcher_object_list_t *to
 }
 
 static void copy_table(zk_hashtable *from, watcher_object_list_t *to) {
-    struct hashtable_itr *it;
-    int hasMore;
-    if(hashtable_count(from->ht)==0)
-        return;
-    it=hashtable_iterator(from->ht);
-    do {
-        watcher_object_list_t *w = (watcher_object_list_t*)hashtable_iterator_value(it);
-        copy_watchers(w, to, 1);
-        hasMore=hashtable_iterator_advance(it);
-    } while(hasMore);
-    free(it);
+    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+    for (itr = from->map.begin(); itr != from->map.end(); itr++) {
+        assert(itr->second);
+        assert(to);
+        copy_watchers(itr->second, to, 1);
+    }
 }
 
 static void collect_session_watchers(zhandle_t *zh,
@@ -255,14 +234,18 @@ static void collect_session_watchers(zhandle_t *zh,
 
 static void add_for_event(zk_hashtable *ht, char *path, watcher_object_list_t **list)
 {
+
     watcher_object_list_t* wl;
-    wl = (watcher_object_list_t*)hashtable_remove(ht->ht, path);
-    if (wl) {
-        copy_watchers(wl, *list, 0);
-        // Since we move, not clone the watch_objects, we just need to free the
-        // head pointer
-        free(wl);
+
+    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+    itr = ht->map.find(path);
+    if (itr == ht->map.end()) {
+        return;
     }
+    wl = itr->second;
+    ht->map.erase(itr);
+    copy_watchers(wl, *list, 0);
+    free(wl);
 }
 
 static void do_foreach_watcher(watcher_object_t* wo,zhandle_t* zh,
