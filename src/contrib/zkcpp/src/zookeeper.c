@@ -22,6 +22,9 @@
 
 #include <boost/thread/locks.hpp>
 #include <boost/foreach.hpp>
+#include <boost/random.hpp>
+#include <boost/random/mersenne_twister.hpp> // mt19937
+#include <boost/random/normal_distribution.hpp>
 #include <string>
 #include <zookeeper.h>
 #include <zookeeper.jute.h>
@@ -347,20 +350,6 @@ static void destroy(zhandle_t *zh)
     destroy_zk_hashtable(zh->active_child_watchers);
 }
 
-// TODO(michim) use boost
-static void setup_random() {
-  int seed;
-  int fd = open("/dev/urandom", O_RDONLY);
-  if (fd == -1) {
-    seed = getpid();
-  } else {
-    int rc = read(fd, &seed, sizeof(seed));
-    assert(rc == sizeof(seed));
-    close(fd);
-  }
-  srandom(seed);
-}
-
 /**
  * get the errno from the return code of get addrinfo. Errno is not set with the
  * call to getaddrinfo, so thats why we have to do this.
@@ -511,7 +500,7 @@ int getaddrs(zhandle_t *zh) {
     free(hosts);
 
     if(!disable_conn_permute){
-      setup_random();
+      srandom(time(NULL));
       /* Permute */
       for (i = zh->addrs_count - 1; i > 0; --i) {
         long int j = random()%(i+1);
