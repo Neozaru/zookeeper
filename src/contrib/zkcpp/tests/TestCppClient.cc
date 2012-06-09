@@ -56,7 +56,7 @@ class TestInitWatch : public Watch {
                 connected = true;
             }
             cond.notify_all();
-          } else if (state = SessionState::AuthFailed) {
+          } else if (state == SessionState::AuthFailed) {
             {
                 boost::lock_guard<boost::mutex> lock(mutex);
                 authFailed_ = true;
