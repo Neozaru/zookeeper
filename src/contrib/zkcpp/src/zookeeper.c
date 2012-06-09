@@ -25,6 +25,7 @@
 #endif
 
 #include <boost/thread/locks.hpp>
+#include <boost/foreach.hpp>
 #include <string>
 #include <zookeeper.h>
 #include <zookeeper.jute.h>
@@ -238,18 +239,6 @@ int zoo_recv_timeout(zhandle_t *zh)
 
 /** these functions are thread unsafe, so make sure that
     zoo_lock_auth is called before you access them **/
-static auth_info* get_last_auth(auth_list_head_t *auth_list) {
-    auth_info *element;
-    element = auth_list->auth;
-    if (element == NULL) {
-        return NULL;
-    }
-    while (element->next != NULL) {
-        element = element->next;
-    }
-    return element;
-}
-
 static void free_auth_completion(auth_completion_list_t *a_list) {
     auth_completion_list_t *tmp, *ftmp;
     if (a_list == NULL) {
@@ -293,66 +282,18 @@ static void add_auth_completion(auth_completion_list_t* a_list, void_completion_
 }
 
 static void get_auth_completions(auth_list_head_t *auth_list, auth_completion_list_t *a_list) {
-    auth_info *element;
-    element = auth_list->auth;
-    if (element == NULL) {
-        return;
+  BOOST_FOREACH(auth_info& info, auth_list->authList_) {
+    if (info.completion) {
+      add_auth_completion(a_list, &(info.completion), info.data);
+      info.completion = NULL;
     }
-    while (element) {
-        if (element->completion) {
-            add_auth_completion(a_list, &element->completion, element->data);
-        }
-        element->completion = NULL;
-        element = element->next;
-    }
-    return;
-}
-
-static void add_last_auth(auth_list_head_t *auth_list, auth_info *add_el) {
-    auth_info  *element;
-    element = auth_list->auth;
-    if (element == NULL) {
-        //first element in the list
-        auth_list->auth = add_el;
-        return;
-    }
-    while (element->next != NULL) {
-        element = element->next;
-    }
-    element->next = add_el;
-    return;
-}
-
-static void init_auth_info(auth_list_head_t *auth_list)
-{
-    auth_list->auth = NULL;
+  }
 }
 
 static void mark_active_auth(zhandle_t *zh) {
-    auth_info *element;
-    if (zh->auth_h.auth == NULL) {
-        return;
-    }
-    element = zh->auth_h.auth;
-    while (element != NULL) {
-        element->state = 1;
-        element = element->next;
-    }
-}
-
-static void free_auth_info(auth_list_head_t *auth_list)
-{
-    auth_info *auth = auth_list->auth;
-    while (auth != NULL) {
-        auth_info* old_auth = NULL;
-        if(auth->scheme!=NULL)
-            free(auth->scheme);
-        deallocate_Buffer(&auth->auth);
-        old_auth = auth;
-        auth = auth->next;
-        free(old_auth);
-    }
-    init_auth_info(auth_list);
+  BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
+    info.state = 1;
+  }
 }
 
 int is_unrecoverable(zhandle_t *zh)
@@ -410,7 +351,7 @@ static void destroy(zhandle_t *zh)
         zh->chroot = NULL;
     }
 
-    free_auth_info(&zh->auth_h);
+    zh->auth_h.get()->authList_.clear();
     destroy_zk_hashtable(zh->active_node_watchers);
     destroy_zk_hashtable(zh->active_exist_watchers);
     destroy_zk_hashtable(zh->active_child_watchers);
@@ -800,7 +741,7 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->state = NOTCONNECTED_STATE_DEF;
     zh->context = context;
     zh->recv_timeout = recv_timeout;
-    init_auth_info(&zh->auth_h);
+    zh->auth_h.reset(new auth_list_head_t());
     zh->to_process.mutex_.reset(new boost::recursive_mutex());
     zh->to_send.mutex_.reset(new boost::recursive_mutex());
     if (watcher) {
@@ -1206,8 +1147,8 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
     a_list.completion = NULL;
     a_list.next = NULL;
     {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
-        get_auth_completions(&zh->auth_h, &a_list);
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
+        get_auth_completions(zh->auth_h.get(), &a_list);
     }
     a_tmp = &a_list;
     // chain call user's completion function
@@ -1276,7 +1217,7 @@ static void auth_completion_func(int rc, zhandle_t* zh)
         return;
 
     {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
         if(rc!=0){
             zh->state=ZOO_AUTH_FAILED_STATE;
         }else{
@@ -1285,14 +1226,14 @@ static void auth_completion_func(int rc, zhandle_t* zh)
         }
         a_list.completion = NULL;
         a_list.next = NULL;
-        get_auth_completions(&zh->auth_h, &a_list);
+        get_auth_completions(zh->auth_h.get(), &a_list);
     }
     if (rc) {
-        LOG_ERROR("Authentication scheme " << zh->auth_h.auth->scheme <<
+        LOG_ERROR("Authentication scheme " << zh->auth_h.get()->authList_.front().scheme <<
                   " failed. Connection closed.");
     }
     else {
-        LOG_INFO("Authentication scheme " << zh->auth_h.auth->scheme <<
+        LOG_INFO("Authentication scheme " << zh->auth_h.get()->authList_.front().scheme <<
                  " succeeded.");
     }
     a_tmp = &a_list;
@@ -1315,7 +1256,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
     oa = create_buffer_oarchive();
     rc = serialize_RequestHeader(oa, "header", &h);
     req.type=0;   // ignored by the server
-    req.scheme = auth->scheme;
+    req.scheme = (char*)(auth->scheme.c_str());
     req.auth = auth->auth;
     rc = rc < 0 ? rc : serialize_AuthPacket(oa, "req", &req);
     /* add this buffer to the head of the send queue */
@@ -1330,37 +1271,27 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
 /** send all auths, not just the last one **/
 static int send_auth_info(zhandle_t *zh) {
     int rc = 0;
-    auth_info *auth = NULL;
-
     {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
-        auth = zh->auth_h.auth;
-        if (auth == NULL) {
-            return ZOK;
-        }
-        while (auth != NULL) {
-            rc = send_info_packet(zh, auth);
-            auth = auth->next;
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
+        BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
+          rc = send_info_packet(zh, &info);
         }
     }
     LOG_DEBUG("Sending all auth info request to " << format_current_endpoint_info(zh));
     return (rc <0) ? ZMARSHALLINGERROR:ZOK;
 }
 
-static int send_last_auth_info(zhandle_t *zh)
-{    
-    int rc = 0;
-    auth_info *auth = NULL;
-    {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
-        auth = get_last_auth(&zh->auth_h);
-        if(auth==NULL) {
-          return ZOK; // there is nothing to send
-        }
-        rc = send_info_packet(zh, auth);
+static int send_last_auth_info(zhandle_t *zh) {
+  int rc = 0;
+  {
+    boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
+    if (zh->auth_h.get()->authList_.empty()) {
+      return ZOK; // there is nothing to send
     }
-    LOG_DEBUG("Sending auth info request to " << format_current_endpoint_info(zh));
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+    rc = send_info_packet(zh, &(zh->auth_h.get()->authList_.back()));
+  }
+  LOG_DEBUG("Sending auth info request to " << format_current_endpoint_info(zh));
+  return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
 }
 
 static void free_key_list(char **list, int count)
@@ -3401,14 +3332,13 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
     }
 
     {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
-        authinfo = (auth_info*) malloc(sizeof(auth_info));
-        authinfo->scheme=strdup(scheme);
-        authinfo->auth=auth;
+        boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
+        authinfo = new auth_info();
+        authinfo->scheme = scheme;
+        authinfo->auth = auth;
         authinfo->completion=completion;
         authinfo->data=(const char*)data;
-        authinfo->next = NULL;
-        add_last_auth(&zh->auth_h, authinfo);
+        zh->auth_h.get()->authList_.push_back(authinfo);
     }
 
     if(zh->state == ZOO_CONNECTED_STATE || zh->state == ZOO_ASSOCIATING_STATE)

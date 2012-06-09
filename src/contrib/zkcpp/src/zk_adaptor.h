@@ -20,10 +20,12 @@
 #define ZK_ADAPTOR_H_
 #include <zookeeper.jute.h>
 #ifdef THREADED
+#include <boost/scoped_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/condition.hpp>
+#include <boost/ptr_container/ptr_list.hpp>
 #include "winport.h"
 #endif
 #include "zookeeper.h"
@@ -103,14 +105,18 @@ struct sync_completion {
     boost::mutex lock_;
 };
 
-typedef struct _auth_info {
+class auth_info {
+  public:
+    auth_info() : scheme("") {}
+    ~auth_info() {
+      deallocate_Buffer(&auth);
+    }
     int state; /* 0=>inactive, >0 => active */
-    char* scheme;
+    std::string scheme;
     struct buffer auth;
     void_completion_t completion;
     const char* data;
-    struct _auth_info *next;
-} auth_info;
+};
 
 /**
  * This structure represents a packet being read or written.
@@ -163,10 +169,13 @@ struct adaptor_threads {
 #endif
 
 /** the auth list for adding auth */
-typedef struct _auth_list_head {
-     auth_info *auth;
-     boost::mutex mutex_;
-} auth_list_head_t;
+class auth_list_head_t {
+  public:
+    auth_list_head_t() : authList_(boost::ptr_list<auth_info>()) {
+    }
+    boost::ptr_list<auth_info> authList_;
+    boost::mutex mutex_;
+};
 
 /**
  * This structure represents the connection to zookeeper.
@@ -202,7 +211,7 @@ struct _zhandle {
     char primer_storage_buffer[40]; /* the true size of primer_storage */
     volatile int state;
     void *context;
-    auth_list_head_t auth_h; /* authentication data list */
+    boost::scoped_ptr<auth_list_head_t> auth_h; /* authentication data list */
     /* zookeeper_close is not reentrant because it de-allocates the zhandler. 
      * This guard variable is used to defer the destruction of zhandle till 
      * right before top-level API call returns to the caller */
