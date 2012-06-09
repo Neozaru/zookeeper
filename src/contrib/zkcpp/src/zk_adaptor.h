@@ -25,7 +25,6 @@
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/condition.hpp>
 #include <boost/ptr_container/ptr_list.hpp>
-#include "winport.h"
 #include "zookeeper.h"
 #include "zk_hashtable.h"
 

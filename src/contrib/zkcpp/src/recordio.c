@@ -21,9 +21,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
-#ifndef WIN32
-#include <netinet/in.h>
-#endif
+#include <boost/asio.hpp> // htonl, ntohl
 
 void deallocate_String(char **s)
 {

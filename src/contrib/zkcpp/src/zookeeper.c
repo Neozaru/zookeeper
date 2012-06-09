@@ -20,10 +20,6 @@
 #  define USE_STATIC_LIB
 #endif
 
-#if defined(__CYGWIN__)
-#define USE_IPV6
-#endif
-
 #include <boost/thread/locks.hpp>
 #include <boost/foreach.hpp>
 #include <string>
@@ -45,7 +41,6 @@ ENABLE_LOGGING;
 #include <stdarg.h>
 #include <limits.h>
 
-#ifndef WIN32
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <poll.h>
@@ -55,7 +50,6 @@ ENABLE_LOGGING;
 #include <netdb.h>
 #include <unistd.h>
 #include "config.h"
-#endif
 
 #ifdef HAVE_SYS_UTSNAME_H
 #include <sys/utsname.h>
@@ -207,11 +201,7 @@ static int disable_conn_permute=0; // permute enabled by default
 static void *SYNCHRONOUS_MARKER = (void*)&SYNCHRONOUS_MARKER;
 static int isValidPath(const char* path, const int flags);
 
-#ifdef _WINDOWS
-static int zookeeper_send(SOCKET s, const char* buf, int len)
-#else
 static ssize_t zookeeper_send(int s, const void* buf, size_t len)
-#endif
 {
 #ifdef __linux__
   return send(s, buf, len, MSG_NOSIGNAL);
@@ -357,30 +347,25 @@ static void destroy(zhandle_t *zh)
     destroy_zk_hashtable(zh->active_child_watchers);
 }
 
-static void setup_random()
-{
-#ifndef WIN32          // TODO: better seed
-    int seed;
-    int fd = open("/dev/urandom", O_RDONLY);
-    if (fd == -1) {
-        seed = getpid();
-    } else {
-        int rc = read(fd, &seed, sizeof(seed));
-        assert(rc == sizeof(seed));
-        close(fd);
-    }
-    srandom(seed);
-#endif
+// TODO(michim) use boost
+static void setup_random() {
+  int seed;
+  int fd = open("/dev/urandom", O_RDONLY);
+  if (fd == -1) {
+    seed = getpid();
+  } else {
+    int rc = read(fd, &seed, sizeof(seed));
+    assert(rc == sizeof(seed));
+    close(fd);
+  }
+  srandom(seed);
 }
 
-#ifndef __CYGWIN__
 /**
- * get the errno from the return code 
- * of get addrinfo. Errno is not set
- * with the call to getaddrinfo, so thats
- * why we have to do this.
+ * get the errno from the return code of get addrinfo. Errno is not set with the
+ * call to getaddrinfo, so thats why we have to do this.
  */
-static int getaddrinfo_errno(int rc) { 
+static int getaddrinfo_errno(int rc) {
     switch(rc) {
     case EAI_NONAME:
 // ZOOKEEPER-1323 EAI_NODATA and EAI_ADDRFAMILY are deprecated in FreeBSD.
@@ -394,223 +379,160 @@ static int getaddrinfo_errno(int rc) {
         return EINVAL;
     }
 }
-#endif
 
 /**
  * fill in the addrs array of the zookeeper servers in the zhandle. after filling
  * them in, we will permute them for load balancing.
  */
-int getaddrs(zhandle_t *zh)
-{
-    char *hosts = strdup(zh->hostname);
-    char *host;
-    char *strtok_last;
-    struct sockaddr_storage *addr;
-    int i;
-    int rc;
-    int alen = 0; /* the allocated length of the addrs array */
+int getaddrs(zhandle_t *zh) {
+  char *hosts = strdup(zh->hostname);
+  char *host;
+  char *strtok_last;
+  struct sockaddr_storage *addr;
+  int i;
+  int rc;
+  int alen = 0; /* the allocated length of the addrs array */
 
-    zh->addrs_count = 0;
-    if (zh->addrs) {
-        free(zh->addrs);
-        zh->addrs = 0;
-    }
-    if (!hosts) {
-         LOG_ERROR("out of memory");
-        errno=ENOMEM;
-        return ZSYSTEMERROR;
-    }
+  zh->addrs_count = 0;
+  if (zh->addrs) {
+    free(zh->addrs);
     zh->addrs = 0;
-    host=strtok_r(hosts, ",", &strtok_last);
-    while(host) {
-        char *port_spec = strrchr(host, ':');
-        char *end_port_spec;
-        int port;
-        if (!port_spec) {
-            LOG_ERROR("no port in " << host);
-            errno=EINVAL;
-            rc=ZBADARGUMENTS;
-            goto fail;
-        }
-        *port_spec = '\0';
-        port_spec++;
-        port = strtol(port_spec, &end_port_spec, 0);
-        if (!*port_spec || *end_port_spec || port == 0) {
-            LOG_ERROR("invalid port in " << host);
-            errno=EINVAL;
-            rc=ZBADARGUMENTS;
-            goto fail;
-        }
-#if defined(__CYGWIN__)
-        // sadly CYGWIN doesn't have getaddrinfo
-        // but happily gethostbyname is threadsafe in windows
-        {
-        struct hostent *he;
-        char **ptr;
-        struct sockaddr_in *addr4;
+  }
+  if (!hosts) {
+    LOG_ERROR("out of memory");
+    errno=ENOMEM;
+    return ZSYSTEMERROR;
+  }
+  zh->addrs = 0;
+  host=strtok_r(hosts, ",", &strtok_last);
+  while(host) {
+    char *port_spec = strrchr(host, ':');
+    char *end_port_spec;
+    int port;
+    if (!port_spec) {
+      LOG_ERROR("no port in " << host);
+      errno=EINVAL;
+      rc=ZBADARGUMENTS;
+      goto fail;
+    }
+    *port_spec = '\0';
+    port_spec++;
+    port = strtol(port_spec, &end_port_spec, 0);
+    if (!*port_spec || *end_port_spec || port == 0) {
+      LOG_ERROR("invalid port in " << host);
+      errno=EINVAL;
+      rc=ZBADARGUMENTS;
+      goto fail;
+    }
+    {
+      struct addrinfo hints, *res, *res0;
 
-        he = gethostbyname(host);
-        if (!he) {
-            LOG_ERROR("could not resolve " << host);
-            errno=ENOENT;
-            rc=ZBADARGUMENTS;
-            goto fail;
-        }
-
-        /* Setup the address array */
-        for(ptr = he->h_addr_list;*ptr != 0; ptr++) {
-            if (zh->addrs_count == alen) {
-                alen += 16;
-                zh->addrs = realloc(zh->addrs, sizeof(*zh->addrs)*alen);
-                if (zh->addrs == 0) {
-                    LOG_ERROR("out of memory");
-                    errno=ENOMEM;
-                    rc=ZSYSTEMERROR;
-                    goto fail;
-                }
-            }
-            addr = &zh->addrs[zh->addrs_count];
-            addr4 = (struct sockaddr_in*)addr;
-            addr->ss_family = he->h_addrtype;
-            if (addr->ss_family == AF_INET) {
-                addr4->sin_port = htons(port);
-                memset(&addr4->sin_zero, 0, sizeof(addr4->sin_zero));
-                memcpy(&addr4->sin_addr, *ptr, he->h_length);
-                zh->addrs_count++;
-            }
-#if defined(AF_INET6)
-            else if (addr->ss_family == AF_INET6) {
-                struct sockaddr_in6 *addr6;
-
-                addr6 = (struct sockaddr_in6*)addr;
-                addr6->sin6_port = htons(port);
-                addr6->sin6_scope_id = 0;
-                addr6->sin6_flowinfo = 0;
-                memcpy(&addr6->sin6_addr, *ptr, he->h_length);
-                zh->addrs_count++;
-            }
-#endif
-            else {
-                LOG_WARN(
-                  boost::format("skipping unknown address family %x for %s") %
-                                % addr->ss_family % zh->hostname);
-            }
-        }
-        host = strtok_r(0, ",", &strtok_last);
-        }
-#else
-        {
-        struct addrinfo hints, *res, *res0;
-
-        memset(&hints, 0, sizeof(hints));
+      memset(&hints, 0, sizeof(hints));
 #ifdef AI_ADDRCONFIG
-        hints.ai_flags = AI_ADDRCONFIG;
+      hints.ai_flags = AI_ADDRCONFIG;
 #else
-        hints.ai_flags = 0;
+      hints.ai_flags = 0;
 #endif
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
-        hints.ai_protocol = IPPROTO_TCP;
+      hints.ai_family = AF_UNSPEC;
+      hints.ai_socktype = SOCK_STREAM;
+      hints.ai_protocol = IPPROTO_TCP;
 
-        while(isspace(*host) && host != strtok_last)
-            host++;
+      while(isspace(*host) && host != strtok_last)
+        host++;
 
-        if ((rc = getaddrinfo(host, port_spec, &hints, &res0)) != 0) {
-            //bug in getaddrinfo implementation when it returns
-            //EAI_BADFLAGS or EAI_ADDRFAMILY with AF_UNSPEC and 
-            // ai_flags as AI_ADDRCONFIG
+      if ((rc = getaddrinfo(host, port_spec, &hints, &res0)) != 0) {
+        //bug in getaddrinfo implementation when it returns
+        //EAI_BADFLAGS or EAI_ADDRFAMILY with AF_UNSPEC and 
+        // ai_flags as AI_ADDRCONFIG
 #ifdef AI_ADDRCONFIG
-            if ((hints.ai_flags == AI_ADDRCONFIG) && 
-// ZOOKEEPER-1323 EAI_NODATA and EAI_ADDRFAMILY are deprecated in FreeBSD.
+        if ((hints.ai_flags == AI_ADDRCONFIG) && 
+            // ZOOKEEPER-1323 EAI_NODATA and EAI_ADDRFAMILY are deprecated in FreeBSD.
 #ifdef EAI_ADDRFAMILY
-                ((rc ==EAI_BADFLAGS) || (rc == EAI_ADDRFAMILY))) {
+            ((rc ==EAI_BADFLAGS) || (rc == EAI_ADDRFAMILY))) {
 #else
-                (rc == EAI_BADFLAGS)) {
+          (rc == EAI_BADFLAGS)) {
 #endif
-                //reset ai_flags to null
-                hints.ai_flags = 0;
-                //retry getaddrinfo
-                rc = getaddrinfo(host, port_spec, &hints, &res0);
-            }
-#endif
-            if (rc != 0) {
-                errno = getaddrinfo_errno(rc);
-#ifdef WIN32
-                LOG_ERROR("Win32 message: " <<  gai_strerror(rc));
-#elif __linux__ && __GNUC__
-                LOG_ERROR("getaddrinfo: " << gai_strerror(rc));
+            //reset ai_flags to null
+            hints.ai_flags = 0;
+            //retry getaddrinfo
+            rc = getaddrinfo(host, port_spec, &hints, &res0);
+          }
+          if (rc != 0) {
+            errno = getaddrinfo_errno(rc);
+#if __linux__ && __GNUC__
+            LOG_ERROR("getaddrinfo: " << gai_strerror(rc));
 #else
-                LOG_ERROR("getaddrinfo: " << strerror(errno));
+            LOG_ERROR("getaddrinfo: " << strerror(errno));
 #endif
-                rc=ZSYSTEMERROR;
-                goto fail;
-            }
+            rc=ZSYSTEMERROR;
+            goto fail;
+          }
         }
 
         for (res = res0; res; res = res->ai_next) {
-            // Expand address list if needed
-            if (zh->addrs_count == alen) {
-                void *tmpaddr;
-                alen += 16;
-                tmpaddr = realloc(zh->addrs, sizeof(*zh->addrs)*alen);
-                if (tmpaddr == 0) {
-                    LOG_ERROR("out of memory");
-                    errno=ENOMEM;
-                    rc=ZSYSTEMERROR;
-                    goto fail;
-                }
-                zh->addrs=(sockaddr_storage*)tmpaddr;
+          // Expand address list if needed
+          if (zh->addrs_count == alen) {
+            void *tmpaddr;
+            alen += 16;
+            tmpaddr = realloc(zh->addrs, sizeof(*zh->addrs)*alen);
+            if (tmpaddr == 0) {
+              LOG_ERROR("out of memory");
+              errno=ENOMEM;
+              rc=ZSYSTEMERROR;
+              goto fail;
             }
+            zh->addrs=(sockaddr_storage*)tmpaddr;
+          }
 
-            // Copy addrinfo into address list
-            addr = &zh->addrs[zh->addrs_count];
-            switch (res->ai_family) {
+          // Copy addrinfo into address list
+          addr = &zh->addrs[zh->addrs_count];
+          switch (res->ai_family) {
             case AF_INET:
 #if defined(AF_INET6)
             case AF_INET6:
 #endif
-                memcpy(addr, res->ai_addr, res->ai_addrlen);
-                ++zh->addrs_count;
-                break;
+              memcpy(addr, res->ai_addr, res->ai_addrlen);
+              ++zh->addrs_count;
+              break;
             default:
-                LOG_WARN(
+              LOG_WARN(
                   boost::format("skipping unknown address family %x for %s") %
-                                res->ai_family % zh->hostname);
-                break;
-            }
+                  res->ai_family % zh->hostname);
+              break;
+          }
         }
 
         freeaddrinfo(res0);
 
         host = strtok_r(0, ",", &strtok_last);
-        }
+      }
 #endif
     }
     free(hosts);
 
     if(!disable_conn_permute){
-        setup_random();
-        /* Permute */
-        for (i = zh->addrs_count - 1; i > 0; --i) {
-            long int j = random()%(i+1);
-            if (i != j) {
-                struct sockaddr_storage t = zh->addrs[i];
-                zh->addrs[i] = zh->addrs[j];
-                zh->addrs[j] = t;
-            }
+      setup_random();
+      /* Permute */
+      for (i = zh->addrs_count - 1; i > 0; --i) {
+        long int j = random()%(i+1);
+        if (i != j) {
+          struct sockaddr_storage t = zh->addrs[i];
+          zh->addrs[i] = zh->addrs[j];
+          zh->addrs[j] = t;
         }
+      }
     }
     return ZOK;
 fail:
     if (zh->addrs) {
-        free(zh->addrs);
-        zh->addrs=0;
+      free(zh->addrs);
+      zh->addrs=0;
     }
     if (hosts) {
-        free(hosts);
+      free(hosts);
     }
     return rc;
-}
+  }
 
 const clientid_t *zoo_client_id(zhandle_t *zh)
 {
@@ -714,12 +636,6 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     char *index_chroot = NULL;
 
     log_env();
-#ifdef WIN32
-       if (Win32WSAStartup()){
-               LOG_ERROR("Error initializing ws2_32.dll");
-               return 0;
-       }
-#endif
     LOG_INFO(
       boost::format("Initiating client connection, host=%s sessionTimeout=%d "
                     "watcher=%p sessionId=%#llx sessionPasswd=%s context=%p flags=%d") %
@@ -977,11 +893,7 @@ static __attribute__ ((unused)) int get_queue_len(buffer_head_t *list)
  * 0 if send would block while sending the buffer (or a send was incomplete),
  * 1 if success
  */
-#ifdef WIN32
-static int send_buffer(SOCKET fd, buffer_list_t *buff)
-#else
 static int send_buffer(int fd, buffer_list_t *buff)
-#endif
 {
     int len = buff->len;
     int off = buff->curr_offset;
@@ -993,11 +905,7 @@ static int send_buffer(int fd, buffer_list_t *buff)
         char *b = (char*)&nlen;
         rc = zookeeper_send(fd, b + off, sizeof(nlen) - off);
         if (rc == -1) {
-#ifndef _WINDOWS
             if (errno != EAGAIN) {
-#else            
-            if (WSAGetLastError() != WSAEWOULDBLOCK) {
-#endif            
                 return -1;
             } else {
                 return 0;
@@ -1012,11 +920,7 @@ static int send_buffer(int fd, buffer_list_t *buff)
         off -= sizeof(buff->len);
         rc = zookeeper_send(fd, buff->buffer + off, len - off);
         if (rc == -1) {
-#ifndef _WINDOWS
             if (errno != EAGAIN) {
-#else            
-            if (WSAGetLastError() != WSAEWOULDBLOCK) {
-#endif            
                 return -1;
             }
         } else {
@@ -1031,12 +935,7 @@ static int send_buffer(int fd, buffer_list_t *buff)
  * 0 if recv would block,
  * 1 if success
  */
-#ifdef WIN32
-static int recv_buffer(SOCKET fd, buffer_list_t *buff)
-#else
-static int recv_buffer(int fd, buffer_list_t *buff)
-#endif
-{
+static int recv_buffer(int fd, buffer_list_t *buff) {
     int off = buff->curr_offset;
     int rc = 0;
     //fprintf(LOGSTREAM, "rc = %d, off = %d, line %d\n", rc, off, __LINE__);
@@ -1050,11 +949,7 @@ static int recv_buffer(int fd, buffer_list_t *buff)
         case 0:
             errno = EHOSTDOWN;
         case -1:
-#ifndef _WINDOWS
             if (errno == EAGAIN) {
-#else
-            if (WSAGetLastError() == WSAEWOULDBLOCK) {
-#endif
                 return 0;
             }
             return -1;
@@ -1076,11 +971,7 @@ static int recv_buffer(int fd, buffer_list_t *buff)
         case 0:
             errno = EHOSTDOWN;
         case -1:
-#ifndef _WINDOWS
             if (errno == EAGAIN) {
-#else
-            if (WSAGetLastError() == WSAEWOULDBLOCK) {
-#endif
                 break;
             }
             return -1;
@@ -1473,17 +1364,8 @@ static struct timeval get_timeval(int interval)
     return rc<0 ? rc : adaptor_send_queue(zh, 0);
 }
 
-#ifdef WIN32
-int zookeeper_interest(zhandle_t *zh, SOCKET *fd, int *interest,
-     struct timeval *tv)
-{
-
-    ULONG nonblocking_flag = 1;
-#else
 int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
-     struct timeval *tv)
-{
-#endif
+     struct timeval *tv) {
     struct timeval now;
     if(zh==0 || fd==0 ||interest==0 || tv==0)
         return ZBADARGUMENTS;
@@ -1508,11 +1390,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             zh->connect_index = 0;
         }else {
             int rc;
-#ifdef WIN32
-            char enable_tcp_nodelay = 1;
-#else
             int enable_tcp_nodelay = 1;
-#endif
             int ssoresult;
 
             zh->fd = socket(zh->addrs[zh->connect_index].ss_family, SOCK_STREAM, 0);
@@ -1524,11 +1402,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             if (ssoresult != 0) {
                 LOG_WARN("Unable to set TCP_NODELAY, operation latency may be effected");
             }
-#ifdef WIN32
-            ioctlsocket(zh->fd, FIONBIO, &nonblocking_flag);                    
-#else
             fcntl(zh->fd, F_SETFL, O_NONBLOCK|fcntl(zh->fd, F_GETFL, 0));
-#endif
 #if defined(AF_INET6)
             if (zh->addrs[zh->connect_index].ss_family == AF_INET6) {
                 rc = connect(zh->fd, (struct sockaddr*) &zh->addrs[zh->connect_index], sizeof(struct sockaddr_in6));
@@ -1538,9 +1412,6 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             {
 #endif
                 rc = connect(zh->fd, (struct sockaddr*) &zh->addrs[zh->connect_index], sizeof(struct sockaddr_in));
-#ifdef WIN32
-                get_errno();
-#endif
             }
             if (rc == -1) {
                 /* we are handling the non-blocking connect according to
@@ -1573,11 +1444,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         // have we exceeded the receive timeout threshold?
         if (recv_to <= 0) {
             // We gotta cut our losses and connect to someone else
-#ifdef WIN32
-            errno = WSAETIMEDOUT;
-#else
             errno = ETIMEDOUT;
-#endif
             *fd=-1;
             *interest=0;
             *tv = get_timeval(0);
@@ -2036,25 +1903,13 @@ void process_completions(zhandle_t *zh)
 
 static void isSocketReadable(zhandle_t* zh)
 {
-#ifndef WIN32
     struct pollfd fds;
     fds.fd = zh->fd;
     fds.events = POLLIN;
     if (poll(&fds,1,0)<=0) {
         // socket not readable -- no more responses to process
         zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
-    }
-#else
-    fd_set rfds;
-    struct timeval waittime = {0, 0};
-    FD_ZERO(&rfds);
-    FD_SET( zh->fd , &rfds);
-    if (select(0, &rfds, NULL, NULL, &waittime) <= 0){
-        // socket not readable -- no more responses to process
-        zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
-    }
-#endif
-    else{
+    } else{
         gettimeofday(&zh->socket_readable,0);
     }
 }
@@ -2453,9 +2308,6 @@ finish:
     destroy(zh);
     adaptor_destroy(zh);
     free(zh);
-#ifdef WIN32
-    Win32WSACleanup();
-#endif
     return rc;
 }
 
@@ -3181,10 +3033,6 @@ int flush_send_queue(zhandle_t*zh, int timeout)
 {
     int rc= ZOK;
     struct timeval started;
-#ifdef WIN32
-    fd_set pollSet; 
-    struct timeval wait;
-#endif
     gettimeofday(&started,0);
     // we can't use dequeue_buffer() here because if (non-blocking) send_buffer()
     // returns EWOULDBLOCK we'd have to put the buffer back on the queue.
@@ -3203,19 +3051,11 @@ int flush_send_queue(zhandle_t*zh, int timeout)
                     break;
                 }
 
-#ifdef WIN32
-                wait = get_timeval(timeout-elapsed);
-                FD_ZERO(&pollSet);
-                FD_SET(zh->fd, &pollSet);
-                // Poll the socket
-                rc = select((int)(zh->fd)+1, NULL,  &pollSet, NULL, &wait);      
-#else
                 struct pollfd fds;
                 fds.fd = zh->fd;
                 fds.events = POLLOUT;
                 fds.revents = 0;
                 rc = poll(&fds, 1, timeout-elapsed);
-#endif
                 if (rc<=0) {
                     /* timed out or an error or POLLERR */
                     rc = rc==0 ? ZOPERATIONTIMEOUT : ZSYSTEMERROR;
@@ -3351,9 +3191,6 @@ static const char* format_endpoint_info(const struct sockaddr_storage* ep)
     static char buf[128];
     char addrstr[128];
     void *inaddr;
-#ifdef WIN32
-    char * addrstring;
-#endif
     int port;
     if(ep==0)
         return "null";
@@ -3369,13 +3206,8 @@ static const char* format_endpoint_info(const struct sockaddr_storage* ep)
 #if defined(AF_INET6)
     }
 #endif
-#ifdef WIN32
-    addrstring = inet_ntoa (*(struct in_addr*)inaddr); 
-    sprintf(buf,"%s:%d",addrstring,ntohs(port));
-#else
     inet_ntop(ep->ss_family,inaddr,addrstr,sizeof(addrstr)-1);
     sprintf(buf,"%s:%d",addrstr,ntohs(port));
-#endif    
     return buf;
 }
 

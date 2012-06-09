@@ -68,6 +68,7 @@ endif()
 
 # Look for boost with thread
 find_package(Boost COMPONENTS thread REQUIRED)
+find_package(Boost COMPONENTS system REQUIRED)
 
 
 # Look for cppunit
@@ -93,7 +94,6 @@ add_definitions(
 
 add_library(zkcpp SHARED ${header} ${source})
 target_link_libraries (zkcpp
-  ${CMAKE_THREAD_LIBS_INIT}
   ${LOG4CXX_LIBRARY}
 )
 
@@ -105,6 +105,7 @@ add_executable(zktest ${testsrc})
 target_link_libraries(zktest
   ${CPPUNIT_LIBRARY}
   ${Boost_THREAD_LIBRARY}
+  ${Boost_SYSTEM_LIBRARY}
   ${LOG4CXX_LIBRARY}
 )
 
