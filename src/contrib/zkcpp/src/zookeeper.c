@@ -1718,7 +1718,6 @@ int api_epilog(zhandle_t *zh,int rc)
     return rc;
 }
 
-//#ifdef THREADED
 // IO thread queues session events to be processed by the completion thread
 static int queue_session_event(zhandle_t *zh, int state)
 {

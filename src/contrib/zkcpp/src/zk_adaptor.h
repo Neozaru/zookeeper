@@ -19,7 +19,6 @@
 #ifndef ZK_ADAPTOR_H_
 #define ZK_ADAPTOR_H_
 #include <zookeeper.jute.h>
-#ifdef THREADED
 #include <boost/scoped_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -27,7 +26,6 @@
 #include <boost/thread/condition.hpp>
 #include <boost/ptr_container/ptr_list.hpp>
 #include "winport.h"
-#endif
 #include "zookeeper.h"
 #include "zk_hashtable.h"
 
@@ -150,7 +148,6 @@ struct prime_struct {
     char passwd[16];
 }; 
 
-#ifdef THREADED
 /* this is used by mt_adaptor internally for thread management */
 struct adaptor_threads {
      boost::thread io;
@@ -159,14 +156,8 @@ struct adaptor_threads {
      boost::condition_variable cond;  // barrier's conditional   
      boost::mutex lock;               // ... and a lock
      boost::mutex zh_lock;            // critical section lock
-
-#ifdef WIN32
-     SOCKET self_pipe[2];
-#else
      int self_pipe[2];
-#endif
 };
-#endif
 
 /** the auth list for adding auth */
 class auth_list_head_t {
@@ -182,11 +173,7 @@ class auth_list_head_t {
  */
 
 struct _zhandle {
-#ifdef WIN32
-    SOCKET fd; /* the descriptor used to talk to zookeeper */
-#else
     int fd; /* the descriptor used to talk to zookeeper */
-#endif
     char *hostname; /* the hostname of zookeeper */
     struct sockaddr_storage *addrs; /* the addresses that correspond to the hostname */
     int addrs_count; /* The number of addresses in the addrs array */
@@ -255,16 +242,10 @@ int32_t get_xid();
 // returns the new value of the ref counter
 int32_t inc_ref_counter(zhandle_t* zh,int i);
 
-#ifdef THREADED
 // atomic post-increment
 int32_t fetch_and_add(volatile int32_t* operand, int incr);
 // in mt mode process session event asynchronously by the completion thread
 #define PROCESS_SESSION_EVENT(zh,newstate) queue_session_event(zh,newstate)
-#else
-// in single-threaded mode process session event immediately
-//#define PROCESS_SESSION_EVENT(zh,newstate) deliverWatchers(zh,ZOO_SESSION_EVENT,newstate,0)
-#define PROCESS_SESSION_EVENT(zh,newstate) queue_session_event(zh,newstate)
-#endif
 
 #ifdef __cplusplus
 }

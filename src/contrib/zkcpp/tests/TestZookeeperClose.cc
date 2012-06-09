@@ -33,29 +33,14 @@ class Zookeeper_close : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST_SUITE_END();
     zhandle_t *zh;
     static void watcher(zhandle_t *, int, int, const char *,void*){}
-    FILE *logfile;
-public: 
-
-    Zookeeper_close() {
-      logfile = openlogfile("Zookeeper_close");
-    }
-
-    ~Zookeeper_close() {
-      if (logfile) {
-        fflush(logfile);
-        fclose(logfile);
-        logfile = 0;
-      }
-    }
-
+public:
     void setUp()
     {
-        //zoo_set_log_stream(logfile);
 
         zoo_deterministic_conn_order(0);
         zh=0;
     }
-    
+
     void tearDown()
     {
         zookeeper_close(zh);

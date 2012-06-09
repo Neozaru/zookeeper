@@ -75,7 +75,6 @@ private:
     mutable int32_t v_;
 };
 
-#ifdef THREADED
 // ****************************************************************************
 #define VALIDATE_JOBS(jm) jm.validateJobs(__FILE__,__LINE__)
 #define VALIDATE_JOB(j) j.validate(__FILE__,__LINE__)
@@ -219,16 +218,5 @@ private:
     CountDownLatch startLatch_;
     CountDownLatch endLatch_;
 };
-
-#else // THREADED
-// single THREADED
-class Mutex{
-public:
-    void acquire(){}
-    void release(){}
-};
-#define synchronized(m)
-
-#endif // THREADED
 
 #endif /*THREADINGUTIL_H_*/

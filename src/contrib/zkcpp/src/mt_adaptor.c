@@ -15,9 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef THREADED
-#define THREADED
-#endif
 
 #ifndef DLL_EXPORT
 #  define USE_STATIC_LIB
@@ -296,7 +293,6 @@ void *do_io(void *v)
 #endif
 {
     zhandle_t *zh = (zhandle_t*)v;
-#ifndef WIN32
     struct pollfd fds[2];
     struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
 
@@ -332,47 +328,6 @@ void *do_io(void *v)
             char b[128];
             while(read(adaptor_threads->self_pipe[0],b,sizeof(b))==sizeof(b)){}
         }        
-#else
-    fd_set rfds, wfds, efds;
-    struct adaptor_threads *adaptor_threads = zh->adaptor_priv;
-    api_prolog(zh);
-    notify_thread_ready(zh);
-    LOG_DEBUG("started IO thread");
-    FD_ZERO(&rfds);   FD_ZERO(&wfds);    FD_ZERO(&efds);
-    while(!zh->close_requested) {      
-        struct timeval tv;
-        SOCKET fd;
-        SOCKET maxfd=adaptor_threads->self_pipe[0];
-        int interest;        
-        int rc;
-               
-       zookeeper_interest(zh, &fd, &interest, &tv);
-       if (fd != -1) {
-           if (interest&ZOOKEEPER_READ) {
-                FD_SET(fd, &rfds);
-            } else {
-                FD_CLR(fd, &rfds);
-            }
-           if (interest&ZOOKEEPER_WRITE) {
-                FD_SET(fd, &wfds);
-            } else {
-                FD_CLR(fd, &wfds);
-            }                  
-        }
-       FD_SET( adaptor_threads->self_pipe[0] ,&rfds );        
-       rc = select((int)maxfd, &rfds, &wfds, &efds, &tv);
-       if (fd != -1) 
-       {
-           interest = (FD_ISSET(fd, &rfds))? ZOOKEEPER_READ:0;
-           interest|= (FD_ISSET(fd, &wfds))? ZOOKEEPER_WRITE:0;
-        }
-               
-       if (FD_ISSET(adaptor_threads->self_pipe[0], &rfds)){
-            // flush the pipe/socket
-            char b[128];
-           while(recv(adaptor_threads->self_pipe[0],b,sizeof(b), 0)==sizeof(b)){}
-       }
-#endif
         // dispatch zookeeper events
         rc = zookeeper_process(zh, interest);
         // check the current state of the zhandle and terminate 

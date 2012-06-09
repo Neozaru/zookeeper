@@ -510,54 +510,6 @@ ZOOAPI watcher_fn zoo_set_watcher(zhandle_t *zh,watcher_fn newFn);
 ZOOAPI struct sockaddr* zookeeper_get_connected_host(zhandle_t *zh,
         struct sockaddr *addr, socklen_t *addr_len);
 
-#ifndef THREADED
-/**
- * \brief Returns the events that zookeeper is interested in.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param fd is the file descriptor of interest
- * \param interest is an or of the ZOOKEEPER_WRITE and ZOOKEEPER_READ flags to
- *    indicate the I/O of interest on fd.
- * \param tv a timeout value to be used with select/poll system call
- * \return a result code.
- * ZOK - success
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZCONNECTIONLOSS - a network error occured while attempting to establish 
- * a connection to the server
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- * ZOPERATIONTIMEOUT - hasn't received anything from the server for 2/3 of the
- * timeout value specified in zookeeper_init()
- * ZSYSTEMERROR -- a system (OS) error occured; it's worth checking errno to get details
- */
-#ifdef WIN32
-ZOOAPI int zookeeper_interest(zhandle_t *zh, SOCKET *fd, int *interest, 
-	struct timeval *tv);
-#else
-ZOOAPI int zookeeper_interest(zhandle_t *zh, int *fd, int *interest, 
-	struct timeval *tv);
-#endif
-
-/**
- * \brief Notifies zookeeper that an event of interest has happened.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param events will be an OR of the ZOOKEEPER_WRITE and ZOOKEEPER_READ flags.
- * \return a result code. 
- * ZOK - success
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZCONNECTIONLOSS - a network error occured while attempting to send request to server
- * ZSESSIONEXPIRED - connection attempt failed -- the session's expired
- * ZAUTHFAILED - authentication request failed, e.i. invalid credentials
- * ZRUNTIMEINCONSISTENCY - a server response came out of order
- * ZSYSTEMERROR -- a system (OS) error occured; it's worth checking errno to get details
- * ZNOTHING -- not an error; simply indicates that there no more data from the server 
- *              to be processed (when called with ZOOKEEPER_READ flag).
- */
-ZOOAPI int zookeeper_process(zhandle_t *zh, int events);
-#endif
-
 /**
  * \brief signature of a completion function for a call that returns void.
  * 

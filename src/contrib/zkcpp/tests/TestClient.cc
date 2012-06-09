@@ -62,59 +62,11 @@ static int Stat_eq(struct Stat* a, struct Stat* b)
     if (a->pzxid != b->pzxid) return 0;
     return 1;
 }
-#ifdef THREADED
-    static void yield(zhandle_t *zh, int i)
-    {
-        sleep(i);
-    }
-#else
-    static void yield(zhandle_t *zh, int seconds)
-    {
-        int fd;
-        int interest;
-        int events;
-        struct timeval tv;
-        int rc;
-        time_t expires = time(0) + seconds;
-        time_t timeLeft = seconds;
-        fd_set rfds, wfds, efds;
-        FD_ZERO(&rfds);
-        FD_ZERO(&wfds);
-        FD_ZERO(&efds);
 
-        while(timeLeft >= 0) {
-            zookeeper_interest(zh, &fd, &interest, &tv);
-            if (fd != -1) {
-                if (interest&ZOOKEEPER_READ) {
-                    FD_SET(fd, &rfds);
-                } else {
-                    FD_CLR(fd, &rfds);
-                }
-                if (interest&ZOOKEEPER_WRITE) {
-                    FD_SET(fd, &wfds);
-                } else {
-                    FD_CLR(fd, &wfds);
-                }
-            } else {
-                fd = 0;
-            }
-            FD_SET(0, &rfds);
-            if (tv.tv_sec > timeLeft) {
-                tv.tv_sec = timeLeft;
-            }
-            rc = select(fd+1, &rfds, &wfds, &efds, &tv);
-            timeLeft = expires - time(0);
-            events = 0;
-            if (FD_ISSET(fd, &rfds)) {
-                events |= ZOOKEEPER_READ;
-            }
-            if (FD_ISSET(fd, &wfds)) {
-                events |= ZOOKEEPER_WRITE;
-            }
-            zookeeper_process(zh, events);
-        }
-    }
-#endif
+static void yield(zhandle_t *zh, int i)
+{
+  sleep(i);
+}
 
 typedef struct evt {
     string path;
@@ -187,7 +139,6 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST_SUITE(Zookeeper_simpleSystem);
     CPPUNIT_TEST(testAsyncWatcherAutoReset);
     CPPUNIT_TEST(testDeserializeString);
-#ifdef THREADED
     CPPUNIT_TEST(testNullData);
 #ifdef ZOO_IPV6_ENABLED
     CPPUNIT_TEST(testIPV6);
@@ -202,7 +153,6 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testWatcherAutoResetWithGlobal);
     CPPUNIT_TEST(testWatcherAutoResetWithLocal);
     CPPUNIT_TEST(testGetChildren2);
-#endif
     CPPUNIT_TEST_SUITE_END();
 
     static void watcher(zhandle_t *, int type, int state, const char *path,void*v){
@@ -245,27 +195,7 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
         return zk;
     }
         
-    FILE *logfile;
 public:
-
-    Zookeeper_simpleSystem() {
-      logfile = openlogfile("Zookeeper_simpleSystem");
-    }
-
-    ~Zookeeper_simpleSystem() {
-      if (logfile) {
-        fflush(logfile);
-        fclose(logfile);
-        logfile = 0;
-      }
-    }
-
-    void setUp()
-    {
-        //zoo_set_log_stream(logfile);
-    }
-
-
     void startServer() {
         char cmd[1024];
         sprintf(cmd, "%s start %s", ZKSERVER_CMD, getHostPorts());

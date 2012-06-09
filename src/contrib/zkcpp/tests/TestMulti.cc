@@ -40,59 +40,10 @@ using namespace std;
 #include <recordio.h>
 #include "Util.h"
 
-#ifdef THREADED
-    static void yield(zhandle_t *zh, int i)
-    {
-        sleep(i);
-    }
-#else
-    static void yield(zhandle_t *zh, int seconds)
-    {
-        int fd;
-        int interest;
-        int events;
-        struct timeval tv;
-        int rc;
-        time_t expires = time(0) + seconds;
-        time_t timeLeft = seconds;
-        fd_set rfds, wfds, efds;
-        FD_ZERO(&rfds);
-        FD_ZERO(&wfds);
-        FD_ZERO(&efds);
-
-        while(timeLeft >= 0) {
-            zookeeper_interest(zh, &fd, &interest, &tv);
-            if (fd != -1) {
-                if (interest&ZOOKEEPER_READ) {
-                    FD_SET(fd, &rfds);
-                } else {
-                    FD_CLR(fd, &rfds);
-                }
-                if (interest&ZOOKEEPER_WRITE) {
-                    FD_SET(fd, &wfds);
-                } else {
-                    FD_CLR(fd, &wfds);
-                }
-            } else {
-                fd = 0;
-            }
-            FD_SET(0, &rfds);
-            if (tv.tv_sec > timeLeft) {
-                tv.tv_sec = timeLeft;
-            }
-            rc = select(fd+1, &rfds, &wfds, &efds, &tv);
-            timeLeft = expires - time(0);
-            events = 0;
-            if (FD_ISSET(fd, &rfds)) {
-                events |= ZOOKEEPER_READ;
-            }
-            if (FD_ISSET(fd, &wfds)) {
-                events |= ZOOKEEPER_WRITE;
-            }
-            zookeeper_process(zh, events);
-        }
-    }
-#endif
+static void yield(zhandle_t *zh, int i)
+{
+  sleep(i);
+}
 
 typedef struct evt {
     string path;
@@ -163,9 +114,6 @@ public:
 class Zookeeper_multi : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(Zookeeper_multi);
-//FIXME: None of these tests pass in single-threaded mode. It seems to be a
-//flaw in the test suite setup.
-#ifdef THREADED
     CPPUNIT_TEST(testCreate);
     CPPUNIT_TEST(testCreateDelete);
     CPPUNIT_TEST(testInvalidVersion);
@@ -177,7 +125,6 @@ class Zookeeper_multi : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testMultiFail);
     CPPUNIT_TEST(testCheck);
     CPPUNIT_TEST(testWatch);
-#endif
     CPPUNIT_TEST_SUITE_END();
 
     static void watcher(zhandle_t *, int type, int state, const char *path,void*v){
@@ -212,31 +159,8 @@ class Zookeeper_multi : public CPPUNIT_NS::TestFixture
         CPPUNIT_ASSERT_EQUAL(true, ctx->waitForConnected(zk));
         return zk;
     }
-        
-    FILE *logfile;
+
 public:
-
-    Zookeeper_multi() {
-      logfile = openlogfile("Zookeeper_multi");
-    }
-
-    ~Zookeeper_multi() {
-      if (logfile) {
-        fflush(logfile);
-        fclose(logfile);
-        logfile = 0;
-      }
-    }
-
-    void setUp()
-    {
-        //zoo_set_log_stream(logfile);
-    }
-
-    void tearDown()
-    {
-    }
-    
     static volatile int count;
 
     static void multi_completion_fn(int rc, const void *data) {

@@ -88,7 +88,6 @@ endif()
 set_source_files_properties(${source} ${testsrc} PROPERTIES LANGUAGE CXX)
 
 add_definitions(
-  -DTHREADED
   -DZKSERVER_CMD="${PROJECT_SOURCE_DIR}/tests/zkServer.sh"
 )
 

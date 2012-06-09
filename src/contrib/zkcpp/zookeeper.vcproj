@@ -42,7 +42,7 @@
                 Name="VCCLCompilerTool"
                 Optimization="0"
                 AdditionalIncludeDirectories="$(ZOOKEEPER_HOME)\src\c\include;$(ZOOKEEPER_HOME)\src\c\generated;$(ZOOKEEPER_HOME)\src\c;$(ZOOKEEPER_HOME)\src\c\src\hashtable"
-                PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;ZOOKEEPER_EXPORTS;DLL_EXPORT;THREADED"
+                PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;ZOOKEEPER_EXPORTS;DLL_EXPORT"
                 MinimalRebuild="true"
                 BasicRuntimeChecks="3"
                 RuntimeLibrary="3"
@@ -120,7 +120,7 @@
             <Tool
                 Name="VCCLCompilerTool"
                 AdditionalIncludeDirectories="$(ZOOKEEPER_HOME)\src\c\generated;$(ZOOKEEPER_HOME)\src\c;$(ZOOKEEPER_HOME)\src\c\include"
-                PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;ZOOKEEPER_EXPORTS;DLL_EXPORT;THREADED"
+                PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;ZOOKEEPER_EXPORTS;DLL_EXPORT;"
                 RuntimeLibrary="2"
                 UsePrecompiledHeader="0"
                 WarningLevel="3"
