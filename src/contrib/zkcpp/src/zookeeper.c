@@ -744,18 +744,13 @@ static int remove_buffer(buffer_list_t *list)
     return 1;
 }
 
-static void queue_buffer(buffer_list_t *list, buffer_t *b, int add_to_front)
-{
-  boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
-  list->bufferList_.push_back(b);
-}
-
 static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len)
 {
     buffer_t *b  = allocate_buffer(buff,len);
     if (!b)
         return ZSYSTEMERROR;
-    queue_buffer(list, b, 0);
+    boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
+    list->bufferList_.push_back(b);
     return ZOK;
 }
 
@@ -764,15 +759,11 @@ static int queue_front_buffer_bytes(buffer_list_t *list, char *buff, int len)
     buffer_t *b  = allocate_buffer(buff,len);
     if (!b)
         return ZSYSTEMERROR;
-    queue_buffer(list, b, 1);
+    boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
+    list->bufferList_.push_front(b);
     return ZOK;
 }
 
-static __attribute__ ((unused)) int get_queue_len(buffer_list_t *list)
-{
-  boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
-  return list->bufferList_.size();
-}
 /* returns:
  * -1 if send failed,
  * 0 if send would block while sending the buffer (or a send was incomplete),
@@ -1392,7 +1383,8 @@ static int check_events(zhandle_t *zh, int events)
         if (rc > 0) {
             gettimeofday(&zh->last_recv, 0);
             if (zh->input_buffer != &zh->primer_buffer) {
-                queue_buffer(zh->to_process.get(), zh->input_buffer, 0);
+                boost::lock_guard<boost::recursive_mutex> lock(zh->to_process.get()->mutex_);
+                zh->to_process.get()->bufferList_.push_back(zh->input_buffer);
             } else  {
                 int64_t oldid,newid;
                 //deserialize
