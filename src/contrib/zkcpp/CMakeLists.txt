@@ -36,6 +36,10 @@ file(GLOB testsrc
 # Set parameters needed by config.h.in to generate config.h
 set(PACKAGE_STRING "\"ZooKeeper C++ Client 3.5.0\"")
 
+if (CMAKE_COMPILER_IS_GNUCXX)
+  set(CMAKE_CXX_FLAGS "-g -Wall")
+endif()
+
 # Check if ndfs_t type is defined in poll.h. If it is not defined, use
 # unsigned int.
 set(CMAKE_EXTRA_INCLUDE_FILES poll.h)

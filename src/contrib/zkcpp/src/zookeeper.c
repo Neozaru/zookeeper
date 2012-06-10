@@ -144,11 +144,16 @@ struct ACL_vector ZOO_CREATOR_ALL_ACL = { 1, _CREATOR_ALL_ACL_ACL};
 #define COMPLETION_STRING 6
 #define COMPLETION_MULTI 7
 
-typedef struct _auth_completion_list {
+class auth_completion_t {
+  public:
     void_completion_t completion;
     const char *auth_data;
-    struct _auth_completion_list *next;
-} auth_completion_list_t;
+};
+
+class auth_completion_list_t {
+  public:
+    boost::ptr_list<auth_completion_t> list;
+};
 
 typedef struct completion {
     int type; /* one of COMPLETION_* values above */
@@ -232,60 +237,16 @@ int zoo_recv_timeout(zhandle_t *zh)
 
 /** these functions are thread unsafe, so make sure that
     zoo_lock_auth is called before you access them **/
-static void free_auth_completion(auth_completion_list_t *a_list) {
-    auth_completion_list_t *tmp, *ftmp;
-    if (a_list == NULL) {
-        return;
-    }
-    tmp = a_list->next;
-    while (tmp != NULL) {
-        ftmp = tmp;
-        tmp = tmp->next;
-        ftmp->completion = NULL;
-        ftmp->auth_data = NULL;
-        free(ftmp);
-    }
-    a_list->completion = NULL;
-    a_list->auth_data = NULL;
-    a_list->next = NULL;
-    return;
-}
-
-static void add_auth_completion(auth_completion_list_t* a_list, void_completion_t* completion,
-                                const char *data) {
-    auth_completion_list_t *element;
-    auth_completion_list_t *n_element;
-    element = a_list;
-    if (a_list->completion == NULL) {
-        //this is the first element
-        a_list->completion = *completion;
-        a_list->next = NULL;
-        a_list->auth_data = data;
-        return;
-    }
-    while (element->next != NULL) {
-        element = element->next;
-    }
-    n_element = (auth_completion_list_t*) malloc(sizeof(auth_completion_list_t));
-    n_element->next = NULL;
-    n_element->completion = *completion;
-    n_element->auth_data = data;
-    element->next = n_element;
-    return;
-}
-
 static void get_auth_completions(auth_list_head_t *auth_list, auth_completion_list_t *a_list) {
   BOOST_FOREACH(auth_info& info, auth_list->authList_) {
     if (info.completion) {
-      add_auth_completion(a_list, &(info.completion), info.data);
+      auth_completion_t* comp = new auth_completion_t();
+      comp->completion = info.completion;
+      comp->auth_data = info.data;
+      a_list->list.push_back(comp);
       info.completion = NULL;
+      info.auth_data = NULL;
     }
-  }
-}
-
-static void mark_active_auth(zhandle_t *zh) {
-  BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
-    info.state = 1;
   }
 }
 
@@ -943,8 +904,7 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
     completion_head_t tmp_list;
     struct oarchive *oa;
     struct ReplyHeader h;
-    void_completion_t auth_completion = NULL;
-    auth_completion_list_t a_list, *a_tmp;
+
     {
         boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
         tmp_list = zh->sent_requests;
@@ -985,22 +945,16 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
             }
         }
     }
-    a_list.completion = NULL;
-    a_list.next = NULL;
     {
         boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
-        get_auth_completions(zh->auth_h.get(), &a_list);
+        BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
+          if (info.completion) {
+            info.completion(reason, info.data);
+            info.data = NULL;
+            info.completion = NULL;
+          }
+        }
     }
-    a_tmp = &a_list;
-    // chain call user's completion function
-    while (a_tmp->completion != NULL) {
-        auth_completion = a_tmp->completion;
-        auth_completion(reason, a_tmp->auth_data);
-        a_tmp = a_tmp->next;
-        if (a_tmp == NULL)
-            break;
-    }
-    free_auth_completion(&a_list);
 }
 
 static void cleanup_bufs(zhandle_t *zh,int callCompletion,int rc)
@@ -1052,7 +1006,6 @@ static void auth_completion_func(int rc, zhandle_t* zh)
 {
     void_completion_t auth_completion = NULL;
     auth_completion_list_t a_list;
-    auth_completion_list_t *a_tmp;
 
     if(zh==NULL)
         return;
@@ -1063,10 +1016,10 @@ static void auth_completion_func(int rc, zhandle_t* zh)
             zh->state=ZOO_AUTH_FAILED_STATE;
         }else{
             //change state for all auths
-            mark_active_auth(zh);
+            BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
+              info.state = 1;
+            }
         }
-        a_list.completion = NULL;
-        a_list.next = NULL;
         get_auth_completions(zh->auth_h.get(), &a_list);
     }
     if (rc) {
@@ -1077,16 +1030,14 @@ static void auth_completion_func(int rc, zhandle_t* zh)
         LOG_INFO("Authentication scheme " << zh->auth_h.get()->authList_.front().scheme <<
                  " succeeded.");
     }
-    a_tmp = &a_list;
-    // chain call user's completion function
-    while (a_tmp->completion != NULL) {
-        auth_completion = a_tmp->completion;
-        auth_completion(rc, a_tmp->auth_data);
-        a_tmp = a_tmp->next;
-        if (a_tmp == NULL)
-            break;
+
+    BOOST_FOREACH(auth_completion_t& completion, a_list.list) {
+      if (completion.completion) {
+        auth_completion = completion.completion;
+        auth_completion(rc, completion.auth_data);
+      }
     }
-    free_auth_completion(&a_list);
+    a_list.list.clear();
 }
 
 static int send_info_packet(zhandle_t *zh, auth_info* auth) {
