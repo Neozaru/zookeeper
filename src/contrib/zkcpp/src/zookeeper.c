@@ -1867,8 +1867,6 @@ int zookeeper_process(zhandle_t *zh, int events)
                     free_buffer(bptr);
                     destroy_completion_entry(cptr);
                 } else {
-                    LOG_DEBUG("Queueing asynchronous response");
-
                     cptr->buffer = bptr;
                     queue_completion(&zh->completions_to_process, cptr, 0);
                 }
@@ -2256,7 +2254,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2301,7 +2299,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
              h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2357,7 +2355,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2397,7 +2395,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2436,7 +2434,7 @@ int zoo_awexists(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2469,7 +2467,7 @@ static int zoo_awget_children_(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2517,7 +2515,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2560,7 +2558,7 @@ int zoo_async(zhandle_t *zh, const char *path,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2590,7 +2588,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
@@ -2621,7 +2619,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
-    LOG_DEBUG(boost::format("Sending request xid=%#x for path [%s] to %s") %
+    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
                             h.xid % path % format_current_endpoint_info(zh));
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
