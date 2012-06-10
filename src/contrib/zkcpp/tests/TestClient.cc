@@ -145,7 +145,6 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
 #endif
     CPPUNIT_TEST(testPath);
     CPPUNIT_TEST(testPathValidation);
-    CPPUNIT_TEST(testPing);
     CPPUNIT_TEST(testAcl);
     CPPUNIT_TEST(testChroot);
     CPPUNIT_TEST(testAuth);
@@ -234,45 +233,6 @@ public:
         zrc = zoo_wget_children(zh, "/mytest", default_zoo_watcher, NULL, &str_vec);
         zrc = zoo_delete(zh, "/mytest/test1", -1);
         zookeeper_close(zh);
-    }
-    
-
-    void testPing()
-    {
-        watchctx_t ctxIdle;
-        watchctx_t ctxWC;
-        zhandle_t *zkIdle = createClient(&ctxIdle);
-        zhandle_t *zkWatchCreator = createClient(&ctxWC);
-
-        CPPUNIT_ASSERT(zkIdle);
-        CPPUNIT_ASSERT(zkWatchCreator);
-
-        char path[80];
-        sprintf(path, "/testping");
-        int rc = zoo_create(zkWatchCreator, path, "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, 0, 0);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        for(int i = 0; i < 30; i++) {
-            sprintf(path, "/testping/%i", i);
-            rc = zoo_create(zkWatchCreator, path, "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, 0, 0);
-            CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        }
-
-        for(int i = 0; i < 30; i++) {
-            sprintf(path, "/testping/%i", i);
-            struct Stat stat;
-            rc = zoo_exists(zkIdle, path, 1, &stat);
-            CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        }
-
-        for(int i = 0; i < 30; i++) {
-            sprintf(path, "/testping/%i", i);
-            usleep(500000);
-            rc = zoo_delete(zkWatchCreator, path, -1);
-            CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        }
-        struct Stat stat;
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, zoo_exists(zkIdle, "/testping/0", 0, &stat));
     }
 
     bool waitForEvent(zhandle_t *zh, watchctx_t *ctx, int seconds) {

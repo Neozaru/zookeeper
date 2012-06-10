@@ -84,31 +84,30 @@ void lock_completion_list(completion_head_t *l);
 void unlock_completion_list(completion_head_t *l);
 
 struct sync_completion {
-    int rc;
-    union {
-        struct {
-            char *str;
-            int str_len;
-        } str;
-        struct Stat stat;
-        struct {
-            char *buffer;
-            int buff_len;
-            struct Stat stat;
-        } data;
-        struct {
-            struct ACL_vector acl;
-            struct Stat stat;
-        } acl;
-        struct String_vector strs2;
-        struct {
-            struct String_vector strs2;
-            struct Stat stat2;
-        } strs_stat;
-    } u;
-    int complete;
-    boost::condition_variable cond_;
-    boost::mutex lock_;
+  int rc;
+  // XXX removed union for now
+  struct {
+    char *str;
+    int str_len;
+  } str;
+  struct Stat stat;
+  struct {
+    char *buffer;
+    int buff_len;
+    struct Stat stat;
+  } data;
+  struct {
+    struct ACL_vector acl;
+    struct Stat stat;
+  } acl;
+  struct String_vector strs2;
+  struct {
+    struct String_vector strs2;
+    struct Stat stat2;
+  } strs_stat;
+  int complete;
+  boost::condition_variable cond_;
+  boost::mutex lock_;
 };
 
 class auth_info {

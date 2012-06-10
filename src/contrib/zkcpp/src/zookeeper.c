@@ -1516,20 +1516,20 @@ static void process_sync_completion(
             struct GetDataResponse res;
             int len;
             deserialize_GetDataResponse(ia, "reply", &res);
-            if (res.data.len <= sc->u.data.buff_len) {
+            if (res.data.len <= sc->data.buff_len) {
                 len = res.data.len;
             } else {
-                len = sc->u.data.buff_len;
+                len = sc->data.buff_len;
             }
-            sc->u.data.buff_len = len;
+            sc->data.buff_len = len;
             // check if len is negative
             // just of NULL which is -1 int
             if (len == -1) {
-                sc->u.data.buffer = NULL;
+                sc->data.buffer = NULL;
             } else {
-                memcpy(sc->u.data.buffer, res.data.buff, len);
+                memcpy(sc->data.buffer, res.data.buff, len);
             }
-            sc->u.data.stat = res.stat;
+            sc->data.stat = res.stat;
             deallocate_GetDataResponse(&res);
         }
         break;
@@ -1537,7 +1537,7 @@ static void process_sync_completion(
         if (sc->rc==0) {
             struct SetDataResponse res;
             deserialize_SetDataResponse(ia, "reply", &res);
-            sc->u.stat = res.stat;
+            sc->stat = res.stat;
             deallocate_SetDataResponse(&res);
         }
         break;
@@ -1545,7 +1545,7 @@ static void process_sync_completion(
         if (sc->rc==0) {
             struct GetChildrenResponse res;
             deserialize_GetChildrenResponse(ia, "reply", &res);
-            sc->u.strs2 = res.children;
+            sc->strs2 = res.children;
             /* We don't deallocate since we are passing it back */
             // deallocate_GetChildrenResponse(&res);
         }
@@ -1554,8 +1554,8 @@ static void process_sync_completion(
         if (sc->rc==0) {
             struct GetChildren2Response res;
             deserialize_GetChildren2Response(ia, "reply", &res);
-            sc->u.strs_stat.strs2 = res.children;
-            sc->u.strs_stat.stat2 = res.stat;
+            sc->strs_stat.strs2 = res.children;
+            sc->strs_stat.stat2 = res.stat;
             /* We don't deallocate since we are passing it back */
             // deallocate_GetChildren2Response(&res);
         }
@@ -1568,12 +1568,12 @@ static void process_sync_completion(
             deserialize_CreateResponse(ia, "reply", &res);
             //ZOOKEEPER-1027
             client_path = sub_string(zh, res.path); 
-            len = strlen(client_path) + 1;if (len > sc->u.str.str_len) {
-                len = sc->u.str.str_len;
+            len = strlen(client_path) + 1;if (len > sc->str.str_len) {
+                len = sc->str.str_len;
             }
             if (len > 0) {
-                memcpy(sc->u.str.str, client_path, len - 1);
-                sc->u.str.str[len - 1] = '\0';
+                memcpy(sc->str.str, client_path, len - 1);
+                sc->str.str[len - 1] = '\0';
             }
             free_duplicate_path(client_path, res.path);
             deallocate_CreateResponse(&res);
@@ -1583,8 +1583,8 @@ static void process_sync_completion(
         if (sc->rc==0) {
             struct GetACLResponse res;
             deserialize_GetACLResponse(ia, "reply", &res);
-            sc->u.acl.acl = res.acl;
-            sc->u.acl.stat = res.stat;
+            sc->acl.acl = res.acl;
+            sc->acl.stat = res.stat;
             /* We don't deallocate since we are passing it back */
             //deallocate_GetACLResponse(&res);
         }
@@ -3060,8 +3060,8 @@ int zoo_create(zhandle_t *zh, const char *path, const char *value,
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    sc->u.str.str = path_buffer;
-    sc->u.str.str_len = path_buffer_len;
+    sc->str.str = path_buffer;
+    sc->str.str_len = path_buffer_len;
     rc=zoo_acreate(zh, path, value, valuelen, acl, flags, (void (*)(int, const char*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
@@ -3105,7 +3105,7 @@ int zoo_wexists(zhandle_t *zh, const char *path,
         wait_sync_completion(sc);
         rc = sc->rc;
         if (rc == 0&& stat) {
-            *stat = sc->u.stat;
+            *stat = sc->stat;
         }
     }
     free_sync_completion(sc);
@@ -3131,16 +3131,16 @@ int zoo_wget(zhandle_t *zh, const char *path,
     if((sc=alloc_sync_completion())==NULL)
         return ZSYSTEMERROR;
 
-    sc->u.data.buffer = buffer;
-    sc->u.data.buff_len = *buffer_len;
+    sc->data.buffer = buffer;
+    sc->data.buff_len = *buffer_len;
     rc=zoo_awget(zh, path, watcher, watcherCtx, (void (*)(int, const char*, int, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;
         if (rc == 0) {
             if(stat)
-                *stat = sc->u.data.stat;
-            *buffer_len = sc->u.data.buff_len;
+                *stat = sc->data.stat;
+            *buffer_len = sc->data.buff_len;
         }
     }
     free_sync_completion(sc);
@@ -3166,7 +3166,7 @@ int zoo_set2(zhandle_t *zh, const char *path, const char *buffer, int buflen,
         wait_sync_completion(sc);
         rc = sc->rc;
         if (rc == 0 && stat) {
-            *stat = sc->u.stat;
+            *stat = sc->stat;
         }
     }
     free_sync_completion(sc);
@@ -3188,9 +3188,9 @@ static int zoo_wget_children_(zhandle_t *zh, const char *path,
         rc = sc->rc;
         if (rc == 0) {
             if (strings) {
-                *strings = sc->u.strs2;
+                *strings = sc->strs2;
             } else {
-                deallocate_String_vector(&sc->u.strs2);
+                deallocate_String_vector(&sc->strs2);
             }
         }
     }
@@ -3213,11 +3213,11 @@ static int zoo_wget_children2_(zhandle_t *zh, const char *path,
         wait_sync_completion(sc);
         rc = sc->rc;
         if (rc == 0) {
-            *stat = sc->u.strs_stat.stat2;
+            *stat = sc->strs_stat.stat2;
             if (strings) {
-                *strings = sc->u.strs_stat.strs2;
+                *strings = sc->strs_stat.strs2;
             } else {
-                deallocate_String_vector(&sc->u.strs_stat.strs2);
+                deallocate_String_vector(&sc->strs_stat.strs2);
             }
         }
     }
@@ -3264,13 +3264,13 @@ int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
         wait_sync_completion(sc);
         rc = sc->rc;
         if (rc == 0&& stat) {
-            *stat = sc->u.acl.stat;
+            *stat = sc->acl.stat;
         }
         if (rc == 0) {
             if (acl) {
-                *acl = sc->u.acl.acl;
+                *acl = sc->acl.acl;
             } else {
-                deallocate_ACL_vector(&sc->u.acl.acl);
+                deallocate_ACL_vector(&sc->acl.acl);
             }
         }
     }
