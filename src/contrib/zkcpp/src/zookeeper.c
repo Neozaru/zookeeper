@@ -144,7 +144,8 @@ struct ACL_vector ZOO_CREATOR_ALL_ACL = { 1, _CREATOR_ALL_ACL_ACL};
 #define COMPLETION_STRING 6
 #define COMPLETION_MULTI 7
 
-typedef struct completion {
+class completion_t {
+  public:
     int type; /* one of COMPLETION_* values above */
     union {
         void_completion_t void_result;
@@ -157,16 +158,17 @@ typedef struct completion {
         struct watcher_object_list *watcher_result;
     };
     completion_head_t clist; /* For multi-op */
-} completion_t;
+};
 
-typedef struct _completion_list {
+class completion_list_t {
+  public:
     int xid;
     completion_t c;
     const void *data;
     buffer_t *buffer;
-    struct _completion_list *next;
+    completion_list_t* next;
     watcher_registration_t* watcher;
-} completion_list_t;
+};
 
 const char*err2string(int err);
 static int queue_session_event(zhandle_t *zh, int state);
@@ -1754,36 +1756,6 @@ void process_completions(zhandle_t *zh)
         destroy_completion_entry(cptr);
         close_buffer_iarchive(&ia);
     }
-}
-
-static void isSocketReadable(zhandle_t* zh)
-{
-    struct pollfd fds;
-    fds.fd = zh->fd;
-    fds.events = POLLIN;
-    if (poll(&fds,1,0)<=0) {
-        // socket not readable -- no more responses to process
-        zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
-    } else{
-        gettimeofday(&zh->socket_readable,0);
-    }
-}
-
-static void checkResponseLatency(zhandle_t* zh)
-{
-    int delay;
-    struct timeval now;
-
-    if(zh->socket_readable.tv_sec==0)
-        return;
-
-    gettimeofday(&now,0);
-    delay=calculate_interval(&zh->socket_readable, &now);
-    if(delay>20)
-        LOG_DEBUG("The following server response has spent at least " <<
-                  delay << "ms sitting in the client socket recv buffer");
-
-    zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
 }
 
 int zookeeper_process(zhandle_t *zh, int events)

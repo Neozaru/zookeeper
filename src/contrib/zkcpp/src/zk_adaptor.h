@@ -54,7 +54,7 @@
 extern "C" {
 #endif
 
-struct _completion_list;
+class completion_list_t;
 
 /**
  * This structure represents a packet being read or written.
@@ -72,12 +72,13 @@ class buffer_list_t {
     boost::recursive_mutex mutex_;
 };
 
-typedef struct _completion_head {
-    struct _completion_list *volatile head;
-    struct _completion_list *last;
+class completion_head_t {
+  public:
+    completion_list_t* volatile head;
+    completion_list_t* last;
     boost::shared_ptr<boost::condition_variable> cond;
     boost::shared_ptr<boost::mutex> lock;
-} completion_head_t;
+};
 
 void lock_completion_list(completion_head_t *l);
 void unlock_completion_list(completion_head_t *l);
