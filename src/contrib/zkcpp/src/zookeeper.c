@@ -144,17 +144,6 @@ struct ACL_vector ZOO_CREATOR_ALL_ACL = { 1, _CREATOR_ALL_ACL_ACL};
 #define COMPLETION_STRING 6
 #define COMPLETION_MULTI 7
 
-class auth_completion_t {
-  public:
-    void_completion_t completion;
-    const char *auth_data;
-};
-
-class auth_completion_list_t {
-  public:
-    boost::ptr_list<auth_completion_t> list;
-};
-
 typedef struct completion {
     int type; /* one of COMPLETION_* values above */
     union {
@@ -233,21 +222,6 @@ void zoo_set_context(zhandle_t *zh, void *context)
 int zoo_recv_timeout(zhandle_t *zh)
 {
     return zh->recv_timeout;
-}
-
-/** these functions are thread unsafe, so make sure that
-    zoo_lock_auth is called before you access them **/
-static void get_auth_completions(auth_list_head_t *auth_list, auth_completion_list_t *a_list) {
-  BOOST_FOREACH(auth_info& info, auth_list->authList_) {
-    if (info.completion) {
-      auth_completion_t* comp = new auth_completion_t();
-      comp->completion = info.completion;
-      comp->auth_data = info.data;
-      a_list->list.push_back(comp);
-      info.completion = NULL;
-      info.auth_data = NULL;
-    }
-  }
 }
 
 int is_unrecoverable(zhandle_t *zh)
@@ -1002,42 +976,29 @@ static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
     return rc;
 }
 
-static void auth_completion_func(int rc, zhandle_t* zh)
-{
-    void_completion_t auth_completion = NULL;
-    auth_completion_list_t a_list;
+static void auth_completion_func(int rc, zhandle_t* zh) {
+  if (zh == NULL) {
+    return;
+  }
 
-    if(zh==NULL)
-        return;
-
-    {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
-        if(rc!=0){
-            zh->state=ZOO_AUTH_FAILED_STATE;
-        }else{
-            //change state for all auths
-            BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
-              info.state = 1;
-            }
-        }
-        get_auth_completions(zh->auth_h.get(), &a_list);
-    }
-    if (rc) {
-        LOG_ERROR("Authentication scheme " << zh->auth_h.get()->authList_.front().scheme <<
-                  " failed. Connection closed.");
-    }
-    else {
-        LOG_INFO("Authentication scheme " << zh->auth_h.get()->authList_.front().scheme <<
-                 " succeeded.");
-    }
-
-    BOOST_FOREACH(auth_completion_t& completion, a_list.list) {
-      if (completion.completion) {
-        auth_completion = completion.completion;
-        auth_completion(rc, completion.auth_data);
+  boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
+  if (rc != 0) {
+    LOG_ERROR("Authentication scheme " << zh->auth_h.get()->authList_.front().scheme <<
+        " failed. Connection closed.");
+    zh->state=ZOO_AUTH_FAILED_STATE;
+  }else{
+    LOG_INFO("Authentication scheme " << zh->auth_h.get()->authList_.front().scheme <<
+        " succeeded.");
+    //change state for all auths
+    BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
+      info.state = 1;
+      if (info.completion) {
+        info.completion(rc, info.data);
+        info.completion = NULL;
+        info.data = NULL;
       }
     }
-    a_list.list.clear();
+  }
 }
 
 static int send_info_packet(zhandle_t *zh, auth_info* auth) {
