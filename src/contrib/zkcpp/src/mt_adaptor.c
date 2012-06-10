@@ -28,6 +28,7 @@
 #include "logging.hh"
 ENABLE_LOGGING;
 
+#include <boost/interprocess/detail/atomic.hpp>
 #include <boost/thread.hpp>
 #include <stdlib.h>
 #include <stdio.h>
@@ -273,35 +274,22 @@ void *do_completion(void *v)
     return 0;
 }
 
-int32_t inc_ref_counter(zhandle_t* zh,int i)
-{
-    int incr=(i<0?-1:(i>0?1:0));
-    // fetch_and_add implements atomic post-increment
-    int v=fetch_and_add(&zh->ref_counter,incr);
-    // inc_ref_counter wants pre-increment
-    v+=incr;   // simulate pre-increment
-    return v;
+uint32_t inc_ref_counter(zhandle_t* zh) {
+  return boost::interprocess::detail::atomic_inc32(&(zh->ref_counter)) + 1;
 }
 
-int32_t fetch_and_add(volatile int32_t* operand, int incr)
-{
-    int32_t result;
-    asm __volatile__(
-         "lock xaddl %0,%1\n"
-         : "=r"(result), "=m"(*(int *)operand)
-         : "0"(incr)
-         : "memory");
-   return result;
+uint32_t dec_ref_counter(zhandle_t* zh) {
+  return boost::interprocess::detail::atomic_dec32(&(zh->ref_counter)) - 1;
 }
 
-// make sure the static xid is initialized before any threads started
-__attribute__((constructor)) int32_t get_xid()
+uint32_t get_ref_counter(zhandle_t* zh) {
+  return boost::interprocess::detail::atomic_read32(&(zh->ref_counter));
+}
+
+int32_t get_xid()
 {
-    static int32_t xid = -1;
-    if (xid == -1) {
-        xid = time(0);
-    }
-    return fetch_and_add(&xid,1);
+    static uint32_t xid = 1;
+    return boost::interprocess::detail::atomic_inc32(&xid);
 }
 
 void enter_critical(zhandle_t* zh)

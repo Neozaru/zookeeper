@@ -201,7 +201,7 @@ struct _zhandle {
     /* zookeeper_close is not reentrant because it de-allocates the zhandler. 
      * This guard variable is used to defer the destruction of zhandle till 
      * right before top-level API call returns to the caller */
-    int32_t ref_counter;
+    uint32_t ref_counter;
     volatile int close_requested;
     void *adaptor_priv;
     /* Used for debugging only: non-zero value indicates the time when the zookeeper_process
@@ -239,10 +239,10 @@ void api_prolog(zhandle_t* zh);
 int api_epilog(zhandle_t *zh, int rc);
 int32_t get_xid();
 // returns the new value of the ref counter
-int32_t inc_ref_counter(zhandle_t* zh,int i);
+uint32_t inc_ref_counter(zhandle_t* zh);
+uint32_t dec_ref_counter(zhandle_t* zh);
+uint32_t get_ref_counter(zhandle_t* zh);
 
-// atomic post-increment
-int32_t fetch_and_add(volatile int32_t* operand, int incr);
 // in mt mode process session event asynchronously by the completion thread
 #define PROCESS_SESSION_EVENT(zh,newstate) queue_session_event(zh,newstate)
 

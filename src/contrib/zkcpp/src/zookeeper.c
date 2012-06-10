@@ -642,6 +642,7 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->completions_to_process.lock.reset(new boost::mutex());
     zh->completions_to_process.cond.reset(new boost::condition_variable());
 
+    zh->ref_counter = 0;
     zh->fd = -1;
     zh->state = NOTCONNECTED_STATE_DEF;
     zh->context = context;
@@ -1564,12 +1565,12 @@ static int check_events(zhandle_t *zh, int events)
 
 void api_prolog(zhandle_t* zh)
 {
-    inc_ref_counter(zh,1);
+    inc_ref_counter(zh);
 }
 
 int api_epilog(zhandle_t *zh,int rc)
 {
-    if(inc_ref_counter(zh,-1)==0 && zh->close_requested!=0)
+    if(dec_ref_counter(zh)==0 && zh->close_requested!=0)
         zookeeper_close(zh);
     return rc;
 }
@@ -2250,7 +2251,7 @@ int zookeeper_close(zhandle_t *zh)
         return ZBADARGUMENTS;
 
     zh->close_requested=1;
-    if (inc_ref_counter(zh,1)>1) {
+    if (inc_ref_counter(zh)>1) {
         /* We have incremented the ref counter to prevent the
          * completions from calling zookeeper_close before we have
          * completed the adaptor_finish call below. */

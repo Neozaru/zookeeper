@@ -217,7 +217,7 @@ struct RefCounterValue{
             if(zh_==0)
                 return false;
         }
-        return inc_ref_counter(zh_,0)==expectedCounter_;
+        return get_ref_counter(zh_)==expectedCounter_;
     }
     zhandle_t* const& zh_;
     int32_t expectedCounter_;
@@ -242,7 +242,7 @@ public:
                 // prevent zhandle_t from being prematurely distroyed;
                 // this will also ensure that zookeeper_close() cleanups the thread
                 // resources by calling finish_adaptor()
-                inc_ref_counter(zh,1);
+                inc_ref_counter(zh);
                 terminateZookeeperThreads(zh);
             }
             synchronized(mx_);
