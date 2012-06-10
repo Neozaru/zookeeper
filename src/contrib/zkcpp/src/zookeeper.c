@@ -1631,7 +1631,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
 {
     switch (type) {
     case COMPLETION_DATA:
-        LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#x failed=%d rc=%d") %
+        LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#08x failed=%d rc=%d") %
                                 cptr->xid % failed % rc);
         if (failed) {
             cptr->c.data_result(rc, 0, 0, 0, cptr->data);
@@ -1644,7 +1644,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STAT:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STAT for xid=%#x failed=%d rc=%d") % 
+        LOG_DEBUG(boost::format("Calling COMPLETION_STAT for xid=%#08x failed=%d rc=%d") % 
                                 cptr->xid % failed % rc);
         if (failed) {
             cptr->c.stat_result(rc, 0, cptr->data);
@@ -1656,7 +1656,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STRINGLIST:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST for xid=%#x failed=%d rc=%d") %
+        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST for xid=%#08x failed=%d rc=%d") %
                                 cptr->xid % failed % rc);
         if (failed) {
             cptr->c.strings_result(rc, 0, cptr->data);
@@ -1668,7 +1668,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STRINGLIST_STAT:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST_STAT for xid=%#x failed=%d rc=%d") %
+        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST_STAT for xid=%#08x failed=%d rc=%d") %
                                 cptr->xid % failed % rc);
         if (failed) {
             cptr->c.strings_stat_result(rc, 0, 0, cptr->data);
@@ -1680,7 +1680,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_STRING:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STRING for xid=%#x failed=%d, rc=%d") %
+        LOG_DEBUG(boost::format("Calling COMPLETION_STRING for xid=%#08x failed=%d, rc=%d") %
                                 cptr->xid % failed % rc);
         if (failed) {
             cptr->c.string_result(rc, 0, cptr->data);
@@ -1692,7 +1692,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_ACLLIST:
-        LOG_DEBUG(boost::format("Calling COMPLETION_ACLLIST for xid=%#x failed=%d rc=%d") %
+        LOG_DEBUG(boost::format("Calling COMPLETION_ACLLIST for xid=%#08x failed=%d rc=%d") %
                                 cptr->xid % failed % rc);
         if (failed) {
             cptr->c.acl_result(rc, 0, 0, cptr->data);
@@ -1704,7 +1704,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_VOID:
-        LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#x failed=%d rc=%d") %
+        LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#08x failed=%d rc=%d") %
                                 cptr->xid % failed % rc);
         if (xid == PING_XID) {
             // We want to skip the ping
@@ -1714,7 +1714,7 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         }
         break;
     case COMPLETION_MULTI:
-        LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#x failed=%d rc=%d") %
+        LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#08x failed=%d rc=%d") %
                                 cptr->xid % failed % rc);
         rc = deserialize_multi(xid, cptr, ia);
         assert(cptr->c.void_result);
