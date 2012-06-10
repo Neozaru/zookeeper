@@ -16,8 +16,8 @@
 * limitations under the License.
 */
 
-#ifndef __ZOOKEEPER_JUTE__
-#define __ZOOKEEPER_JUTE__
+#ifndef __ZOOKEEPER_JUTE_HH__
+#define __ZOOKEEPER_JUTE_HH__
 #include "recordio.hh"
 namespace org {
 namespace apache {
@@ -2097,4 +2097,4 @@ public:
 } // end namespace zookeeper
 } // end namespace apache
 } // end namespace org
-#endif //ZOOKEEPER_JUTE__
+#endif //ZOOKEEPER_JUTE_HH__

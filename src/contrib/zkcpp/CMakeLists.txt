@@ -13,7 +13,8 @@ include_directories(
 
 file(GLOB header
   ${PROJECT_SOURCE_DIR}/include/*h
-  ${PROJECT_SOURCE_DIR}/generated/*h
+  ${PROJECT_SOURCE_DIR}/generated/*.h
+  ${PROJECT_SOURCE_DIR}/generated/*.hh
   ${PROJECT_SOURCE_DIR}/src/*h
 )
 
@@ -21,6 +22,7 @@ file(GLOB source
   ${PROJECT_SOURCE_DIR}/src/*.cc
   ${PROJECT_SOURCE_DIR}/src/*.c
   ${PROJECT_SOURCE_DIR}/generated/*.c
+  ${PROJECT_SOURCE_DIR}/generated/*.cc
 )
 
 # TODO derive this from ${source} and ${testsrc}
@@ -28,6 +30,7 @@ file(GLOB testsrc
   ${PROJECT_SOURCE_DIR}/src/*.cc
   ${PROJECT_SOURCE_DIR}/src/*.c
   ${PROJECT_SOURCE_DIR}/generated/*.c
+  ${PROJECT_SOURCE_DIR}/generated/*.cc
   ${PROJECT_SOURCE_DIR}/tests/*.cc
   ${PROJECT_SOURCE_DIR}/tests/*.c
   ${PROJECT_SOURCE_DIR}/tests/*.h
