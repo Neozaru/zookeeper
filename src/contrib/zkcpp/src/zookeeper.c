@@ -169,7 +169,7 @@ typedef struct _completion_list {
     int xid;
     completion_t c;
     const void *data;
-    buffer_list_t *buffer;
+    buffer_t *buffer;
     struct _completion_list *next;
     watcher_registration_t* watcher;
 } completion_list_t;
@@ -637,6 +637,8 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     if (!zh) {
         return 0;
     }
+    zh->to_process.reset(new buffer_list_t());
+    zh->to_send.reset(new buffer_list_t());
     zh->sent_requests.lock.reset(new boost::mutex());
     zh->sent_requests.cond.reset(new boost::condition_variable());
     zh->completions_to_process.lock.reset(new boost::mutex());
@@ -648,8 +650,6 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->context = context;
     zh->recv_timeout = recv_timeout;
     zh->auth_h.reset(new auth_list_head_t());
-    zh->to_process.mutex_.reset(new boost::recursive_mutex());
-    zh->to_send.mutex_.reset(new boost::recursive_mutex());
     if (watcher) {
        zh->watcher = watcher;
     } else {
@@ -701,7 +701,6 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->primer_buffer.buffer = zh->primer_storage_buffer;
     zh->primer_buffer.curr_offset = 0;
     zh->primer_buffer.len = sizeof(zh->primer_storage_buffer);
-    zh->primer_buffer.next = 0;
     zh->last_zxid = 0;
     zh->next_deadline.tv_sec=zh->next_deadline.tv_usec=0;
     zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
@@ -772,20 +771,16 @@ char* sub_string(zhandle_t *zh, const char* server_path) {
     return ret_str;
 }
 
-static buffer_list_t *allocate_buffer(char *buff, int len)
+static buffer_t *allocate_buffer(char *buff, int len)
 {
-    buffer_list_t *buffer = (buffer_list_t*)calloc(1, sizeof(*buffer));
-    if (buffer == 0)
-        return 0;
-
+    buffer_t* buffer = new buffer_t();
     buffer->len = len==0?sizeof(*buffer):len;
     buffer->curr_offset = 0;
     buffer->buffer = buff;
-    buffer->next = 0;
     return buffer;
 }
 
-static void free_buffer(buffer_list_t *b)
+static void free_buffer(buffer_t *b)
 {
     if (!b) {
         return;
@@ -793,30 +788,20 @@ static void free_buffer(buffer_list_t *b)
     if (b->buffer) {
         free(b->buffer);
     }
-    free(b);
+    delete b;
 }
 
-static buffer_list_t *dequeue_buffer(buffer_head_t *list)
-{
-    buffer_list_t *b;
-
-    {
-        boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
-        b = list->head;
-        if (b) {
-            list->head = b->next;
-            if (!list->head) {
-                assert(b == list->last);
-                list->last = 0;
-            }
-        }
-    }
-    return b;
+static buffer_t *dequeue_buffer(buffer_list_t *list) {
+  boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+  if (list->bufferList_.empty()) {
+    return NULL;
+  }
+  return list->bufferList_.release(list->bufferList_.begin()).release();
 }
 
-static int remove_buffer(buffer_head_t *list)
+static int remove_buffer(buffer_list_t *list)
 {
-    buffer_list_t *b = dequeue_buffer(list);
+    buffer_t *b = dequeue_buffer(list);
     if (!b) {
         return 0;
     }
@@ -824,66 +809,41 @@ static int remove_buffer(buffer_head_t *list)
     return 1;
 }
 
-static void queue_buffer(buffer_head_t *list, buffer_list_t *b, int add_to_front)
+static void queue_buffer(buffer_list_t *list, buffer_t *b, int add_to_front)
 {
-    b->next = 0;
-    {
-        boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
-        if (list->head) {
-            assert(list->last);
-            // The list is not empty
-            if (add_to_front) {
-                b->next = list->head;
-                list->head = b;
-            } else {
-                list->last->next = b;
-                list->last = b;
-            }
-        }else{
-            // The list is empty
-            assert(!list->head);
-            list->head = b;
-            list->last = b;
-        }
-    }
+  boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+  list->bufferList_.push_back(b);
 }
 
-static int queue_buffer_bytes(buffer_head_t *list, char *buff, int len)
+static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len)
 {
-    buffer_list_t *b  = allocate_buffer(buff,len);
+    buffer_t *b  = allocate_buffer(buff,len);
     if (!b)
         return ZSYSTEMERROR;
     queue_buffer(list, b, 0);
     return ZOK;
 }
 
-static int queue_front_buffer_bytes(buffer_head_t *list, char *buff, int len)
+static int queue_front_buffer_bytes(buffer_list_t *list, char *buff, int len)
 {
-    buffer_list_t *b  = allocate_buffer(buff,len);
+    buffer_t *b  = allocate_buffer(buff,len);
     if (!b)
         return ZSYSTEMERROR;
     queue_buffer(list, b, 1);
     return ZOK;
 }
 
-static __attribute__ ((unused)) int get_queue_len(buffer_head_t *list)
+static __attribute__ ((unused)) int get_queue_len(buffer_list_t *list)
 {
-    int i;
-    buffer_list_t *ptr;
-    {
-        boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
-        ptr = list->head;
-        for (i=0; ptr!=0; ptr=ptr->next, i++)
-            ;
-    }
-    return i;
+  boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+  return list->bufferList_.size();
 }
 /* returns:
  * -1 if send failed,
  * 0 if send would block while sending the buffer (or a send was incomplete),
  * 1 if success
  */
-static int send_buffer(int fd, buffer_list_t *buff)
+static int send_buffer(int fd, buffer_t *buff)
 {
     int len = buff->len;
     int off = buff->curr_offset;
@@ -925,7 +885,7 @@ static int send_buffer(int fd, buffer_list_t *buff)
  * 0 if recv would block,
  * 1 if success
  */
-static int recv_buffer(int fd, buffer_list_t *buff) {
+static int recv_buffer(int fd, buffer_t *buff) {
     int off = buff->curr_offset;
     int rc = 0;
     //fprintf(LOGSTREAM, "rc = %d, off = %d, line %d\n", rc, off, __LINE__);
@@ -972,7 +932,7 @@ static int recv_buffer(int fd, buffer_list_t *buff) {
     return buff->curr_offset == buff->len + (int)sizeof(buff->len);
 }
 
-void free_buffers(buffer_head_t *list)
+void free_buffers(buffer_list_t *list)
 {
     while (remove_buffer(list))
         ;
@@ -1009,13 +969,13 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
                 destroy_completion_entry(cptr);
             } else {
                 // Fake the response
-                buffer_list_t *bptr;
+                buffer_t *bptr;
                 h.xid = cptr->xid;
                 h.zxid = -1;
                 h.err = reason;
                 oa = create_buffer_oarchive();
                 serialize_ReplyHeader(oa, "header", &h);
-                bptr = (buffer_list_t*)calloc(sizeof(*bptr), 1);
+                bptr = (buffer_t*)calloc(sizeof(*bptr), 1);
                 assert(bptr);
                 bptr->len = get_buffer_len(oa);
                 bptr->buffer = get_buffer(oa);
@@ -1046,8 +1006,8 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
 static void cleanup_bufs(zhandle_t *zh,int callCompletion,int rc)
 {
     enter_critical(zh);
-    free_buffers(&zh->to_send);
-    free_buffers(&zh->to_process);
+    free_buffers(zh->to_send.get());
+    free_buffers(zh->to_process.get());
     free_completions(zh,callCompletion,rc);
     leave_critical(zh);
     if (zh->input_buffer && zh->input_buffer != &zh->primer_buffer) {
@@ -1141,8 +1101,8 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
     req.auth = auth->auth;
     rc = rc < 0 ? rc : serialize_AuthPacket(oa, "req", &req);
     /* add this buffer to the head of the send queue */
-    rc = rc < 0 ? rc : queue_front_buffer_bytes(&zh->to_send, get_buffer(oa),
-            get_buffer_len(oa));
+    rc = rc < 0 ? rc : queue_front_buffer_bytes(zh->to_send.get(),
+        get_buffer(oa), get_buffer_len(oa));
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
     adaptor_send_queue(zh, 0);
@@ -1211,8 +1171,8 @@ static int send_set_watches(zhandle_t *zh)
     rc = serialize_RequestHeader(oa, "header", &h);
     rc = rc < 0 ? rc : serialize_SetWatches(oa, "req", &req);
     /* add this buffer to the head of the send queue */
-    rc = rc < 0 ? rc : queue_front_buffer_bytes(&zh->to_send, get_buffer(oa),
-            get_buffer_len(oa));
+    rc = rc < 0 ? rc : queue_front_buffer_bytes(zh->to_send.get(),
+        get_buffer(oa), get_buffer_len(oa));
     /* We queued the buffer, so don't free it */   
     close_buffer_oarchive(&oa, 0);
     free_key_list(req.dataWatches.data, req.dataWatches.count);
@@ -1347,7 +1307,7 @@ static struct timeval get_timeval(int interval)
     enter_critical(zh);
     gettimeofday(&zh->last_ping, 0);
     rc = rc < 0 ? rc : add_void_completion(zh, h.xid, 0, 0);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     close_buffer_oarchive(&oa, 0);
@@ -1467,8 +1427,9 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         *interest = ZOOKEEPER_READ;
         /* we are interested in a write if we are connected and have something
          * to send, or we are waiting for a connect to finish. */
-        if ((zh->to_send.head && (zh->state == ZOO_CONNECTED_STATE))
-        || zh->state == ZOO_CONNECTING_STATE) {
+        if ((!zh->to_send.get()->bufferList_.empty() &&
+            zh->state == ZOO_CONNECTED_STATE) ||
+            zh->state == ZOO_CONNECTING_STATE) {
             *interest |= ZOOKEEPER_WRITE;
         }
     }
@@ -1498,7 +1459,7 @@ static int check_events(zhandle_t *zh, int events)
                 format_endpoint_info(&zh->addrs[zh->connect_index]));
         return ZOK;
     }
-    if (zh->to_send.head && (events&ZOOKEEPER_WRITE)) {
+    if (!(zh->to_send.get()->bufferList_.empty()) && (events&ZOOKEEPER_WRITE)) {
         /* make the flush call non-blocking by specifying a 0 timeout */
         int rc=flush_send_queue(zh,0);
         if (rc < 0)
@@ -1519,7 +1480,7 @@ static int check_events(zhandle_t *zh, int events)
         if (rc > 0) {
             gettimeofday(&zh->last_recv, 0);
             if (zh->input_buffer != &zh->primer_buffer) {
-                queue_buffer(&zh->to_process, zh->input_buffer, 0);
+                queue_buffer(zh->to_process.get(), zh->input_buffer, 0);
             } else  {
                 int64_t oldid,newid;
                 //deserialize
@@ -1865,7 +1826,7 @@ void process_completions(zhandle_t *zh)
     completion_list_t *cptr;
     while ((cptr = dequeue_completion(&zh->completions_to_process)) != 0) {
         struct ReplyHeader hdr;
-        buffer_list_t *bptr = cptr->buffer;
+        buffer_t *bptr = cptr->buffer;
         struct iarchive *ia = create_buffer_iarchive(bptr->buffer,
                 bptr->len);
         deserialize_ReplyHeader(ia, "hdr", &hdr);
@@ -1923,7 +1884,7 @@ static void checkResponseLatency(zhandle_t* zh)
 
 int zookeeper_process(zhandle_t *zh, int events)
 {
-    buffer_list_t *bptr;
+    buffer_t *bptr;
     int rc;
 
     if (zh==NULL)
@@ -1940,7 +1901,7 @@ int zookeeper_process(zhandle_t *zh, int events)
     // TODO decide what to do
     //IF_DEBUG(isSocketReadable(zh));
 
-    while (rc >= 0 && (bptr=dequeue_buffer(&zh->to_process))) {
+    while (rc >= 0 && (bptr=dequeue_buffer(zh->to_process.get()))) {
         struct ReplyHeader hdr;
         struct iarchive *ia = create_buffer_iarchive(
                                     bptr->buffer, bptr->curr_offset);
@@ -2276,7 +2237,7 @@ int zookeeper_close(zhandle_t *zh)
             zh->client_id.client_id % format_current_endpoint_info(zh));
         oa = create_buffer_oarchive();
         rc = serialize_RequestHeader(oa, "header", &h);
-        rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+        rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
                 get_buffer_len(oa));
         /* We queued the buffer, so don't free it */
         close_buffer_oarchive(&oa, 0);
@@ -2412,7 +2373,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
     enter_critical(zh);
     rc = rc < 0 ? rc : add_data_completion(zh, h.xid, dc, data,
         create_watcher_registration(server_path,data_result_checker,watcher,watcherCtx));
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(server_path, path);
@@ -2457,7 +2418,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
     rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
     enter_critical(zh);
     rc = rc < 0 ? rc : add_stat_completion(zh, h.xid, dc, data,0);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2513,7 +2474,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
     rc = rc < 0 ? rc : serialize_CreateRequest(oa, "req", &req);
     enter_critical(zh);
     rc = rc < 0 ? rc : add_string_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2553,7 +2514,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
     rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
     enter_critical(zh);
     rc = rc < 0 ? rc : add_void_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2592,7 +2553,7 @@ int zoo_awexists(zhandle_t *zh, const char *path,
     rc = rc < 0 ? rc : add_stat_completion(zh, h.xid, completion, data,
         create_watcher_registration(req.path,exists_result_checker,
                 watcher,watcherCtx));
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2625,7 +2586,7 @@ static int zoo_awget_children_(zhandle_t *zh, const char *path,
     enter_critical(zh);
     rc = rc < 0 ? rc : add_strings_completion(zh, h.xid, sc, data,
             create_watcher_registration(req.path,child_result_checker,watcher,watcherCtx));
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2673,7 +2634,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
     enter_critical(zh);
     rc = rc < 0 ? rc : add_strings_stat_completion(zh, h.xid, ssc, data,
             create_watcher_registration(req.path,child_result_checker,watcher,watcherCtx));
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2716,7 +2677,7 @@ int zoo_async(zhandle_t *zh, const char *path,
     rc = rc < 0 ? rc : serialize_SyncRequest(oa, "req", &req);
     enter_critical(zh);
     rc = rc < 0 ? rc : add_string_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2746,7 +2707,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
     rc = rc < 0 ? rc : serialize_GetACLRequest(oa, "req", &req);
     enter_critical(zh);
     rc = rc < 0 ? rc : add_acl_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2777,7 +2738,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     rc = rc < 0 ? rc : serialize_SetACLRequest(oa, "req", &req);
     enter_critical(zh);
     rc = rc < 0 ? rc : add_void_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     free_duplicate_path(req.path, path);
@@ -2940,7 +2901,7 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
     /* BEGIN: CRTICIAL SECTION */
     enter_critical(zh);
     rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, completion, data, &clist);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
     
@@ -3029,8 +2990,10 @@ int flush_send_queue(zhandle_t*zh, int timeout)
     // we use a recursive lock instead and only dequeue the buffer if a send was
     // successful
     {
-        boost::lock_guard<boost::recursive_mutex> lock(*(zh->to_send.mutex_));
-        while (zh->to_send.head != 0&& zh->state == ZOO_CONNECTED_STATE) {
+        boost::lock_guard<boost::recursive_mutex>
+          lock(*(zh->to_send.get()->mutex_));
+        while (!(zh->to_send.get()->bufferList_.empty()) &&
+               zh->state == ZOO_CONNECTED_STATE) {
             if(timeout!=0){
                 int elapsed;
                 struct timeval now;
@@ -3053,7 +3016,7 @@ int flush_send_queue(zhandle_t*zh, int timeout)
                 }
             }
 
-            rc = send_buffer(zh->fd, zh->to_send.head);
+            rc = send_buffer(zh->fd, &(zh->to_send.get()->bufferList_.front()));
             if(rc==0 && timeout==0){
                 /* send_buffer would block while sending this buffer */
                 rc = ZOK;
@@ -3065,7 +3028,7 @@ int flush_send_queue(zhandle_t*zh, int timeout)
             }
             // if the buffer has been sent successfully, remove it from the queue
             if (rc > 0)
-                remove_buffer(&zh->to_send);
+                remove_buffer(zh->to_send.get());
             gettimeofday(&zh->last_send, 0);
             rc = ZOK;
         }

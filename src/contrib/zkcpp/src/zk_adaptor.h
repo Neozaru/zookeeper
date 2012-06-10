@@ -54,15 +54,18 @@
 extern "C" {
 #endif
 
-struct _buffer_list;
+class buffer_t;
 struct _completion_list;
 
-typedef struct _buffer_head {
-    struct _buffer_list *volatile head;
-    struct _buffer_list *last;
+class buffer_list_t {
+  public:
+    buffer_list_t() :
+      bufferList_(boost::ptr_list<buffer_t>()),
+      mutex_(new boost::recursive_mutex()) {}
     // XXX(michim) Why does the mutex for to_send have to be recursive?
+    boost::ptr_list<buffer_t> bufferList_;
     boost::shared_ptr<boost::recursive_mutex> mutex_;
-} buffer_head_t;
+};
 
 typedef struct _completion_head {
     struct _completion_list *volatile head;
@@ -118,12 +121,12 @@ class auth_info {
 /**
  * This structure represents a packet being read or written.
  */
-typedef struct _buffer_list {
+class buffer_t {
+  public:
     char *buffer;
     int len; /* This represents the length of sizeof(header) + length of buffer */
     int curr_offset; /* This is the offset into the header followed by offset into the buffer */
-    struct _buffer_list *next;
-} buffer_list_t;
+};
 
 /* the size of connect request */
 #define HANDSHAKE_REQ_SIZE 44
@@ -183,16 +186,16 @@ struct _zhandle {
     struct timeval next_deadline; /* The time of the next deadline */
     int recv_timeout; /* The maximum amount of time that can go by without 
      receiving anything from the zookeeper server */
-    buffer_list_t *input_buffer; /* the current buffer being read in */
-    buffer_head_t to_process; /* The buffers that have been read and are ready to be processed. */
-    buffer_head_t to_send; /* The packets queued to send */
+    buffer_t* input_buffer; /* the current buffer being read in */
+    boost::scoped_ptr<buffer_list_t> to_process; /* The buffers that have been read and are ready to be processed. */
+    boost::scoped_ptr<buffer_list_t> to_send; /* The packets queued to send */
     completion_head_t sent_requests; /* The outstanding requests */
     completion_head_t completions_to_process; /* completions that are ready to run */
     int connect_index; /* The index of the address to connect to */
     clientid_t client_id;
     long long last_zxid;
     int outstanding_sync; /* Number of outstanding synchronous requests */
-    struct _buffer_list primer_buffer; /* The buffer used for the handshake at the start of a connection */
+    buffer_t primer_buffer; /* The buffer used for the handshake at the start of a connection */
     struct prime_struct primer_storage; /* the connect response */
     char primer_storage_buffer[40]; /* the true size of primer_storage */
     volatile int state;

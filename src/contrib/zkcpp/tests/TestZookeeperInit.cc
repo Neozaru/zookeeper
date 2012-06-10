@@ -92,7 +92,6 @@ public:
         CPPUNIT_ASSERT(zh->primer_buffer.buffer==zh->primer_storage_buffer);
         CPPUNIT_ASSERT(zh->primer_buffer.curr_offset ==0);
         CPPUNIT_ASSERT(zh->primer_buffer.len == sizeof(zh->primer_storage_buffer));
-        CPPUNIT_ASSERT(zh->primer_buffer.next == 0);
         CPPUNIT_ASSERT(zh->last_zxid ==0);
         CPPUNIT_ASSERT(memcmp(&zh->client_id,&cid,sizeof(cid))==0);
 
