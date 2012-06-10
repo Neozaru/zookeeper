@@ -25,7 +25,7 @@
 extern "C" {
 #endif
 
-    typedef struct watcher_object_list watcher_object_list_t;
+typedef struct watcher_object_list watcher_object_list_t;
 typedef struct _zk_hashtable zk_hashtable;
 
 /**

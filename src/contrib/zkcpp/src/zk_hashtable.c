@@ -58,22 +58,6 @@ watcher_object_t* clone_watcher_object(watcher_object_t* wo)
     return res;
 }
 
-static unsigned int string_hash_djb2(void *str) 
-{
-    unsigned int hash = 5381;
-    int c;
-    const char* cstr = (const char*)str;
-    while ((c = *cstr++))
-        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-
-    return hash;
-}
-
-static int string_equal(void *key1,void *key2)
-{
-    return strcmp((const char*)key1,(const char*)key2)==0;
-}
-
 static watcher_object_t* create_watcher_object(watcher_fn watcher,void* ctx)
 {
     watcher_object_t* wo=(watcher_object_t*)calloc(1,sizeof(watcher_object_t));
@@ -106,12 +90,9 @@ static void destroy_watcher_object_list(watcher_object_list_t* list)
     free(list);
 }
 
-zk_hashtable* create_zk_hashtable()
-{
-    struct _zk_hashtable *ht=(_zk_hashtable*)calloc(1,sizeof(struct _zk_hashtable));
-    assert(ht);
-    ht->map = boost::unordered_map<std::string, watcher_object_list_t*>();
-    return ht;
+zk_hashtable* create_zk_hashtable() {
+  _zk_hashtable* ht = new _zk_hashtable();
+  return ht;
 }
 
 static void do_clean_hashtable(zk_hashtable* ht)
@@ -182,7 +163,6 @@ char **collect_keys(zk_hashtable *ht, int *count)
 {
 
     char **list;
-    struct hashtable_itr *it;
     int i = 0;
 
     *count = ht->map.size();
