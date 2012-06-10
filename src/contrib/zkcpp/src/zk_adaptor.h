@@ -54,17 +54,22 @@
 extern "C" {
 #endif
 
-class buffer_t;
 struct _completion_list;
+
+/**
+ * This structure represents a packet being read or written.
+ */
+class buffer_t {
+  public:
+    char *buffer;
+    int len; /* This represents the length of sizeof(header) + length of buffer */
+    int curr_offset; /* This is the offset into the header followed by offset into the buffer */
+};
 
 class buffer_list_t {
   public:
-    buffer_list_t() :
-      bufferList_(boost::ptr_list<buffer_t>()),
-      mutex_(new boost::recursive_mutex()) {}
-    // XXX(michim) Why does the mutex for to_send have to be recursive?
     boost::ptr_list<buffer_t> bufferList_;
-    boost::shared_ptr<boost::recursive_mutex> mutex_;
+    boost::recursive_mutex mutex_;
 };
 
 typedef struct _completion_head {
@@ -116,16 +121,6 @@ class auth_info {
     struct buffer auth;
     void_completion_t completion;
     const char* data;
-};
-
-/**
- * This structure represents a packet being read or written.
- */
-class buffer_t {
-  public:
-    char *buffer;
-    int len; /* This represents the length of sizeof(header) + length of buffer */
-    int curr_offset; /* This is the offset into the header followed by offset into the buffer */
 };
 
 /* the size of connect request */

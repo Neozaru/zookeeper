@@ -792,7 +792,7 @@ static void free_buffer(buffer_t *b)
 }
 
 static buffer_t *dequeue_buffer(buffer_list_t *list) {
-  boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+  boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   if (list->bufferList_.empty()) {
     return NULL;
   }
@@ -811,7 +811,7 @@ static int remove_buffer(buffer_list_t *list)
 
 static void queue_buffer(buffer_list_t *list, buffer_t *b, int add_to_front)
 {
-  boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+  boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   list->bufferList_.push_back(b);
 }
 
@@ -835,7 +835,7 @@ static int queue_front_buffer_bytes(buffer_list_t *list, char *buff, int len)
 
 static __attribute__ ((unused)) int get_queue_len(buffer_list_t *list)
 {
-  boost::lock_guard<boost::recursive_mutex> lock(*(list->mutex_));
+  boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   return list->bufferList_.size();
 }
 /* returns:
@@ -2991,7 +2991,7 @@ int flush_send_queue(zhandle_t*zh, int timeout)
     // successful
     {
         boost::lock_guard<boost::recursive_mutex>
-          lock(*(zh->to_send.get()->mutex_));
+          lock(zh->to_send.get()->mutex_);
         while (!(zh->to_send.get()->bufferList_.empty()) &&
                zh->state == ZOO_CONNECTED_STATE) {
             if(timeout!=0){
