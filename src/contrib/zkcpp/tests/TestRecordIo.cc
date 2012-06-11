@@ -35,6 +35,7 @@ class TestRecordIo : public CPPUNIT_NS::TestFixture
   CPPUNIT_TEST(testStringOutStream);
   CPPUNIT_TEST(testId);
   CPPUNIT_TEST(testAcl);
+  CPPUNIT_TEST(testConnectResponse);
   CPPUNIT_TEST_SUITE_END();
 
   public:
@@ -110,6 +111,26 @@ class TestRecordIo : public CPPUNIT_NS::TestFixture
       hadoop::IBinArchive iarchive(istream);
       acl2.deserialize(iarchive, "something else?");
       CPPUNIT_ASSERT(acl1 == acl2);
+    }
+
+    void testConnectResponse() {
+      proto::ConnectResponse res1, res2;
+      res1.setprotocolVersion(10);
+      res1.settimeOut(123);
+      res1.setsessionId(2);
+      res1.getpasswd() = "mypass";
+
+      // serialize
+      std::string serialized;
+      StringOutStream stream(serialized);
+      hadoop::OBinArchive oarchive(stream);
+      res1.serialize(oarchive, "mytag");
+
+      // deserialize
+      MemoryInStream istream(serialized.c_str(), serialized.size());
+      hadoop::IBinArchive iarchive(istream);
+      res2.deserialize(iarchive, "something else?");
+      CPPUNIT_ASSERT(res1 == res2);
     }
 };
 
