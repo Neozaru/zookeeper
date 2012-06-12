@@ -186,16 +186,14 @@ static int deserialize_multi(int xid, completion_list_t *cptr, struct iarchive *
 
 /* completion routine forward declarations */
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
-        const void *dc, const void *data, int add_to_front, 
+        const void *dc, const void *data,
         watcher_registration_t* wo, completion_head_t *clist);
 static completion_list_t* create_completion_entry(int xid, int completion_type,
         const void *dc, const void *data, watcher_registration_t* wo, 
         completion_head_t *clist);
 static void destroy_completion_entry(completion_list_t* c);
-static void queue_completion_nolock(completion_head_t *list, completion_list_t *c,
-        int add_to_front);
-static void queue_completion(completion_head_t *list, completion_list_t *c,
-        int add_to_front);
+static void queue_completion_nolock(completion_head_t *list, completion_list_t *c);
+static void queue_completion(completion_head_t *list, completion_list_t *c);
 static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
                                   const std::string& message);
 static void cleanup_bufs(zhandle_t *zh,int callCompletion,int rc);
@@ -763,16 +761,6 @@ static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len)
     return ZOK;
 }
 
-static int queue_front_buffer_bytes(buffer_list_t *list, char *buff, int len)
-{
-    buffer_t *b  = allocate_buffer(buff,len);
-    if (!b)
-        return ZSYSTEMERROR;
-    boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
-    list->bufferList_.push_front(b);
-    return ZOK;
-}
-
 /* returns:
  * -1 if send failed,
  * 0 if send would block while sending the buffer (or a send was incomplete),
@@ -915,7 +903,7 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
                 bptr->buffer = get_buffer(oa);
                 close_buffer_oarchive(&oa, 0);
                 cptr->buffer = bptr;
-                queue_completion(&zh->completions_to_process, cptr, 0);
+                queue_completion(&zh->completions_to_process, cptr);
             }
         }
     }
@@ -1002,23 +990,30 @@ static void auth_completion_func(int rc, zhandle_t* zh) {
 }
 
 static int send_info_packet(zhandle_t *zh, auth_info* auth) {
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER(xid , AUTH_XID), STRUCT_INITIALIZER(type , ZOO_SETAUTH_OP)};
-    struct AuthPacket req;
-    int rc;
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    req.type=0;   // ignored by the server
-    req.scheme = (char*)(auth->scheme.c_str());
-    req.auth = auth->auth;
-    rc = rc < 0 ? rc : serialize_AuthPacket(oa, "req", &req);
-    /* add this buffer to the head of the send queue */
-    rc = rc < 0 ? rc : queue_front_buffer_bytes(zh->to_send.get(),
-        get_buffer(oa), get_buffer_len(oa));
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
-    adaptor_send_queue(zh, 0);
-    return rc;
+  int rc = 0;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(AUTH_XID);
+  header.settype(ZOO_SETAUTH_OP);
+  header.serialize(oarchive, "header");
+
+  proto::AuthPacket req;
+  req.settype(0); // ignored by the server
+  req.getscheme() = auth->scheme;
+  req.getauth() = std::string(auth->auth.buff, auth->auth.len);
+  req.serialize(oarchive, "req");
+
+  /* add this buffer to the head of the send queue */
+  // TODO(michim) avoid copy
+  char* data  = (char*)malloc(serialized.size());
+  memmove(data, serialized.c_str(), serialized.size());
+  rc = queue_buffer_bytes(zh->to_send.get(),
+        data, serialized.size());
+  adaptor_send_queue(zh, 0);
+  return rc;
 }
 
 /** send all auths, not just the last one **/
@@ -1083,7 +1078,7 @@ static int send_set_watches(zhandle_t *zh)
     rc = serialize_RequestHeader(oa, "header", &h);
     rc = rc < 0 ? rc : serialize_SetWatches(oa, "req", &req);
     /* add this buffer to the head of the send queue */
-    rc = rc < 0 ? rc : queue_front_buffer_bytes(zh->to_send.get(),
+    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(),
         get_buffer(oa), get_buffer_len(oa));
     /* We queued the buffer, so don't free it */   
     close_buffer_oarchive(&oa, 0);
@@ -1423,7 +1418,7 @@ static int queue_session_event(zhandle_t *zh, int state)
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
     cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, (char*)"");
-    queue_completion(&zh->completions_to_process, cptr, 0);
+    queue_completion(&zh->completions_to_process, cptr);
     if (process_async(zh->outstanding_sync)) {
         process_completions(zh);
     }
@@ -1757,7 +1752,7 @@ int zookeeper_process(zhandle_t *zh, int events)
 
             // We cannot free until now, otherwise path will become invalid
             deallocate_WatcherEvent(&evt);
-            queue_completion(&zh->completions_to_process, c, 0);
+            queue_completion(&zh->completions_to_process, c);
         } else if (hdr.xid == SET_WATCHES_XID) {
             LOG_DEBUG("Processing SET_WATCHES");
             free_buffer(bptr);
@@ -1799,7 +1794,8 @@ int zookeeper_process(zhandle_t *zh, int events)
                 free_buffer(bptr);
                 // put the completion back on the queue (so it gets properly
                 // signaled and deallocated) and disconnect from the server
-                queue_completion(&zh->sent_requests,cptr,1);
+                // TODO destroy completion
+                //queue_completion(&zh->sent_requests,cptr);
                 return handle_socket_error_msg(zh, __LINE__,ZRUNTIMEINCONSISTENCY,
                 "");
             }
@@ -1819,7 +1815,7 @@ int zookeeper_process(zhandle_t *zh, int events)
                     destroy_completion_entry(cptr);
                 } else {
                     cptr->buffer = bptr;
-                    queue_completion(&zh->completions_to_process, cptr, 0);
+                    queue_completion(&zh->completions_to_process, cptr);
                 }
             } else {
                 struct sync_completion
@@ -1924,21 +1920,15 @@ static void destroy_completion_entry(completion_list_t* c){
 }
 
 static void queue_completion_nolock(completion_head_t *list, 
-                                    completion_list_t *c,
-                                    int add_to_front) 
+                                    completion_list_t *c)
 {
     c->next = 0;
     /* appending a new entry to the back of the list */
     if (list->last) {
         assert(list->head);
         // List is not empty
-        if (!add_to_front) {
-            list->last->next = c;
-            list->last = c;
-        } else {
-            c->next = list->head;
-            list->head = c;
-        }
+        list->last->next = c;
+        list->last = c;
     } else {
         // List is empty
         assert(!list->head);
@@ -1947,17 +1937,16 @@ static void queue_completion_nolock(completion_head_t *list,
     }
 }
 
-static void queue_completion(completion_head_t *list, completion_list_t *c,
-        int add_to_front)
+static void queue_completion(completion_head_t *list, completion_list_t *c)
 {
 
     boost::lock_guard<boost::mutex> lock(*(list->lock));
-    queue_completion_nolock(list, c, add_to_front);
+    queue_completion_nolock(list, c);
     list->cond->notify_all();
 }
 
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
-        const void *dc, const void *data, int add_to_front,
+        const void *dc, const void *data,
         watcher_registration_t* wo, completion_head_t *clist)
 {
     completion_list_t *c =create_completion_entry(xid, completion_type, dc,
@@ -1968,7 +1957,7 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
     {
         boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
         if (zh->close_requested != 1) {
-            queue_completion_nolock(&zh->sent_requests, c, add_to_front);
+            queue_completion_nolock(&zh->sent_requests, c);
             if (dc == SYNCHRONOUS_MARKER) {
                 zh->outstanding_sync++;
             }
@@ -1985,49 +1974,49 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
 static int add_data_completion(zhandle_t *zh, int xid, data_completion_t dc,
         const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_DATA, (const void*)dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_DATA, (const void*)dc, data, wo, 0);
 }
 
 static int add_stat_completion(zhandle_t *zh, int xid, stat_completion_t dc,
         const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STAT, (const void*)dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STAT, (const void*)dc, data, wo, 0);
 }
 
 static int add_strings_completion(zhandle_t *zh, int xid,
         strings_completion_t dc, const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STRINGLIST, (const void*)dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STRINGLIST, (const void*)dc, data, wo, 0);
 }
 
 static int add_strings_stat_completion(zhandle_t *zh, int xid,
         strings_stat_completion_t dc, const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, (const void*)dc, data, 0, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, (const void*)dc, data, wo, 0);
 }
 
 static int add_acl_completion(zhandle_t *zh, int xid, acl_completion_t dc,
         const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_ACLLIST, (const void*)dc, data, 0, 0, 0);
+    return add_completion(zh, xid, COMPLETION_ACLLIST, (const void*)dc, data, 0, 0);
 }
 
 static int add_void_completion(zhandle_t *zh, int xid, void_completion_t dc,
         const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_VOID, (const void*)dc, data, 0, 0, 0);
+    return add_completion(zh, xid, COMPLETION_VOID, (const void*)dc, data, 0, 0);
 }
 
 static int add_string_completion(zhandle_t *zh, int xid,
         string_completion_t dc, const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_STRING, (const void*)dc, data, 0, 0, 0);
+    return add_completion(zh, xid, COMPLETION_STRING, (const void*)dc, data, 0, 0);
 }
 
 static int add_multi_completion(zhandle_t *zh, int xid, void_completion_t dc,
         const void *data, completion_head_t *clist)
 {
-    return add_completion(zh, xid, COMPLETION_MULTI, (const void*)dc, data, 0,0, clist);
+    return add_completion(zh, xid, COMPLETION_MULTI, (const void*)dc, data, 0, clist);
 }
 
 int zookeeper_close(zhandle_t *zh)
@@ -2718,7 +2707,7 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
                 return ZUNIMPLEMENTED; 
         }
 
-        queue_completion(&clist, entry, 0);
+        queue_completion(&clist, entry);
     }
 
     rc = rc < 0 ? rc : serialize_MultiHeader(oa, "multiheader", &mh);
