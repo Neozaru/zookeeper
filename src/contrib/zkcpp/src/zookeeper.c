@@ -1094,65 +1094,33 @@ static int send_set_watches(zhandle_t *zh)
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-static int serialize_prime_connect(struct connect_req *req, char* buffer){
-    //this should be the order of serialization
-    int offset = 0;
-    req->protocolVersion = htonl(req->protocolVersion);
-    memcpy(buffer + offset, &req->protocolVersion, sizeof(req->protocolVersion));
-    offset = offset +  sizeof(req->protocolVersion);
+static int sendConnectRequest(zhandle_t *zh) {
+  int rc;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
 
-    req->lastZxidSeen = htonll(req->lastZxidSeen);
-    memcpy(buffer + offset, &req->lastZxidSeen, sizeof(req->lastZxidSeen));
-    offset = offset +  sizeof(req->lastZxidSeen);
-
-    req->timeOut = htonl(req->timeOut);
-    memcpy(buffer + offset, &req->timeOut, sizeof(req->timeOut));
-    offset = offset +  sizeof(req->timeOut);
-
-    req->sessionId = htonll(req->sessionId);
-    memcpy(buffer + offset, &req->sessionId, sizeof(req->sessionId));
-    offset = offset +  sizeof(req->sessionId);
-
-    req->passwd_len = htonl(req->passwd_len);
-    memcpy(buffer + offset, &req->passwd_len, sizeof(req->passwd_len));
-    offset = offset +  sizeof(req->passwd_len);
-
-    memcpy(buffer + offset, req->passwd, sizeof(req->passwd));
-
-    return 0;
-}
-
-static int prime_connection(zhandle_t *zh)
-{
-    int rc;
-    /*this is the size of buffer to serialize req into*/
-    char buffer_req[HANDSHAKE_REQ_SIZE];
-    int len = sizeof(buffer_req);
-    int hlen = 0;
-    struct connect_req req;
-    req.protocolVersion = 0;
-    req.sessionId = zh->client_id.client_id;
-    req.passwd_len = sizeof(req.passwd);
-    memcpy(req.passwd, zh->client_id.passwd, sizeof(zh->client_id.passwd));
-    req.timeOut = zh->recv_timeout;
-    req.lastZxidSeen = zh->last_zxid;
-    hlen = htonl(len);
-    /* We are running fast and loose here, but this string should fit in the initial buffer! */
-    rc=zookeeper_send(zh->fd, &hlen, sizeof(len));
-    serialize_prime_connect(&req, buffer_req);
-    rc=rc<0 ? rc : zookeeper_send(zh->fd, buffer_req, len);
-    if (rc<0) {
-        return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
-    }
-    zh->state = ZOO_ASSOCIATING_STATE;
-
-    zh->input_buffer = &zh->primer_buffer;
-    /* This seems a bit weird to to set the offset to 4, but we already have a
-     * length, so we skip reading the length (and allocating the buffer) by
-     * saying that we are already at offset 4 */
-    zh->input_buffer->curr_offset = 4;
-
-    return ZOK;
+  proto::ConnectRequest request;
+  request.setprotocolVersion(0);
+  request.settimeOut(zh->recv_timeout);
+  request.setlastZxidSeen(zh->last_zxid);
+  request.setsessionId(zh->client_id.client_id);
+  request.getpasswd() = std::string(zh->client_id.passwd,
+      sizeof(zh->client_id.passwd));
+  request.serialize(oarchive, "connect");
+  uint32_t len = htonl(serialized.size());
+  rc=zookeeper_send(zh->fd, &len, sizeof(len));
+  rc=rc<0 ? rc : zookeeper_send(zh->fd, serialized.data(), serialized.size());
+  if (rc<0) {
+    return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
+  }
+  zh->state = ZOO_ASSOCIATING_STATE;
+  zh->input_buffer = &zh->primer_buffer;
+  /* This seems a bit weird to to set the offset to 4, but we already have a
+   * length, so we skip reading the length (and allocating the buffer) by
+   * saying that we are already at offset 4 */
+  zh->input_buffer->curr_offset = 4;
+  return ZOK;
 }
 
 static inline int calculate_interval(const struct timeval *start,
@@ -1258,7 +1226,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
                     return api_epilog(zh,handle_socket_error_msg(zh,__LINE__,
                             ZCONNECTIONLOSS,"connect() call failed"));
             } else {
-                if((rc=prime_connection(zh))!=0)
+                if((rc=sendConnectRequest(zh))!=0)
                     return api_epilog(zh,rc);
 
                 LOG_INFO("Initiated connection to server: " <<
@@ -1338,7 +1306,7 @@ static int check_events(zhandle_t *zh, int events)
             return handle_socket_error_msg(zh, __LINE__,ZCONNECTIONLOSS,
                 "server refused to accept the client");
         }
-        if((rc=prime_connection(zh))!=0)
+        if((rc=sendConnectRequest(zh))!=0)
             return rc;
         LOG_INFO("initiated connection to server: " <<
                 format_endpoint_info(&zh->addrs[zh->connect_index]));
