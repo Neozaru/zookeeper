@@ -28,6 +28,11 @@
 #include <string>
 #include <zookeeper.h>
 #include <zookeeper.jute.h>
+#include <memory_in_stream.hh>
+#include <string_out_stream.hh>
+#include <zookeeper.jute.hh>
+#include <recordio.hh>
+#include <binarchive.hh>
 #include <proto.h>
 #include "zk_adaptor.h"
 #include "logging.hh"
@@ -574,6 +579,7 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     if (!zh) {
         return 0;
     }
+    zh->connectResponse.reset(new proto::ConnectResponse());
     zh->to_process.reset(new buffer_list_t());
     zh->to_send.reset(new buffer_list_t());
     zh->sent_requests.lock.reset(new boost::mutex());
@@ -635,9 +641,10 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     } else {
         memset(&zh->client_id, 0, sizeof(zh->client_id));
     }
-    zh->primer_buffer.buffer = zh->primer_storage_buffer;
+    // TODO(michim) use vector<char> as buffer. don't hardcode buffer size.
+    zh->primer_buffer.buffer = (char*)malloc(40);
     zh->primer_buffer.curr_offset = 0;
-    zh->primer_buffer.len = sizeof(zh->primer_storage_buffer);
+    zh->primer_buffer.len = 40;
     zh->last_zxid = 0;
     zh->next_deadline.tv_sec=zh->next_deadline.tv_usec=0;
     zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
@@ -1115,33 +1122,6 @@ static int serialize_prime_connect(struct connect_req *req, char* buffer){
     return 0;
 }
 
- static int deserialize_prime_response(struct prime_struct *req, char* buffer){
-     //this should be the order of deserialization
-     int offset = 0;
-     memcpy(&req->len, buffer + offset, sizeof(req->len));
-     offset = offset +  sizeof(req->len);
-
-     req->len = ntohl(req->len);
-     memcpy(&req->protocolVersion, buffer + offset, sizeof(req->protocolVersion));
-     offset = offset +  sizeof(req->protocolVersion);
-
-     req->protocolVersion = ntohl(req->protocolVersion);
-     memcpy(&req->timeOut, buffer + offset, sizeof(req->timeOut));
-     offset = offset +  sizeof(req->timeOut);
-
-     req->timeOut = ntohl(req->timeOut);
-     memcpy(&req->sessionId, buffer + offset, sizeof(req->sessionId));
-     offset = offset +  sizeof(req->sessionId);
-
-     req->sessionId = htonll(req->sessionId);
-     memcpy(&req->passwd_len, buffer + offset, sizeof(req->passwd_len));
-     offset = offset +  sizeof(req->passwd_len);
-
-     req->passwd_len = ntohl(req->passwd_len);
-     memcpy(req->passwd, buffer + offset, sizeof(req->passwd));
-     return 0;
- }
-
 static int prime_connection(zhandle_t *zh)
 {
     int rc;
@@ -1389,22 +1369,25 @@ static int check_events(zhandle_t *zh, int events)
                 zh->to_process.get()->bufferList_.push_back(zh->input_buffer);
             } else  {
                 int64_t oldid,newid;
-                //deserialize
-                deserialize_prime_response(&zh->primer_storage, zh->primer_buffer.buffer);
+                // Deserialize. Skipping the first 4 bytes (length field).
+                MemoryInStream istream((zh->primer_buffer.buffer) + 4, zh->primer_buffer.len - 4);
+                hadoop::IBinArchive iarchive(istream);
+                zh->connectResponse->deserialize(iarchive,"connect");
+
                 /* We are processing the primer_buffer, so we need to finish
                  * the connection handshake */
                 oldid = zh->client_id.client_id;
-                newid = zh->primer_storage.sessionId;
+                newid = zh->connectResponse.get()->getsessionId();
                 if (oldid != 0 && oldid != newid) {
                     zh->state = ZOO_EXPIRED_SESSION_STATE;
                     errno = ESTALE;
                     return handle_socket_error_msg(zh,__LINE__,ZSESSIONEXPIRED,
                     "");
                 } else {
-                    zh->recv_timeout = zh->primer_storage.timeOut;
+                    zh->recv_timeout = zh->connectResponse.get()->gettimeOut();
                     zh->client_id.client_id = newid;
-                 
-                    memcpy(zh->client_id.passwd, &zh->primer_storage.passwd,
+
+                    memcpy(zh->client_id.passwd, zh->connectResponse.get()->getpasswd().c_str(),
                            sizeof(zh->client_id.passwd));
                     zh->state = ZOO_CONNECTED_STATE;
                     LOG_INFO(

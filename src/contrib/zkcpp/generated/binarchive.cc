@@ -17,11 +17,29 @@
  */
 
 #include "binarchive.hh"
-#include <rpc/types.h>
-#include <rpc/xdr.h>
+#include <boost/asio.hpp>
 
 
 using namespace hadoop;
+
+int64_t htonll(int64_t v) {
+  int i = 0;
+  char *s = (char *)&v;
+  if (htonl(1) == 1) {
+    return v;
+  }
+  for (i = 0; i < 4; i++) {
+    int tmp = s[i];
+    s[i] = s[8-i-1];
+    s[8-i-1] = tmp;
+  }
+
+  return v;
+}
+
+int64_t ntohll(int64_t v) {
+  return htonll(v);
+}
 
 template <typename T>
 static void serialize(T t, OutStream& stream)
@@ -41,111 +59,48 @@ static void deserialize(T& t, InStream& stream)
 
 static void serializeLong(int64_t t, OutStream& stream)
 {
-  if (t >= -112 && t <= 127) {
-    int8_t b = t;
-    stream.write(&b, 1);
-    return;
-  }
-        
-  int8_t len = -112;
-  if (t < 0) {
-    t ^= 0xFFFFFFFFFFFFFFFFLL; // take one's complement
-    len = -120;
-  }
-        
-  uint64_t tmp = t;
-  while (tmp != 0) {
-    tmp = tmp >> 8;
-    len--;
-  }
-  
-  stream.write(&len, 1);
-        
-  len = (len < -120) ? -(len + 120) : -(len + 112);
-        
-  for (uint32_t idx = len; idx != 0; idx--) {
-    uint32_t shiftbits = (idx - 1) * 8;
-    uint64_t mask = 0xFFLL << shiftbits;
-    uint8_t b = (t & mask) >> shiftbits;
-    stream.write(&b, 1);
-  }
+  const int64_t num = htonll(t);
+  assert(sizeof(num) == stream.write(&num, sizeof(num)));
 }
 
 static void deserializeLong(int64_t& t, InStream& stream)
 {
-  int8_t b;
-  if (1 != stream.read(&b, 1)) {
-    throw new IOException("Error deserializing long.");
-  }
-  if (b >= -112) {
-    t = b;
-    return;
-  }
-  bool isNegative = (b < -120);
-  b = isNegative ? -(b + 120) : -(b + 112);
-  uint8_t barr[b];
-  if (b != stream.read(barr, b)) {
-    throw new IOException("Error deserializing long.");
-  }
-  t = 0;
-  for (int idx = 0; idx < b; idx++) {
-    t = t << 8;
-    t |= (barr[idx] & 0xFF);
-  }
-  if (isNegative) {
-    t ^= 0xFFFFFFFFFFFFFFFFLL;
-  }
+  int64_t num;
+  assert(sizeof(num) == stream.read(&num, sizeof(num)));
+  t = ntohll(num);
 }
 
 static void serializeInt(int32_t t, OutStream& stream)
 {
-  int64_t longVal = t;
-  ::serializeLong(longVal, stream);
+  const int32_t num = htonl(t);
+  assert(sizeof(num) == stream.write(&num, sizeof(num)));
 }
 
 static void deserializeInt(int32_t& t, InStream& stream)
 {
-  int64_t longVal;
-  ::deserializeLong(longVal, stream);
-  t = longVal;
+  int32_t num;
+  assert(sizeof(num) == stream.read(&num, sizeof(num)));
+  t = ntohl(num);
 }
 
 static void serializeFloat(float t, OutStream& stream)
 {
-  char buf[sizeof(float)];
-  XDR xdrs;
-  xdrmem_create(&xdrs, buf, sizeof(float), XDR_ENCODE);
-  xdr_float(&xdrs, &t);
-  stream.write(buf, sizeof(float));
+  assert("!Serializing froat is not supported\n");
 }
 
 static void deserializeFloat(float& t, InStream& stream)
 {
-  char buf[sizeof(float)];
-  if (sizeof(float) != stream.read(buf, sizeof(float))) {
-    throw new IOException("Error deserializing float.");
-  }
-  XDR xdrs;
-  xdrmem_create(&xdrs, buf, sizeof(float), XDR_DECODE);
-  xdr_float(&xdrs, &t);
+  assert("!Deserializing froat is not supported\n");
 }
 
 static void serializeDouble(double t, OutStream& stream)
 {
-  char buf[sizeof(double)];
-  XDR xdrs;
-  xdrmem_create(&xdrs, buf, sizeof(double), XDR_ENCODE);
-  xdr_double(&xdrs, &t);
-  stream.write(buf, sizeof(double));
+  assert("!Serializing double is not supported\n");
 }
 
 static void deserializeDouble(double& t, InStream& stream)
 {
-  char buf[sizeof(double)];
-  stream.read(buf, sizeof(double));
-  XDR xdrs;
-  xdrmem_create(&xdrs, buf, sizeof(double), XDR_DECODE);
-  xdr_double(&xdrs, &t);
+  assert("!Deserializing double is not supported\n");
 }
 
 static void serializeString(const std::string& t, OutStream& stream)
@@ -159,21 +114,12 @@ static void serializeString(const std::string& t, OutStream& stream)
 static void deserializeString(std::string& t, InStream& stream)
 {
   int32_t len = 0;
+  t.clear();
   ::deserializeInt(len, stream);
   if (len > 0) {
     // resize the string to the right length
     t.resize(len);
-    // read into the string in 64k chunks
-    const int bufSize = 65536;
-    int offset = 0;
-    char buf[bufSize];
-    while (len > 0) {
-      int chunkLength = len > bufSize ? bufSize : len;
-      stream.read((void *)buf, chunkLength);
-      t.replace(offset, chunkLength, buf, chunkLength);
-      offset += chunkLength;
-      len -= chunkLength;
-    }
+    assert(len == stream.read((void *)t.data(), len));
   }
 }
 
@@ -189,9 +135,7 @@ void hadoop::IBinArchive::deserialize(bool& t, const char* tag)
 
 void hadoop::IBinArchive::deserialize(int32_t& t, const char* tag)
 {
-  int64_t longVal = 0LL;
-  ::deserializeLong(longVal, stream);
-  t = longVal;
+  ::deserializeInt(t, stream);
 }
 
 void hadoop::IBinArchive::deserialize(int64_t& t, const char* tag)
@@ -270,8 +214,7 @@ void hadoop::OBinArchive::serialize(bool t, const char* tag)
 
 void hadoop::OBinArchive::serialize(int32_t t, const char* tag)
 {
-  int64_t longVal = t;
-  ::serializeLong(longVal, stream);
+  ::serializeInt(t, stream);
 }
 
 void hadoop::OBinArchive::serialize(int64_t t, const char* tag)

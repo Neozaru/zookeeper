@@ -19,6 +19,7 @@
 #ifndef ZK_ADAPTOR_H_
 #define ZK_ADAPTOR_H_
 #include <zookeeper.jute.h>
+#include <zookeeper.jute.hh>
 #include <boost/scoped_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -27,6 +28,8 @@
 #include <boost/ptr_container/ptr_list.hpp>
 #include "zookeeper.h"
 #include "zk_hashtable.h"
+
+using namespace org::apache::zookeeper;
 
 /* predefined xid's values recognized as special by the server */
 #define WATCHER_EVENT_XID -1 
@@ -190,9 +193,8 @@ struct _zhandle {
     clientid_t client_id;
     long long last_zxid;
     int outstanding_sync; /* Number of outstanding synchronous requests */
+    boost::scoped_ptr<proto::ConnectResponse> connectResponse;
     buffer_t primer_buffer; /* The buffer used for the handshake at the start of a connection */
-    struct prime_struct primer_storage; /* the connect response */
-    char primer_storage_buffer[40]; /* the true size of primer_storage */
     volatile int state;
     void *context;
     boost::scoped_ptr<auth_list_head_t> auth_h; /* authentication data list */
