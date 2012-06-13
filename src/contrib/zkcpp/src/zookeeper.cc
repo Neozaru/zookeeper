@@ -130,18 +130,20 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
 
 ReturnCode::type ZooKeeper::
 getAcl(const std::string& path,
-       std::vector<Acl>& acl, ZnodeStat& stat) {
+       std::vector<data::ACL>& acl, ZnodeStat& stat) {
   return impl_->getAcl(path, acl, stat);
 }
 
 ReturnCode::type ZooKeeper::
-setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
+setAcl(const std::string& path, int32_t version,
+       const std::vector<data::ACL>& acl,
        boost::shared_ptr<SetAclCallback> callback) {
   return impl_->setAcl(path, version, acl, callback);
 }
 
 ReturnCode::type ZooKeeper::
-setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl) {
+setAcl(const std::string& path, int32_t version,
+       const std::vector<data::ACL>& acl) {
   return impl_->setAcl(path, version, acl);
 }
 

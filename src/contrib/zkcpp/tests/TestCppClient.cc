@@ -343,7 +343,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
   void testAcl() {
     ZooKeeper zk;
     ZnodeStat stat;
-    std::vector<Acl> acl, aclOut;
+    std::vector<data::ACL> acl, aclOut;
 
     shared_ptr<TestInitWatch> watch(new TestInitWatch());
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
@@ -352,19 +352,29 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     // get acl for root ("/")
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.getAcl("/", acl, stat));
     CPPUNIT_ASSERT_EQUAL(1, (int)acl.size());
-    CPPUNIT_ASSERT_EQUAL(std::string("world"), acl[0].getScheme());
-    CPPUNIT_ASSERT_EQUAL(std::string("anyone"), acl[0].getExpression());
+    CPPUNIT_ASSERT_EQUAL(std::string("world"), acl[0].getid().getscheme());
+    CPPUNIT_ASSERT_EQUAL(std::string("anyone"), acl[0].getid().getid());
     zk.set("/", "test", -1, stat);
+
     acl.clear();
     // echo -n user1:password1 |openssl dgst -sha1 -binary | base64
-    acl.push_back(Acl("digest", "user1:XDkd2dsEuhc9ImU3q8pa8UOdtpI=",
-          Permission::All));
+    data::ACL temp;
+    temp.getid().getscheme() = "digest";
+    temp.getid().getid() = "user1:XDkd2dsEuhc9ImU3q8pa8UOdtpI=";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
     // echo -n user2:password2 |openssl dgst -sha1 -binary | base64
-    acl.push_back(Acl("digest", "user2:lo/iTtNMP+gEZlpUNaCqLYO3i5U=",
-          Permission::All));
+    temp.getid().getscheme() = "digest";
+    temp.getid().getid() = "user2:lo/iTtNMP+gEZlpUNaCqLYO3i5U=";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
     // echo -n user3:password3 |openssl dgst -sha1 -binary | base64
-    acl.push_back(Acl("digest", "user3:wr5Y0kEs9nFX3bKrTMKxrlcFeWo=",
-          Permission::All));
+    temp.getid().getscheme() = "digest";
+    temp.getid().getid() = "user3:wr5Y0kEs9nFX3bKrTMKxrlcFeWo=";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
 
     // setAcl() with bad version
     CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.setAcl("/", 10, acl));
@@ -385,7 +395,10 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     std::string cert = "user1:password1";
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.addAuth(scheme, cert));
     acl.clear();
-    acl.push_back(Acl("world", "anyone", Permission::All));
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.setAcl("/", -1, acl));
   }
 
@@ -449,7 +462,8 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     rc = zk2.set("/auth", "new data", -1, stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
-    zk2.getAcl("/auth", acls, stat);
+    std::vector<data::ACL> aclVector;
+    zk2.getAcl("/auth", aclVector, stat);
 
     rc = zk.set("/user1", "new data", -1, stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
@@ -470,7 +484,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     rc = zk2.create("/ip", "hello",  acls,
         CreateMode::Persistent, pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
-    zk2.getAcl("/ip", acls, stat);
+    zk2.getAcl("/ip", aclVector, stat);
     rc = zk2.set("/ip", "new data", -1, stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
   }

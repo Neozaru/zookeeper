@@ -33,6 +33,7 @@
 #include "zookeeper_version.h"
 #include "recordio.h"
 #include "zookeeper.jute.h"
+#include "zookeeper.jute.hh"
 
 /**
  * \file zookeeper.h 
@@ -1065,6 +1066,8 @@ ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t comple
  */
 ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version, 
         struct ACL_vector *acl, void_completion_t, const void *data);
+ZOOAPI int zoo_aset_acl2(zhandle_t *zh, const char *path, int version, 
+        const std::vector<org::apache::zookeeper::data::ACL>& acl, void_completion_t, const void *data);
 
 /**
  * \brief atomically commits multiple zookeeper operations.

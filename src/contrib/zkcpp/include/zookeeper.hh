@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include "zookeeper.jute.hh"
 
 namespace org {
 
@@ -479,7 +480,7 @@ class GetAclCallback {
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const std::vector<Acl>& acl,
+                         const std::vector<data::ACL>& acl,
                          const ZnodeStat& stat) = 0;
     virtual ~GetAclCallback() {}
 };
@@ -817,7 +818,7 @@ class ZooKeeper : boost::noncopyable {
      * Gets the acl associated with a znode synchronously.
      */
     ReturnCode::type getAcl(const std::string& path,
-                            std::vector<Acl>& acl, ZnodeStat& stat);
+                            std::vector<data::ACL>& acl, ZnodeStat& stat);
 
     /**
      * Sets the Acl associated with a znode.
@@ -826,14 +827,14 @@ class ZooKeeper : boost::noncopyable {
      * @param version The expected version of the znode. This operation will fail if
      *                the actual version of the node does not match the expected
      *                version. If -1 is used the version check will not take place.
-     * @param acl Acl to set.
+     * @param acl ACL to set.
      * @param callback The callback to invoke when the request completes.
      *
      * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type setAcl(const std::string& path, int32_t version,
-                      const std::vector<Acl>& acl,
-                      boost::shared_ptr<SetAclCallback> callback);
+                            const std::vector<data::ACL>& acl,
+                            boost::shared_ptr<SetAclCallback> callback);
 
     /**
      * Sets the Acl associated with a znode synchronously.
@@ -848,7 +849,7 @@ class ZooKeeper : boost::noncopyable {
      * @return ReturnCode::Ok if the request has been enqueued successfully.
      */
     ReturnCode::type setAcl(const std::string& path, int32_t version,
-                      const std::vector<Acl>& acl);
+                            const std::vector<data::ACL>& acl);
 
     /**
      * Asynchronously flushes the channel between process and leader.

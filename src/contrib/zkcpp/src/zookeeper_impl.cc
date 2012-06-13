@@ -135,11 +135,11 @@ class MyGetCallback : public GetCallback, public Waitable {
 
 class MyGetAclCallback : public GetAclCallback, public Waitable {
   public:
-    MyGetAclCallback(std::vector<Acl>& acl, ZnodeStat& stat) :
+    MyGetAclCallback(std::vector<data::ACL>& acl, ZnodeStat& stat) :
       acl_(acl), stat_(stat) {}
 
     void process(ReturnCode::type rc, const std::string& path,
-                 const std::vector<Acl>& acl,
+                 const std::vector<data::ACL>& acl,
                  const ZnodeStat& stat) {
       if (rc == ReturnCode::Ok) {
         acl_ = acl;
@@ -152,7 +152,7 @@ class MyGetAclCallback : public GetAclCallback, public Waitable {
 
     ReturnCode::type rc_;
     std::string path_;
-    std::vector<Acl>& acl_;
+    std::vector<data::ACL>& acl_;
     ZnodeStat& stat_;
 };
 
@@ -449,13 +449,15 @@ aclCompletion(int rc, struct ACL_vector *acl,
             ReturnCode::toString((ReturnCode::type)rc));
   GetAclCallback* callback = (GetAclCallback*)context->callback_.get();
   assert(callback);
-  std::vector<Acl> aclVector;
+  std::vector<data::ACL> aclVector;
   if (rc == ReturnCode::Ok) {
     assert(acl);
     for (int i = 0; i < acl->count; i++) {
-      aclVector.push_back(Acl(acl->data[i].id.scheme,
-                              acl->data[i].id.id,
-                              acl->data[i].perms));
+      data::ACL temp;
+      temp.getid().getscheme() = acl->data[i].id.scheme;
+      temp.getid().getid() = acl->data[i].id.id;
+      temp.setperms(acl->data[i].perms);
+      aclVector.push_back(temp);
       LOG_DEBUG(
         boost::format("Got an ACL for %s: %s:%s:'%s'") %
                       context->path_ % acl->data[i].id.scheme %
@@ -762,7 +764,7 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
 
 ReturnCode::type ZooKeeperImpl::
 getAcl(const std::string& path,
-       std::vector<Acl>& acl, ZnodeStat& stat) {
+       std::vector<data::ACL>& acl, ZnodeStat& stat) {
   boost::shared_ptr<MyGetAclCallback> callback(new MyGetAclCallback(acl, stat));
   ReturnCode::type rc = getAcl(path, callback);
   if (rc != ReturnCode::Ok) {
@@ -774,31 +776,24 @@ getAcl(const std::string& path,
 }
 
 ReturnCode::type ZooKeeperImpl::
-setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl,
+setAcl(const std::string& path, int32_t version,
+       const std::vector<data::ACL>& acl,
        boost::shared_ptr<SetAclCallback> cb) {
   void_completion_t completion = NULL;
   CompletionContext* context = NULL;
-  ACL acls[acl.size()];
-  ACL_vector aclVector;
-  aclVector.count = acl.size();
-  for (int i = 0; i < acl.size(); i++) {
-    acls[i].id.scheme = (char*) acl[i].getScheme().c_str();
-    acls[i].id.id = (char*) acl[i].getExpression().c_str();
-    acls[i].perms = acl[i].getPermissions();
-  }
-  aclVector.data = acls;
-
   if (cb.get()) {
     completion = &setAclCompletion;
     context = new CompletionContext(cb, path);
   }
 
-  return (ReturnCode::type)zoo_aset_acl(handle_, path.c_str(),
-         version, &aclVector, completion, (void*)context);
+  int rc = zoo_aset_acl2(handle_, path.c_str(), version, acl, completion,
+                         (void*)context);
+  return intToReturnCode(rc);
 }
 
 ReturnCode::type ZooKeeperImpl::
-setAcl(const std::string& path, int32_t version, const std::vector<Acl>& acl) {
+setAcl(const std::string& path, int32_t version,
+       const std::vector<data::ACL>& acl) {
   boost::shared_ptr<MySetAclCallback> callback(new MySetAclCallback());
   ReturnCode::type rc = setAcl(path, version, acl, callback);
   if (rc != ReturnCode::Ok) {

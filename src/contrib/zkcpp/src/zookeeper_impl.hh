@@ -69,12 +69,12 @@ class ZooKeeperImpl {
     ReturnCode::type getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
     ReturnCode::type getAcl(const std::string& path,
-                            std::vector<Acl>& acl, ZnodeStat& stat);
+                            std::vector<data::ACL>& acl, ZnodeStat& stat);
     ReturnCode::type setAcl(const std::string& path, int version,
-                      const std::vector<Acl>& acl,
+                      const std::vector<data::ACL>& acl,
                       boost::shared_ptr<SetAclCallback> callback);
     ReturnCode::type setAcl(const std::string& path, int32_t version,
-                      const std::vector<Acl>& acl);
+                      const std::vector<data::ACL>& acl);
     ReturnCode::type sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
     //ReturnCode::type multi(int count, const zoo_op_t *ops,
