@@ -786,7 +786,7 @@ setAcl(const std::string& path, int32_t version,
     context = new CompletionContext(cb, path);
   }
 
-  int rc = zoo_aset_acl2(handle_, path.c_str(), version, acl, completion,
+  int rc = zoo_aset_acl(handle_, path.c_str(), version, acl, completion,
                          (void*)context);
   return intToReturnCode(rc);
 }

@@ -37,6 +37,7 @@ using namespace std;
 #include <list>
 
 #include <zookeeper.h>
+#include <zookeeper.hh>
 #include <errno.h>
 #include <recordio.h>
 #include "Util.h"
@@ -223,7 +224,7 @@ public:
         int zrc = 0;
         char buff[10] = "testall";
         char path[512];
-        watchctx_t *ctx;
+        watchctx_t *ctx = NULL;
         struct String_vector str_vec = {0, NULL};
         zhandle_t *zh = zookeeper_init(hostPorts, NULL, 10000, 0, ctx, 0);
         sleep(1);
@@ -368,36 +369,47 @@ public:
         rc = ia->deserialize_String(ia, "string", &val_str);
         CPPUNIT_ASSERT_EQUAL(-EINVAL, rc);
     }
-        
+
     void testAcl() {
         int rc;
-        struct ACL_vector aclvec;
         struct Stat stat;
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
         rc = zoo_create(zk, "/acl", "", 0,
                         &ZOO_OPEN_ACL_UNSAFE, 0, 0, 0);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        rc = zoo_get_acl(zk, "/acl", &aclvec, &stat  );
-        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        bool cmp = compareAcl(ZOO_OPEN_ACL_UNSAFE, aclvec);
-        CPPUNIT_ASSERT_EQUAL(true, cmp);
-        rc = zoo_set_acl(zk, "/acl", -1, &ZOO_READ_ACL_UNSAFE);
-        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        rc = zoo_get_acl(zk, "/acl", &aclvec, &stat);
-        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        cmp = compareAcl(ZOO_READ_ACL_UNSAFE, aclvec);
-        CPPUNIT_ASSERT_EQUAL(true, cmp);
-    }
 
+        using namespace org::apache::zookeeper;
+        std::vector<data::ACL> acl, aclOut;
+
+        rc = zoo_get_acl(zk, "/acl", aclOut, &stat);
+        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+        CPPUNIT_ASSERT_EQUAL(1, (int)aclOut.size());
+        CPPUNIT_ASSERT_EQUAL(std::string("world"), aclOut[0].getid().getscheme());
+        CPPUNIT_ASSERT_EQUAL(std::string("anyone"), aclOut[0].getid().getid());
+
+        data::ACL readPerm;
+        readPerm.getid().getscheme() = "world";
+        readPerm.getid().getid() = "anyone";
+        readPerm.setperms(Permission::Read);
+        acl.push_back(readPerm);
+
+        rc = zoo_set_acl(zk, "/acl", -1, acl);
+        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+
+        rc = zoo_get_acl(zk, "/acl", aclOut, &stat);
+        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+        CPPUNIT_ASSERT_EQUAL(1, (int)aclOut.size());
+        CPPUNIT_ASSERT_EQUAL(std::string("world"), readPerm.getid().getscheme());
+        CPPUNIT_ASSERT_EQUAL(std::string("anyone"), readPerm.getid().getid());
+        CPPUNIT_ASSERT_EQUAL((int)Permission::Read, readPerm.getperms());
+    }
 
     void testAuth() {
         int rc;
         count = 0;
         watchctx_t ctx1, ctx2, ctx3, ctx4, ctx5;
         zhandle_t *zk = createClient(&ctx1);
-        struct ACL_vector nodeAcl;
-        struct ACL acl_val;
         rc = zoo_add_auth(0, "", 0, 0, voidCompletion, (void*)-1);
         CPPUNIT_ASSERT_EQUAL((int) ZBADARGUMENTS, rc);
 
@@ -469,17 +481,31 @@ public:
         rc = zoo_get(zk, "/tauth1", 0, buf, &blen, &stat);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
         // also check for get
-        rc = zoo_get_acl(zk, "/", &nodeAcl, &stat);
+        using namespace org::apache::zookeeper;
+        std::vector<data::ACL> acl, aclOut;
+
+
+        rc = zoo_get_acl(zk, "/", aclOut, &stat);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
         // check if the acl has all the perms
-        CPPUNIT_ASSERT_EQUAL((int)1, (int)nodeAcl.count);
-        acl_val = *(nodeAcl.data);
-        CPPUNIT_ASSERT_EQUAL((int) acl_val.perms, ZOO_PERM_ALL);
+        CPPUNIT_ASSERT_EQUAL((int)1, (int)aclOut.size());
+        CPPUNIT_ASSERT_EQUAL((int)ZOO_PERM_ALL, aclOut[0].getperms());
+
         // verify on root node
-        rc = zoo_set_acl(zk, "/", -1, &ZOO_CREATOR_ALL_ACL);
+        data::ACL readPerm;
+        readPerm.getid().getscheme() = "auth";
+        readPerm.getid().getid() = "";
+        readPerm.setperms(Permission::All);
+        acl.push_back(readPerm);
+        rc = zoo_set_acl(zk, "/", -1, acl);
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
 
-        rc = zoo_set_acl(zk, "/", -1, &ZOO_OPEN_ACL_UNSAFE);
+        acl.clear();
+        readPerm.getid().getscheme() = "world";
+        readPerm.getid().getid() = "anyone";
+        readPerm.setperms(Permission::All);
+        acl.push_back(readPerm);
+        rc = zoo_set_acl(zk, "/", -1, acl);
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
 
         //[ZOOKEEPER-1108], test that auth info is sent to server, if client is not
@@ -729,13 +755,22 @@ public:
         //check if te child if chroot
         CPPUNIT_ASSERT(strcmp((retStr+1), children.data[0]) == 0);
         // check for get/set acl
-        struct ACL_vector acl;
-        rc = zoo_get_acl(zk_ch, "/", &acl, &stat);
+        using namespace org::apache::zookeeper;
+        std::vector<data::ACL> acl;
+
+        rc = zoo_get_acl(zk_ch, "/", acl, &stat);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL((int)1, (int)acl.count);
-        CPPUNIT_ASSERT_EQUAL((int)ZOO_PERM_ALL, (int)acl.data->perms);
+        CPPUNIT_ASSERT_EQUAL(1, (int)acl.size());
+        CPPUNIT_ASSERT_EQUAL((int)ZOO_PERM_ALL, (int)acl[0].getperms());
+
         // set acl
-        rc = zoo_set_acl(zk_ch, "/chroot", -1,  &ZOO_READ_ACL_UNSAFE);
+        acl.clear();
+        data::ACL readPerm;
+        readPerm.getid().getscheme() = "world";
+        readPerm.getid().getid() = "anyone";
+        readPerm.setperms(Permission::Read);
+        acl.push_back(readPerm);
+        rc = zoo_set_acl(zk_ch, "/chroot", -1,acl);
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
         // see if you add children
         rc = zoo_create(zk_ch, "/chroot/child1", "",0, &ZOO_OPEN_ACL_UNSAFE, 0, 0, 0);

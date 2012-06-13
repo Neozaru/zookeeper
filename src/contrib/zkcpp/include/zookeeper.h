@@ -1065,8 +1065,6 @@ ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t comple
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version, 
-        struct ACL_vector *acl, void_completion_t, const void *data);
-ZOOAPI int zoo_aset_acl2(zhandle_t *zh, const char *path, int version, 
         const std::vector<org::apache::zookeeper::data::ACL>& acl, void_completion_t, const void *data);
 
 /**
@@ -1494,7 +1492,8 @@ ZOOAPI int zoo_wget_children2(zhandle_t *zh, const char *path,
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
+ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path,
+                       std::vector<org::apache::zookeeper::data::ACL>& acl,
                        struct Stat *stat);
 
 /**
@@ -1516,7 +1515,7 @@ ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
-                           const struct ACL_vector *acl);
+    const std::vector<org::apache::zookeeper::data::ACL>& acl);
 
 /**
  * \brief atomically commits multiple zookeeper operations synchronously.

@@ -2595,39 +2595,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-
 int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
-        struct ACL_vector *acl, void_completion_t completion, const void *data)
-{
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER(xid ,get_xid()), STRUCT_INITIALIZER (type , ZOO_SETACL_OP)};
-    struct SetACLRequest req;
-    int rc = Request_path_init(zh, 0, &req.path, path);
-    if (rc != ZOK) {
-        return rc;
-    }
-    oa = create_buffer_oarchive();
-    req.acl = *acl;
-    req.version = version;
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_SetACLRequest(oa, "req", &req);
-    enter_critical(zh);
-    rc = rc < 0 ? rc : add_void_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    free_duplicate_path(req.path, path);
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
-
-    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                            h.xid % path % format_current_endpoint_info(zh));
-    /* make a best (non-blocking) effort to send the requests asap */
-    adaptor_send_queue(zh, 0);
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
-}
-
-int zoo_aset_acl2(zhandle_t *zh, const char *path, int version,
         const std::vector<data::ACL>& acl, void_completion_t completion, const void *data) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
@@ -3291,7 +3259,8 @@ int zoo_wget_children2(zhandle_t *zh, const char *path,
     return zoo_wget_children2_(zh,path,watcher,watcherCtx,strings,stat);
 }
 
-int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
+int zoo_get_acl(zhandle_t *zh, const char *path,
+        std::vector<org::apache::zookeeper::data::ACL>& acl,
         struct Stat *stat)
 {
     struct sync_completion *sc = alloc_sync_completion();
@@ -3307,11 +3276,15 @@ int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
             *stat = sc->acl.stat;
         }
         if (rc == 0) {
-            if (acl) {
-                *acl = sc->acl.acl;
-            } else {
-                deallocate_ACL_vector(&sc->acl.acl);
-            }
+          acl.clear();
+          for (int i = 0; i < sc->acl.acl.count; i++) {
+            data::ACL temp;
+            temp.getid().getscheme() = sc->acl.acl.data[i].id.scheme;
+            temp.getid().getid() = sc->acl.acl.data[i].id.id;
+            temp.setperms(sc->acl.acl.data[i].perms);
+            acl.push_back(temp);
+            deallocate_ACL_vector(&sc->acl.acl);
+          }
         }
     }
     free_sync_completion(sc);
@@ -3319,14 +3292,13 @@ int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
 }
 
 int zoo_set_acl(zhandle_t *zh, const char *path, int version,
-        const struct ACL_vector *acl)
-{
+                const std::vector<data::ACL>& acl) {
     struct sync_completion *sc = alloc_sync_completion();
     int rc;
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    rc=zoo_aset_acl(zh, path, version, (struct ACL_vector*)acl,
+    rc=zoo_aset_acl(zh, path, version, acl,
             (void (*)(int, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
