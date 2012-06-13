@@ -2142,18 +2142,6 @@ static int Request_path_init(zhandle_t *zh, int flags,
     return ZOK;
 }
 
-static int Request_path_watch_init(zhandle_t *zh, int flags,
-        char **path_out, const char *path,
-        int32_t *watch_out, uint32_t watch)
-{
-    int rc = Request_path_init(zh, flags, path_out, path);
-    if (rc != ZOK) {
-        return rc;
-    }
-    *watch_out = watch;
-    return ZOK;
-}
-
 /*---------------------------------------------------------------------------*
  * ASYNC API
  *---------------------------------------------------------------------------*/
@@ -2375,70 +2363,92 @@ int zoo_aexists(zhandle_t *zh, const char *path, int watch,
     return zoo_awexists(zh,path,watch?zh->watcher:0,zh->context,sc,data);
 }
 
-int zoo_awexists(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx,
-        stat_completion_t completion, const void *data)
-{
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER (xid ,get_xid()), STRUCT_INITIALIZER (type , ZOO_EXISTS_OP) };
-    struct ExistsRequest req;
-    int rc = Request_path_watch_init(zh, 0, &req.path, path, 
-            &req.watch, watcher != NULL);
-    if (rc != ZOK) {
-        return rc;
-    }
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_ExistsRequest(oa, "req", &req);
-    enter_critical(zh);
-    rc = rc < 0 ? rc : add_stat_completion(zh, h.xid, completion, data,
-        create_watcher_registration(req.path,exists_result_checker,
-                watcher,watcherCtx));
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    free_duplicate_path(req.path, path);
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
+int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
+                 void* watcherCtx, stat_completion_t completion,
+                 const void *data) {
+  std::string pathStr;
+  int rc = getRealString(zh, 0, path, pathStr);
+  if (rc != ZOK) {
+    return rc;
+  }
 
-    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                            h.xid % path % format_current_endpoint_info(zh));
-    /* make a best (non-blocking) effort to send the requests asap */
-    adaptor_send_queue(zh, 0);
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_EXISTS_OP);
+  header.serialize(oarchive, "header");
+
+  proto::ExistsRequest req;
+  req.getpath() = pathStr;
+  req.setwatch(watcher != NULL);
+  req.serialize(oarchive, "req");
+
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
+      create_watcher_registration(req.getpath().c_str(), exists_result_checker,
+        watcher,watcherCtx));
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+      header.getxid() % path % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-static int zoo_awget_children_(zhandle_t *zh, const char *path,
-         watcher_fn watcher, void* watcherCtx,
-         strings_completion_t sc,
-         const void *data)
+static int zoo_awget_children_(zhandle_t *zh, const char *path, watcher_fn watcher,
+         void* watcherCtx, strings_completion_t sc, const void *data)
 {
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER (xid , get_xid()), STRUCT_INITIALIZER (type , ZOO_GETCHILDREN_OP)};
-    struct GetChildrenRequest req ;
-    int rc = Request_path_watch_init(zh, 0, &req.path, path, 
-            &req.watch, watcher != NULL);
-    if (rc != ZOK) {
-        return rc;
-    }
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_GetChildrenRequest(oa, "req", &req);
-    enter_critical(zh);
-    rc = rc < 0 ? rc : add_strings_completion(zh, h.xid, sc, data,
-            create_watcher_registration(req.path,child_result_checker,watcher,watcherCtx));
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    free_duplicate_path(req.path, path);
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
+  std::string pathStr;
+  int rc = getRealString(zh, 0, path, pathStr);
+  if (rc != ZOK) {
+    return rc;
+  }
 
-    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                            h.xid % path % format_current_endpoint_info(zh));
-    /* make a best (non-blocking) effort to send the requests asap */
-    adaptor_send_queue(zh, 0);
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_GETCHILDREN_OP);
+  header.serialize(oarchive, "header");
+
+  proto::GetChildrenRequest req;
+  req.getpath() = pathStr;
+  req.setwatch(watcher != NULL);
+  req.serialize(oarchive, "req");
+
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  rc = rc < 0 ? rc : add_strings_completion(zh, header.getxid(), sc, data,
+      create_watcher_registration(req.getpath().c_str(),child_result_checker,watcher,watcherCtx));
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+      header.getxid() % path % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+                          header.getxid() % path % format_current_endpoint_info(zh));
+
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
 int zoo_aget_children(zhandle_t *zh, const char *path, int watch,
@@ -2457,36 +2467,42 @@ int zoo_awget_children(zhandle_t *zh, const char *path,
 
 static int zoo_awget_children2_(zhandle_t *zh, const char *path,
          watcher_fn watcher, void* watcherCtx,
-         strings_stat_completion_t ssc,
-         const void *data)
-{
-    /* invariant: (sc == NULL) != (sc == NULL) */
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER( xid, get_xid()), STRUCT_INITIALIZER (type ,ZOO_GETCHILDREN2_OP)};
-    struct GetChildren2Request req ;
-    int rc = Request_path_watch_init(zh, 0, &req.path, path, 
-            &req.watch, watcher != NULL);
-    if (rc != ZOK) {
-        return rc;
-    }
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_GetChildren2Request(oa, "req", &req);
-    enter_critical(zh);
-    rc = rc < 0 ? rc : add_strings_stat_completion(zh, h.xid, ssc, data,
-            create_watcher_registration(req.path,child_result_checker,watcher,watcherCtx));
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    free_duplicate_path(req.path, path);
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
+         strings_stat_completion_t ssc, const void *data) {
+  std::string pathStr;
+  int rc = getRealString(zh, 0, path, pathStr);
+  if (rc != ZOK) {
+    return rc;
+  }
 
-    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                            h.xid % path % format_current_endpoint_info(zh));
-    /* make a best (non-blocking) effort to send the requests asap */
-    adaptor_send_queue(zh, 0);
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_GETCHILDREN2_OP);
+  header.serialize(oarchive, "header");
+
+  proto::GetChildren2Request req;
+  req.getpath() = pathStr;
+  req.setwatch(watcher != NULL);
+  req.serialize(oarchive, "req");
+
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
+      create_watcher_registration(req.getpath().c_str(),child_result_checker,watcher,watcherCtx));
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+      header.getxid() % path % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
 int zoo_aget_children2(zhandle_t *zh, const char *path, int watch,
@@ -2504,63 +2520,81 @@ int zoo_awget_children2(zhandle_t *zh, const char *path,
 }
 
 int zoo_async(zhandle_t *zh, const char *path,
-        string_completion_t completion, const void *data)
-{
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER (xid , get_xid()), STRUCT_INITIALIZER (type , ZOO_SYNC_OP)};
-    struct SyncRequest req;
-    int rc = Request_path_init(zh, 0, &req.path, path);
-    if (rc != ZOK) {
-        return rc;
-    }
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_SyncRequest(oa, "req", &req);
-    enter_critical(zh);
-    rc = rc < 0 ? rc : add_string_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    free_duplicate_path(req.path, path);
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
+              string_completion_t completion, const void *data) {
+  std::string pathStr;
+  int rc = getRealString(zh, 0, path, pathStr);
+  if (rc != ZOK) {
+    return rc;
+  }
 
-    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                            h.xid % path % format_current_endpoint_info(zh));
-    /* make a best (non-blocking) effort to send the requests asap */
-    adaptor_send_queue(zh, 0);
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_SYNC_OP);
+  header.serialize(oarchive, "header");
+
+  proto::SyncRequest req;
+  req.getpath() = pathStr;
+  req.serialize(oarchive, "req");
+
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+      header.getxid() % path % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+
 }
 
 
 int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
-        const void *data)
-{
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER (xid , get_xid()), STRUCT_INITIALIZER(type ,ZOO_GETACL_OP)};
-    struct GetACLRequest req;
-    int rc = Request_path_init(zh, 0, &req.path, path) ;
-    if (rc != ZOK) {
-        return rc;
-    }
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_GetACLRequest(oa, "req", &req);
-    enter_critical(zh);
-    rc = rc < 0 ? rc : add_acl_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    free_duplicate_path(req.path, path);
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
+        const void *data) {
+  std::string pathStr;
+  int rc = getRealString(zh, 0, path, pathStr);
+  if (rc != ZOK) {
+    return rc;
+  }
 
-    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                            h.xid % path % format_current_endpoint_info(zh));
-    /* make a best (non-blocking) effort to send the requests asap */
-    adaptor_send_queue(zh, 0);
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_GETACL_OP);
+  header.serialize(oarchive, "header");
+
+  proto::GetACLRequest req;
+  req.getpath() = pathStr;
+  req.serialize(oarchive, "req");
+
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+      header.getxid() % path % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
+
 
 int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
         struct ACL_vector *acl, void_completion_t completion, const void *data)
@@ -2591,6 +2625,45 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+}
+
+int zoo_aset_acl2(zhandle_t *zh, const char *path, int version,
+        const std::vector<data::ACL>& acl, void_completion_t completion, const void *data) {
+  std::string pathStr;
+  int rc = getRealString(zh, 0, path, pathStr);
+  if (rc != ZOK) {
+    return rc;
+  }
+
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_SETACL_OP);
+  header.serialize(oarchive, "header");
+
+  proto::SetACLRequest req;
+  req.getpath() = pathStr;
+  req.setversion(version);
+  req.getacl() = acl;
+  req.serialize(oarchive, "req");
+
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+      header.getxid() % path % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
 /* Completions for multi-op results */
