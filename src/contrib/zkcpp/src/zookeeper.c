@@ -2313,33 +2313,60 @@ int DeleteRequest_init(zhandle_t *zh, struct DeleteRequest *req,
     return ZOK;
 }
 
-int zoo_adelete(zhandle_t *zh, const char *path, int version,
-        void_completion_t completion, const void *data)
-{
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER (xid , get_xid()), STRUCT_INITIALIZER (type , ZOO_DELETE_OP)};
-    struct DeleteRequest req;
-    int rc = DeleteRequest_init(zh, &req, path, version);
-    if (rc != ZOK) {
-        return rc;
-    }
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
-    enter_critical(zh);
-    rc = rc < 0 ? rc : add_void_completion(zh, h.xid, completion, data);
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    free_duplicate_path(req.path, path);
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
+/**
+ * TODO:michim Avoid extra copies.
+ */
+static int getRealString(zhandle_t *zh, int flags, const char* path,
+                         std::string& pathStr) {
+  char* tempPath = NULL;;
+  int rc = Request_path_init(zh, 0, &tempPath, path);
+  if (rc != ZOK) {
+    return rc;
+  }
+  pathStr.assign(tempPath, strlen(tempPath));
+  if (path != tempPath) {
+    free(tempPath);
+  }
+  return rc;
+}
 
-    LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                            h.xid % path % format_current_endpoint_info(zh));
-    /* make a best (non-blocking) effort to send the requests asap */
-    adaptor_send_queue(zh, 0);
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+int zoo_adelete(zhandle_t *zh, const char *path, int version,
+        void_completion_t completion, const void *data) {
+  std::string pathStr;
+  int rc = getRealString(zh, 0, path, pathStr);
+  if (rc != ZOK) {
+    return rc;
+  }
+
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_DELETE_OP);
+  header.serialize(oarchive, "header");
+
+  proto::DeleteRequest req;
+  req.getpath() = pathStr;
+  req.setversion(version);
+  req.serialize(oarchive, "req");
+
+  /* add this buffer to the head of the send queue */
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+      header.getxid() % path % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
 int zoo_aexists(zhandle_t *zh, const char *path, int watch,
