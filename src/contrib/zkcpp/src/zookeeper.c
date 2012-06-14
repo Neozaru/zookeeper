@@ -1042,51 +1042,41 @@ static int send_last_auth_info(zhandle_t *zh) {
   return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
 }
 
-static void free_key_list(char **list, int count)
-{
-    int i;
+static int send_set_watches(zhandle_t *zh) {
+  int rc = 0;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
 
-    for(i = 0; i < count; i++) {
-        free(list[i]);
-    }
-    free(list);
-}
+  proto::RequestHeader header;
+  header.setxid(SET_WATCHES_XID);
+  header.settype(ZOO_SETWATCHES_OP);
 
-static int send_set_watches(zhandle_t *zh)
-{
-    struct oarchive *oa;
-    struct RequestHeader h = { STRUCT_INITIALIZER(xid , SET_WATCHES_XID), STRUCT_INITIALIZER(type , ZOO_SETWATCHES_OP)};
-    struct SetWatches req;
-    int rc;
+  proto::SetWatches req;
+  std::vector<std::string> paths;
+  req.setrelativeZxid(zh->last_zxid);
+  collectKeys(zh->active_node_watchers, req.getdataWatches());
+  collectKeys(zh->active_exist_watchers, req.getexistWatches());
+  collectKeys(zh->active_child_watchers, req.getchildWatches());
 
-    req.relativeZxid = zh->last_zxid;
-    req.dataWatches.data = collect_keys(zh->active_node_watchers, (int*)&req.dataWatches.count);
-    req.existWatches.data = collect_keys(zh->active_exist_watchers, (int*)&req.existWatches.count);
-    req.childWatches.data = collect_keys(zh->active_child_watchers, (int*)&req.childWatches.count);
+  // return if there are no pending watches
+  if (req.getdataWatches().empty() && req.getexistWatches().empty() &&
+      req.getchildWatches().empty()) {
+    return ZOK;
+  }
 
-    // return if there are no pending watches
-    if (!req.dataWatches.count && !req.existWatches.count &&
-        !req.childWatches.count) {
-        free_key_list(req.dataWatches.data, req.dataWatches.count);
-        free_key_list(req.existWatches.data, req.existWatches.count);
-        free_key_list(req.childWatches.data, req.childWatches.count);
-        return ZOK;
-    }
+  header.serialize(oarchive, "header");
+  req.serialize(oarchive, "req");
 
-
-    oa = create_buffer_oarchive();
-    rc = serialize_RequestHeader(oa, "header", &h);
-    rc = rc < 0 ? rc : serialize_SetWatches(oa, "req", &req);
-    /* add this buffer to the head of the send queue */
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(),
-        get_buffer(oa), get_buffer_len(oa));
-    /* We queued the buffer, so don't free it */   
-    close_buffer_oarchive(&oa, 0);
-    free_key_list(req.dataWatches.data, req.dataWatches.count);
-    free_key_list(req.existWatches.data, req.existWatches.count);
-    free_key_list(req.childWatches.data, req.childWatches.count);
-    LOG_DEBUG("Sending set watches request to " << format_current_endpoint_info(zh));
-    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  /* add this buffer to the head of the send queue */
+  // TODO(michim) avoid copy
+  char* data  = (char*)malloc(serialized.size());
+  memmove(data, serialized.c_str(), serialized.size());
+  rc = queue_buffer_bytes(zh->to_send.get(),
+        data, serialized.size());
+  adaptor_send_queue(zh, 0);
+  LOG_DEBUG("Sending SetWatches request to " << format_current_endpoint_info(zh));
+  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
 static int sendConnectRequest(zhandle_t *zh) {

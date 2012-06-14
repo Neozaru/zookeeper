@@ -51,7 +51,7 @@ typedef struct _watcher_registration {
 zk_hashtable* create_zk_hashtable();
 void destroy_zk_hashtable(zk_hashtable* ht);
 
-char **collect_keys(zk_hashtable *ht, int *count);
+void collectKeys(zk_hashtable *ht, std::vector<std::string>& keys);
 
 /**
  * check if the completion has a watcher object associated

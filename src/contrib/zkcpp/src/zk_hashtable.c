@@ -159,22 +159,13 @@ static int do_insert_watcher_object(zk_hashtable *ht, const char *path, watcher_
 }
 
 
-char **collect_keys(zk_hashtable *ht, int *count)
-{
-
-    char **list;
-    int i = 0;
-
-    *count = ht->map.size();
-    if (*count == 0) return NULL;
-    list = (char**)calloc(*count, sizeof(char*));
-    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
-    for (itr = ht->map.begin(); itr != ht->map.end(); itr++) {
-        list[i] = strdup(itr->first.c_str());
-        i++;
-    }
-    assert(i == *count);
-    return list;
+void
+collectKeys(zk_hashtable *ht, std::vector<std::string>& keys) {
+  keys.clear();
+  boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+  for (itr = ht->map.begin(); itr != ht->map.end(); itr++) {
+    keys.push_back(itr->first);
+  }
 }
 
 static int insert_watcher_object(zk_hashtable *ht, const char *path,
