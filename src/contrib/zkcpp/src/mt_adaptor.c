@@ -108,7 +108,6 @@ void notify_thread_ready(zhandle_t* zh)
 
 void start_threads(zhandle_t* zh)
 {
-    int rc = 0;
     struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
     adaptor->threadsToWait=2;  // wait for 2 threads before opening the barrier
 

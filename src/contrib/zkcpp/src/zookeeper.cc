@@ -52,14 +52,14 @@ addAuth(const std::string& scheme, const std::string& cert) {
 
 ReturnCode::type ZooKeeper::
 create(const std::string& path, const std::string& data,
-       const std::vector<Acl>& acl, CreateMode::type mode,
+       const std::vector<data::ACL>& acl, CreateMode::type mode,
        boost::shared_ptr<CreateCallback> callback) {
   return impl_->create(path, data, acl, mode, callback);
 }
 
 ReturnCode::type ZooKeeper::
 create(const std::string& path, const std::string& data,
-       const std::vector<Acl>& acl, CreateMode::type mode,
+       const std::vector<data::ACL>& acl, CreateMode::type mode,
        std::string& pathCreated) {
   return impl_->create(path, data, acl, mode, pathCreated);
 }
@@ -418,6 +418,7 @@ ZnodeStat(const ZnodeStat& orig) : impl_(new ZnodeStatImpl()) {
 ZnodeStat& ZnodeStat::
 operator=(const ZnodeStat& orig) {
   copyStat(orig, *this);
+  return *this;
 }
 
 ZnodeStat::
@@ -499,7 +500,7 @@ setAversion(int32_t aversion) {
 
 int64_t ZnodeStat::
 getEphemeralOwner() const {
-  impl_->getEphemeralOwner();
+  return impl_->getEphemeralOwner();
 }
 
 void ZnodeStat::
@@ -590,6 +591,7 @@ const std::string toString(type rc) {
     case Error:
       return "Error";
   }
+  return str(boost::format("UnknownError(%d)") % rc);
 }
 }  // namespace ReturnCode
 

@@ -658,14 +658,14 @@ class ZooKeeper : boost::noncopyable {
      *         MarshallingError - failed to marshall a request; possibly, out of memory
      */
     ReturnCode::type create(const std::string& path, const std::string& data,
-                      const std::vector<Acl>& acl, CreateMode::type mode,
+                      const std::vector<data::ACL>& acl, CreateMode::type mode,
                       boost::shared_ptr<CreateCallback> callback);
 
     /**
      * Synchronously create a znode.
      */
     ReturnCode::type create(const std::string& path, const std::string& data,
-                      const std::vector<Acl>& acl, CreateMode::type mode,
+                      const std::vector<data::ACL>& acl, CreateMode::type mode,
                       std::string& pathCreated);
 
     /**

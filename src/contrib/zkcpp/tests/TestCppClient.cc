@@ -154,11 +154,15 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     ZooKeeper zk, zk2;
     ZnodeStat stat;
     std::string pathCreated;
-    std::vector<Acl> acls;
-    acls.push_back(Acl("world", "anyone", Permission::All));
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
 
     CPPUNIT_ASSERT_EQUAL(SessionState::Expired, zk.getState());
-    ReturnCode::type rc = zk.create("/hello", "world",  acls,
+    ReturnCode::type rc = zk.create("/hello", "world",  acl,
         CreateMode::Persistent, pathCreated);
     CPPUNIT_ASSERT_EQUAL(rc, ReturnCode::InvalidState);
 
@@ -173,7 +177,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     rc = zk.exists("/hello", boost::shared_ptr<Watch>(), stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
-    rc = zk.create("/hello", "world",  acls, CreateMode::Persistent,
+    rc = zk.create("/hello", "world",  acl, CreateMode::Persistent,
         pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
     CPPUNIT_ASSERT_EQUAL(std::string("/hello"), pathCreated);
@@ -203,8 +207,12 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     std::string dataOutput;
     std::string pathCreated;
     std::vector<std::string> children;
-    std::vector<Acl> acls;
-    acls.push_back(Acl("world", "anyone", Permission::All));
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
 
     shared_ptr<TestInitWatch> watch(new TestInitWatch());
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
@@ -228,13 +236,13 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
 
     // create()
-    rc = zk.create(znodeName, dataInput,  acls, CreateMode::Persistent,
+    rc = zk.create(znodeName, dataInput,  acl, CreateMode::Persistent,
         pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
     CPPUNIT_ASSERT_EQUAL(znodeName, pathCreated);
 
     // create() on existing znode.
-    rc = zk.create(znodeName, dataInput,  acls, CreateMode::Persistent,
+    rc = zk.create(znodeName, dataInput,  acl, CreateMode::Persistent,
         pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::NodeExists, rc);
 
@@ -281,7 +289,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     int numChildren = 10;
     for (int i = 0; i < numChildren; i++) {
       std::string child = str(boost::format("%s/child%d") % znodeName % i);
-      rc = zk.create(child, dataInput,  acls, CreateMode::Persistent,
+      rc = zk.create(child, dataInput,  acl, CreateMode::Persistent,
           pathCreated);
       CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
       CPPUNIT_ASSERT_EQUAL(child, pathCreated);
@@ -385,7 +393,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
 
     // ACL of "/" has been modified.
     CPPUNIT_ASSERT_EQUAL(acl.size(), aclOut.size());
-    for (int i = 0; i < acl.size(); i++) {
+    for (size_t i = 0; i < acl.size(); i++) {
       CPPUNIT_ASSERT(std::find(aclOut.begin(), aclOut.end(), acl[i]) !=
           aclOut.end());
     }
@@ -405,9 +413,9 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
   void testAddAuth() {
     ZooKeeper zk, zk2;
     std::string pathCreated;
-    std::vector<Acl> acls;
     ZnodeStat stat;
     ReturnCode::type rc;
+    std::vector<data::ACL> acl;
 
     shared_ptr<TestInitWatch> watch(new TestInitWatch());
     shared_ptr<TestInitWatch> watch2(new TestInitWatch());
@@ -431,32 +439,42 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(SessionState::Connected, zk2.getState());
 
     // echo -n user1:password1 |openssl dgst -sha1 -binary | base64
-    acls.clear();
-    acls.push_back(Acl("digest", "user1:XDkd2dsEuhc9ImU3q8pa8UOdtpI=",
-          Permission::All));
-    rc = zk.create("/user1", "hello",  acls,
+    acl.clear();
+    data::ACL temp;
+    temp.getid().getscheme() = "digest";
+    temp.getid().getid() = "user1:XDkd2dsEuhc9ImU3q8pa8UOdtpI=";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+    rc = zk.create("/user1", "hello",  acl,
         CreateMode::Persistent, pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
     // echo -n user2:password2 |openssl dgst -sha1 -binary | base64
-    acls.clear();
-    acls.push_back(Acl("digest", "user2:lo/iTtNMP+gEZlpUNaCqLYO3i5U=",
-          Permission::All));
-    rc = zk.create("/user2", "hello",  acls,
+    acl.clear();
+    temp.getid().getscheme() = "digest";
+    temp.getid().getid() = "user2:lo/iTtNMP+gEZlpUNaCqLYO3i5U=";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+    rc = zk.create("/user2", "hello",  acl,
         CreateMode::Persistent, pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
     // echo -n user3:password3 |openssl dgst -sha1 -binary | base64
-    acls.clear();
-    acls.push_back(Acl("digest", "user3:wr5Y0kEs9nFX3bKrTMKxrlcFeWo=",
-          Permission::All));
-    rc = zk.create("/user3", "hello",  acls,
+    acl.clear();
+    temp.getid().getscheme() = "digest";
+    temp.getid().getid() = "user3:wr5Y0kEs9nFX3bKrTMKxrlcFeWo=";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+    rc = zk.create("/user3", "hello",  acl,
         CreateMode::Persistent, pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
-    acls.clear();
-    acls.push_back(Acl("auth", "", Permission::All));
-    rc = zk2.create("/auth", "hello",  acls,
+    acl.clear();
+    temp.getid().getscheme() = "auth";
+    temp.getid().getid() = "";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+    rc = zk2.create("/auth", "hello",  acl,
         CreateMode::Persistent, pathCreated);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
     rc = zk2.set("/auth", "new data", -1, stat);
@@ -479,10 +497,14 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     rc = zk2.set("/user3", "new data", -1, stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
 
-    acls.clear();
-    acls.push_back(Acl("ip", "127.0.0.1", Permission::All));
-    rc = zk2.create("/ip", "hello",  acls,
+    acl.clear();
+    temp.getid().getscheme() = "ip";
+    temp.getid().getid() = "127.0.0.1";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+    rc = zk2.create("/ip", "hello",  acl,
         CreateMode::Persistent, pathCreated);
+
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
     zk2.getAcl("/ip", aclVector, stat);
     rc = zk2.set("/ip", "new data", -1, stat);
@@ -494,8 +516,13 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     std::string pathCreated;
     ZnodeStat stat;
     ReturnCode::type rc;
-    std::vector<Acl> acls;
-    acls.push_back(Acl("world", "anyone", Permission::All));
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
     shared_ptr<TestInitWatch> watch(new TestInitWatch());
     shared_ptr<TestInitWatch> watch2(new TestInitWatch());
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 5000, watch));
@@ -505,7 +532,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
 
     for(int i = 0; i < 10; i++) {
       std::string path = str(boost::format("/testping_%d") % i);
-      rc = zk.create(path, "",  acls, CreateMode::Persistent, pathCreated);
+      rc = zk.create(path, "",  acl, CreateMode::Persistent, pathCreated);
       CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
     }
 

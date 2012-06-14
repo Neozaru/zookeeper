@@ -36,9 +36,11 @@ using namespace std;
 #include <list>
 
 #include <zookeeper.h>
+#include "zookeeper.hh"
 #include <errno.h>
 #include <recordio.h>
 #include "Util.h"
+using namespace org::apache::zookeeper;
 
 static void yield(zhandle_t *zh, int i)
 {
@@ -392,8 +394,6 @@ public:
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
         int sz = 512;
-        char buf[sz];
-        int blen;
         char p1[sz];
         p1[0] = '\0';
         struct Stat stat;
@@ -479,9 +479,14 @@ public:
         int sz = 512;
         char p1[sz];
         p1[0] = '\0';
-        struct Stat s1;
+        std::vector<data::ACL> acl;
+        data::ACL temp;
+        temp.getid().getscheme() = "world";
+        temp.getid().getid() = "anyone";
+        temp.setperms(Permission::All);
+        acl.push_back(temp);
 
-        rc = zoo_create(zk, "/multi0", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        rc = zoo_create(zk, "/multi0", "", 0, acl, 0, p1, sz);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
 
         // Conditionally create /multi0/a' only if '/multi0' at version 0
@@ -556,8 +561,14 @@ public:
         int sz = 512;
         char p1[sz];
         p1[0] = '\0';
+        std::vector<data::ACL> acl;
+        data::ACL temp;
+        temp.getid().getscheme() = "world";
+        temp.getid().getid() = "anyone";
+        temp.setperms(Permission::All);
+        acl.push_back(temp);
 
-        rc = zoo_create(zk, "/multiwatch", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
+        rc = zoo_create(zk, "/multiwatch", "", 0, acl, 0, NULL, 0);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
 
         // create a watch on node '/multiwatch'

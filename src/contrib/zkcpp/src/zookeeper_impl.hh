@@ -36,10 +36,10 @@ class ZooKeeperImpl {
     ReturnCode::type addAuth(const std::string& scheme,
                              const std::string& cert);
     ReturnCode::type create(const std::string& path, const std::string& data,
-                      const std::vector<Acl>& acl, CreateMode::type mode,
+                      const std::vector<data::ACL>& acl, CreateMode::type mode,
                       boost::shared_ptr<CreateCallback> callback);
     ReturnCode::type create(const std::string& path, const std::string& data,
-                      const std::vector<Acl>& acl, CreateMode::type mode,
+                      const std::vector<data::ACL>& acl, CreateMode::type mode,
                       std::string& pathCreated);
     ReturnCode::type remove(const std::string& path, int version,
                       boost::shared_ptr<RemoveCallback> callback);

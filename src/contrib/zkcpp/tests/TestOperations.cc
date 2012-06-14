@@ -19,10 +19,12 @@
 #include <cppunit/extensions/HelperMacros.h>
 #include "CppAssertHelper.h"
 
+#include "zookeeper.hh"
 #include "ZKMocks.h"
 #include <proto.h>
 
 using namespace std;
+using namespace org::apache::zookeeper;
 
 class Zookeeper_operations : public CPPUNIT_NS::TestFixture
 {
@@ -182,7 +184,14 @@ public:
                 ensureCondition(ClientConnected(zh),5000)<5000);
         
         char realpath[1024];
-        int rc=zoo_create(lzh,"/xyz","1",1,&ZOO_OPEN_ACL_UNSAFE,0,realpath,sizeof(realpath)-1);
+        std::vector<data::ACL> acl;
+        data::ACL temp;
+        temp.getid().getscheme() = "world";
+        temp.getid().getid() = "anyone";
+        temp.setperms(Permission::All);
+        acl.push_back(temp);
+
+        int rc=zoo_create(lzh,"/xyz","1",1,acl,0,realpath,sizeof(realpath)-1);
         CPPUNIT_ASSERT(rc==ZOK || rc==ZNODEEXISTS);
         zookeeper_close(lzh); 
   

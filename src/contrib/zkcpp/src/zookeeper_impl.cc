@@ -550,7 +550,7 @@ addAuth(const std::string& scheme, const std::string& cert) {
 
 ReturnCode::type ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
-                  const std::vector<Acl>& acl, CreateMode::type mode,
+                  const std::vector<data::ACL>& acl, CreateMode::type mode,
                   boost::shared_ptr<CreateCallback> callback) {
   if ((int)this->getState() < 0) {
     return ReturnCode::InvalidState;
@@ -558,28 +558,18 @@ create(const std::string& path, const std::string& data,
 
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
-  ACL acls[acl.size()];
-  ACL_vector aclVector;
-  aclVector.count = acl.size();
-  for (int i = 0; i < acl.size(); i++) {
-    acls[i].id.scheme = (char*) acl[i].getScheme().c_str();
-    acls[i].id.id = (char*) acl[i].getExpression().c_str();
-    acls[i].perms = acl[i].getPermissions();
-  }
-  aclVector.data = acls;
-
   if (callback.get()) {
     completion = &stringCompletion;
     context = new CompletionContext(callback, path);
   }
   int rc = zoo_acreate(handle_, path.c_str(), data.c_str(), data.size(),
-                       &aclVector, mode, completion, (void*)context);
+                       acl, mode, completion, (void*)context);
   return intToReturnCode(rc);
 }
 
 ReturnCode::type ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
-       const std::vector<Acl>& acl, CreateMode::type mode,
+       const std::vector<data::ACL>& acl, CreateMode::type mode,
        std::string& pathCreated) {
   boost::shared_ptr<MyCreateCallback> callback(
     new MyCreateCallback(path, pathCreated));

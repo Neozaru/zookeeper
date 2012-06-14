@@ -719,9 +719,9 @@ ZOOAPI int zoo_state(zhandle_t *zh);
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_acreate(zhandle_t *zh, const char *path, const char *value, 
-        int valuelen, const struct ACL_vector *acl, int flags,
-        string_completion_t completion, const void *data);
+ZOOAPI int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
+        int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl,
+        int flags, string_completion_t completion, const void *data);
 
 /**
  * \brief delete a node in zookeeper.
@@ -1199,7 +1199,7 @@ ZOOAPI void zoo_deterministic_conn_order(int yesOrNo);
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_create(zhandle_t *zh, const char *path, const char *value,
-        int valuelen, const struct ACL_vector *acl, int flags,
+        int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl, int flags,
         char *path_buffer, int path_buffer_len);
 
 /**
