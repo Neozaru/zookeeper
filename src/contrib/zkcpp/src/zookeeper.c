@@ -1074,7 +1074,11 @@ static int send_set_watches(zhandle_t *zh) {
   memmove(data, serialized.c_str(), serialized.size());
   rc = queue_buffer_bytes(zh->to_send.get(),
         data, serialized.size());
+
+  enter_critical(zh);
   adaptor_send_queue(zh, 0);
+  leave_critical(zh);
+
   LOG_DEBUG("Sending SetWatches request to " << format_current_endpoint_info(zh));
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
@@ -1135,22 +1139,30 @@ static struct timeval get_timeval(int interval)
  static int add_string_completion(zhandle_t *zh, int xid,
      string_completion_t dc, const void *data);
 
- int send_ping(zhandle_t* zh)
- {
-    int rc;
-    struct oarchive *oa = create_buffer_oarchive();
-    struct RequestHeader h = { STRUCT_INITIALIZER(xid ,PING_XID), STRUCT_INITIALIZER (type , ZOO_PING_OP) };
+ int
+ send_ping(zhandle_t* zh) {
+  int rc = 0;
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
 
-    rc = serialize_RequestHeader(oa, "header", &h);
-    enter_critical(zh);
-    gettimeofday(&zh->last_ping, 0);
-    rc = rc < 0 ? rc : add_void_completion(zh, h.xid, 0, 0);
-    rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-            get_buffer_len(oa));
-    leave_critical(zh);
-    close_buffer_oarchive(&oa, 0);
-    return rc<0 ? rc : adaptor_send_queue(zh, 0);
-}
+  proto::RequestHeader header;
+  header.setxid(PING_XID);
+  header.settype(ZOO_PING_OP);
+  header.serialize(oarchive, "header");
+
+  /* add this buffer to the head of the send queue */
+  // TODO(michim) avoid copy
+  char* data  = (char*)malloc(serialized.size());
+  memmove(data, serialized.c_str(), serialized.size());
+
+  enter_critical(zh);
+  gettimeofday(&zh->last_ping, 0);
+  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0);
+  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), data, serialized.size());
+  leave_critical(zh);
+  return rc<0 ? rc : adaptor_send_queue(zh, 0);
+ }
 
 int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
      struct timeval *tv) {
@@ -2009,61 +2021,70 @@ static int add_multi_completion(zhandle_t *zh, int xid, void_completion_t dc,
     return add_completion(zh, xid, COMPLETION_MULTI, (const void*)dc, data, 0, clist);
 }
 
-int zookeeper_close(zhandle_t *zh)
-{
-    int rc=ZOK;
-    if (zh==0)
-        return ZBADARGUMENTS;
+int
+zookeeper_close(zhandle_t *zh) {
+  int rc = ZOK;
+  if (zh == 0)
+    return ZBADARGUMENTS;
 
-    zh->close_requested=1;
-    if (inc_ref_counter(zh)>1) {
-        /* We have incremented the ref counter to prevent the
-         * completions from calling zookeeper_close before we have
-         * completed the adaptor_finish call below. */
+  zh->close_requested=1;
+  if (inc_ref_counter(zh)>1) {
+    /* We have incremented the ref counter to prevent the
+     * completions from calling zookeeper_close before we have
+     * completed the adaptor_finish call below. */
 
-	/* Signal any syncronous completions before joining the threads */
-        enter_critical(zh);
-        free_completions(zh,1,ZCLOSING);
-        leave_critical(zh);
+    /* Signal any syncronous completions before joining the threads */
+    enter_critical(zh);
+    free_completions(zh,1,ZCLOSING);
+    leave_critical(zh);
 
-        adaptor_finish(zh);
-        /* Now we can allow the handle to be cleaned up, if the completion
-         * threads finished during the adaptor_finish call. */
-        api_epilog(zh, 0);
-        return ZOK;
+    adaptor_finish(zh);
+    /* Now we can allow the handle to be cleaned up, if the completion
+     * threads finished during the adaptor_finish call. */
+    api_epilog(zh, 0);
+    return ZOK;
+  }
+  /* No need to decrement the counter since we're just going to
+   * destroy the handle later. */
+  if(zh->state==ZOO_CONNECTED_STATE){
+    int rc = 0;
+    std::string serialized;
+    StringOutStream stream(serialized);
+    hadoop::OBinArchive oarchive(stream);
+
+    proto::RequestHeader header;
+    header.setxid(get_xid());
+    header.settype(ZOO_CLOSE_OP);
+    header.serialize(oarchive, "header");
+    LOG_INFO(boost::format("Closing zookeeper sessionId=%#llx to [%s]\n") %
+        zh->client_id.client_id % format_current_endpoint_info(zh));
+
+    /* add this buffer to the head of the send queue */
+    // TODO(michim) avoid copy
+    char* data  = (char*)malloc(serialized.size());
+    memmove(data, serialized.c_str(), serialized.size());
+
+    enter_critical(zh);
+    rc = queue_buffer_bytes(zh->to_send.get(), data, serialized.size());
+    leave_critical(zh);
+
+    if (rc < 0) {
+      rc = ZMARSHALLINGERROR;
+      goto finish;
     }
-    /* No need to decrement the counter since we're just going to
-     * destroy the handle later. */
-    if(zh->state==ZOO_CONNECTED_STATE){
-        struct oarchive *oa;
-        struct RequestHeader h = { STRUCT_INITIALIZER (xid , get_xid()), STRUCT_INITIALIZER (type , ZOO_CLOSE_OP)};
-        LOG_INFO(boost::format("Closing zookeeper sessionId=%#llx to [%s]\n") %
-            zh->client_id.client_id % format_current_endpoint_info(zh));
-        oa = create_buffer_oarchive();
-        rc = serialize_RequestHeader(oa, "header", &h);
-        rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), get_buffer(oa),
-                get_buffer_len(oa));
-        /* We queued the buffer, so don't free it */
-        close_buffer_oarchive(&oa, 0);
-        if (rc < 0) {
-            rc = ZMARSHALLINGERROR;
-            goto finish;
-        }
-
-        /* make sure the close request is sent; we set timeout to an arbitrary
-         * (but reasonable) number of milliseconds since we want the call to block*/
-        rc=adaptor_send_queue(zh, 3000);
-    }else{
-        LOG_INFO(boost::format("Freeing zookeeper resources for sessionId=%#llx") %
-                               zh->client_id.client_id);
-        rc = ZOK;
-    }
-
+    /* make sure the close request is sent; we set timeout to an arbitrary
+     * (but reasonable) number of milliseconds since we want the call to block*/
+    rc = adaptor_send_queue(zh, 3000);
+  } else {
+    LOG_INFO(boost::format("Freeing zookeeper resources for sessionId=%#llx") %
+        zh->client_id.client_id);
+    rc = ZOK;
+  }
 finish:
-    destroy(zh);
-    adaptor_destroy(zh);
-    free(zh);
-    return rc;
+  destroy(zh);
+  adaptor_destroy(zh);
+  free(zh);
+  return rc;
 }
 
 static int isValidPath(const char* path, const int flags) {
