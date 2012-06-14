@@ -613,7 +613,7 @@ public:
         struct Stat stat;
         int len = 512;
         rc = zoo_wget(zk, "/mahadev", NULL, NULL, buffer, &len, &stat);
-        CPPUNIT_ASSERT_EQUAL( -1, len);
+        CPPUNIT_ASSERT_EQUAL(0, len);
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
         rc = zoo_set(zk, "/mahadev", NULL, -1, -1);
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);

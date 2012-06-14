@@ -2295,7 +2295,11 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
 
   proto::CreateRequest req;
   req.getpath() = pathStr;
-  req.getdata() = std::string(value, valuelen);
+  if (value != NULL && valuelen >= 0) {
+    req.getdata() = std::string(value, valuelen);
+  } else {
+    req.getdata() = "";
+  }
   req.getacl() = acl;
   req.setflags(flags);
   req.serialize(oarchive, "req");
