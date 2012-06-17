@@ -98,7 +98,7 @@ class ZooKeeperImpl {
                                  const void* data);
     static void setCompletion(int rc, const struct Stat* stat,
                               const void* data);
-    static void dataCompletion(int rc, const char *value, int value_len,
+    static void dataCompletion(int rc, const std::string& value,
                                const struct Stat *stat, const void *data);
     static void childrenCompletion(int rc, const struct String_vector *strings,
                                    const struct Stat *stat, const void *data);

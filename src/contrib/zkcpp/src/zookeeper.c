@@ -1582,12 +1582,15 @@ static void deserialize_response(int type, int xid, int failed, int rc, completi
         LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#08x failed=%d rc=%d") %
                                 cptr->xid % failed % rc);
         if (failed) {
-            cptr->c.data_result(rc, 0, 0, 0, cptr->data);
+            cptr->c.data_result(rc, "", 0, cptr->data);
         } else {
             struct GetDataResponse res;
             deserialize_GetDataResponse(ia, "reply", &res);
-            cptr->c.data_result(rc, res.data.buff, res.data.len,
-                    &res.stat, cptr->data);
+            std::string value;
+            if (res.data.buff != NULL && res.data.len > 0) {
+              value.assign(res.data.buff, res.data.len);
+            }
+            cptr->c.data_result(rc, value, &res.stat, cptr->data);
             deallocate_GetDataResponse(&res);
         }
         break;
@@ -3303,7 +3306,7 @@ int zoo_wget(zhandle_t *zh, const char *path,
 
     sc->data.buffer = buffer;
     sc->data.buff_len = *buffer_len;
-    rc=zoo_awget(zh, path, watcher, watcherCtx, (void (*)(int, const char*, int, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
+    rc=zoo_awget(zh, path, watcher, watcherCtx, (void (*)(int, const std::string&, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
     if(rc==ZOK){
         wait_sync_completion(sc);
         rc = sc->rc;

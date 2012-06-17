@@ -94,10 +94,10 @@ void asyncCompletion(int rc, ACL_vector *acl,Stat *stat, const void *data){
     assert("Completion data is NULL"&&data);
     static_cast<AsyncCompletion*>((void*)data)->aclCompl(rc,acl,stat);
 }
-void asyncCompletion(int rc, const char *value, int len, const Stat *stat, 
-        const void *data){    
+void asyncCompletion(int rc, const std::string& value, const Stat *stat,
+        const void *data){
     assert("Completion data is NULL"&&data);
-    static_cast<AsyncCompletion*>((void*)data)->dataCompl(rc,value,len,stat);    
+    static_cast<AsyncCompletion*>((void*)data)->dataCompl(rc,value,stat);    
 }
 void asyncCompletion(int rc, const Stat *stat, const void *data){    
     assert("Completion data is NULL"&&data);

@@ -423,20 +423,18 @@ setCompletion(int rc, const struct Stat* stat,
 }
 
 void ZooKeeperImpl::
-dataCompletion(int rc, const char *value, int value_len,
-                           const struct Stat *stat, const void *data) {
+dataCompletion(int rc, const std::string& value,
+               const struct Stat *stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
   ZnodeStat statCopy;
   if (rc == ReturnCode::Ok) {
-    assert(value);
-    assert(value_len >= 0);
     assert(stat);
   }
   GetCallback* callback = (GetCallback*)context->callback_.get();
   if (callback) {
     // TODO(michim) avoid copy
-    result.assign(value, value_len);
+    result = value;
     copyStat(stat, statCopy);
     callback->process((ReturnCode::type)rc, context->path_, result, statCopy);
   }

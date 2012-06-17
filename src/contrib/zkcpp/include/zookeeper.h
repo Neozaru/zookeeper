@@ -579,13 +579,13 @@ typedef void (*stat_completion_t)(int rc, const struct Stat *stat,
  *   is responsible for any memory freeing associated with the data
  *   pointer.
  */
-typedef void (*data_completion_t)(int rc, const char *value, int value_len,
+typedef void (*data_completion_t)(int rc, const std::string& value,
         const struct Stat *stat, const void *data);
 
 /**
  * \brief signature of a completion function that returns a list of strings.
- * 
- * This method will be invoked at the end of a asynchronous call and also as 
+ *
+ * This method will be invoked at the end of a asynchronous call and also as
  * a result of connection loss or timeout.
  * \param rc the error code of the call. Connection loss/timeout triggers 
  * the completion with one of the following error codes:

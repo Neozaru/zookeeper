@@ -53,13 +53,13 @@ public:
     class AsyncGetOperationCompletion: public AsyncCompletion{
     public:
         AsyncGetOperationCompletion():called_(false),rc_(ZAPIERROR){}
-        virtual void dataCompl(int rc, const char *value, int len, const Stat *stat){
+        virtual void dataCompl(int rc, const std::string& value, const Stat *stat){
             synchronized(mx_);
             called_=true;
             rc_=rc;
             value_.erase();
             if(rc!=ZOK) return;
-            value_.assign(value,len);
+            value_.assign(value);
             if(stat)
                 stat_=*stat;
         }
