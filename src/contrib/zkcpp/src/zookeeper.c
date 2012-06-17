@@ -2737,9 +2737,9 @@ static int CheckVersionRequest_init(zhandle_t *zh, struct CheckVersionRequest *r
     return ZOK;
 }
 
-int zoo_amulti2(zhandle_t *zh, int count,
+int zoo_amulti2(zhandle_t *zh,
     const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
-    zoo_op_result_t *results, void_completion_t completion, const void *data) {
+    void_completion_t completion, const void *data) {
   std::string serialized;
   StringOutStream stream(serialized);
   hadoop::OBinArchive oarchive(stream);
@@ -2752,11 +2752,11 @@ int zoo_amulti2(zhandle_t *zh, int count,
   completion_head_t clist = { 0 };
   clist.lock.reset(new boost::mutex());
   clist.cond.reset(new boost::condition_variable());
+  zoo_op_result_t* result = NULL;
 
-  int index = 0;
-  for (index=0; index < count; index++) {
+  size_t index = 0;
+  for (index = 0; index < ops.size(); index++) {
     std::string pathStr;
-    zoo_op_result_t *result = results+index;
     completion_list_t *entry = NULL;
 
     proto::MultiHeader mheader;
@@ -2780,9 +2780,6 @@ int zoo_amulti2(zhandle_t *zh, int count,
         createReq.getacl() = createOp->getAcl();
         createReq.setflags(createOp->getMode());
         createReq.serialize(oarchive, "req");
-        // TODO(michim) don't malloc.
-        result->value = (char*)malloc(256);
-        result->valuelen =256;
         entry = create_completion_entry(header.getxid(), COMPLETION_STRING,
                 (const void*)op_result_string_completion, result, 0, 0);
         break;
@@ -2807,8 +2804,6 @@ int zoo_amulti2(zhandle_t *zh, int count,
         setDataReq.getdata() = setDataOp->getData();
         setDataReq.setversion(setDataOp->getVersion());
         setDataReq.serialize(oarchive, "req");
-        // TODO(michim) dont' malloc.
-        result->stat = (Stat*)malloc(sizeof(Stat));
         entry = create_completion_entry(header.getxid(), COMPLETION_STAT,
                 (const void*)op_result_stat_completion, result, 0, 0);
         break;

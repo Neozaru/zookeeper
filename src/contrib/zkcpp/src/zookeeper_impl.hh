@@ -106,6 +106,7 @@ class ZooKeeperImpl {
                               struct Stat *stat, const void *data);
     static void authCompletion(int rc, const void *data);
     static void syncCompletion(int rc, const char *value, const void *data);
+    static void multiCompletion(int rc, const void *data);
     zhandle_t* handle_;
     bool inited_;
     SessionState::type state_;

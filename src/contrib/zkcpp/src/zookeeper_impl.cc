@@ -226,6 +226,27 @@ class MyRemoveCallback : public RemoveCallback, public Waitable {
     std::string path_;
 };
 
+class MyMultiCallback : public MultiCallback, public Waitable {
+  public:
+    MyMultiCallback(boost::ptr_vector<OpResult>& results) :
+      results_(results) {}
+    void process(ReturnCode::type rc,
+                 const boost::ptr_vector<OpResult>& results) {
+      boost::ptr_vector<OpResult>& res = (boost::ptr_vector<OpResult>&)results;
+      results_.clear();
+      if (rc == ReturnCode::Ok) {
+        while (res.begin() != res.end()) {
+          res.push_back(res.release(res.begin()).release());
+        }
+      }
+      rc_ = rc;
+      notifyCompleted();
+    }
+
+    ReturnCode::type rc_;
+    boost::ptr_vector<OpResult>& results_;
+};
+
 class WatchContext {
   public:
     WatchContext(ZooKeeperImpl* zk, boost::shared_ptr<Watch> watch,
@@ -333,6 +354,12 @@ class AuthCompletionContext {
     std::string cert_;
 };
 
+class MultiCompletionContext {
+  public:
+    MultiCompletionContext(boost::shared_ptr<void> callback) :
+      callback_(callback) {}
+    boost::shared_ptr<void> callback_;
+};
 
 void ZooKeeperImpl::
 stringCompletion(int rc, const char* value, const void* data) {
@@ -493,6 +520,10 @@ syncCompletion(int rc, const char* value, const void* data) {
     callback->process((ReturnCode::type)rc, context->path_);
   }
   delete context;
+}
+
+void ZooKeeperImpl::
+multiCompletion(int rc, const void* data) {
 }
 
 
@@ -809,14 +840,27 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
 
 ReturnCode::type ZooKeeperImpl::
 multi(const boost::ptr_vector<Op>& ops,
-      boost::shared_ptr<MultiCallback> callback) {
-  return ReturnCode::Ok;
+      boost::shared_ptr<MultiCallback> cb) {
+  void_completion_t completion = NULL;
+  MultiCompletionContext* context = NULL;
+  if (cb.get()) {
+    completion = &multiCompletion;
+    context = new MultiCompletionContext(cb);
+  }
+  int rc = zoo_amulti2(handle_, ops, completion, context);
+  return intToReturnCode(rc);
 }
 
 ReturnCode::type ZooKeeperImpl::
 multi(const boost::ptr_vector<Op>& ops,
       boost::ptr_vector<OpResult>& results) {
-  return ReturnCode::Ok;
+  boost::shared_ptr<MyMultiCallback> callback(new MyMultiCallback(results));
+  ReturnCode::type rc = multi(ops, callback);
+  if (rc != ReturnCode::Ok) {
+    return rc;
+  }
+  callback->waitForCompleted();
+  return intToReturnCode(rc);
 }
 
 ReturnCode::type ZooKeeperImpl::

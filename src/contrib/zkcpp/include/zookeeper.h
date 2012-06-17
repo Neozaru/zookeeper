@@ -1087,9 +1087,9 @@ ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
  */
 ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops, 
         zoo_op_result_t *results, void_completion_t, const void *data);
-ZOOAPI int zoo_amulti2(zhandle_t *zh, int count,
+ZOOAPI int zoo_amulti2(zhandle_t *zh,
         const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
-        zoo_op_result_t *results, void_completion_t, const void *data);
+        void_completion_t, const void *data);
 
 /**
  * \brief return an error string.
