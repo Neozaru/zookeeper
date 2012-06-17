@@ -32,7 +32,7 @@ class Op {
   public:
     virtual ~Op() = 0;
 
-    int32_t getType() const;
+    OpCode::type getType() const;
     std::string getPath() const;
 
     class Create;
@@ -41,10 +41,10 @@ class Op {
     class Check;
 
   protected:
-    Op(int32_t type, const std::string& path);
+    Op(OpCode::type type, const std::string& path);
 
   private:
-    const int32_t type_;
+    const OpCode::type type_;
     const std::string path_;
 };
 
@@ -103,7 +103,9 @@ class OpResult {
   public:
     virtual ~OpResult() = 0;
 
-    int32_t getType() const;
+    OpCode::type getType() const;
+    ReturnCode::type getReturnCode() const;
+    void setReturnCode(ReturnCode::type rc);
 
     class Create;
     class Remove;
@@ -111,15 +113,16 @@ class OpResult {
     class Check;
 
   protected:
-    OpResult(int32_t type);
+    OpResult(OpCode::type type, ReturnCode::type rc);
 
   private:
-    int32_t type_;
+    OpCode::type type_;
+    ReturnCode::type rc_;
 };
 
 class OpResult::Create : public OpResult {
   public:
-    Create(const std::string& pathCreated);
+    Create(ReturnCode::type rc, const std::string& pathCreated);
     virtual ~Create();
     const std::string getPathCreated() const;
 
@@ -130,7 +133,7 @@ class OpResult::Create : public OpResult {
 
 class OpResult::Remove : public OpResult {
   public:
-    Remove();
+    Remove(ReturnCode::type rc);
     virtual ~Remove();
 };
 

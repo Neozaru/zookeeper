@@ -38,7 +38,7 @@ class TestOp : public CPPUNIT_NS::TestFixture
 
     void testOpResult() {
       boost::ptr_vector<OpResult> results;
-      results.push_back(new OpResult::Create("/path"));
+      results.push_back(new OpResult::Create(ReturnCode::Ok, "/path"));
     }
 };
 

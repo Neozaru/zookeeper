@@ -24,14 +24,14 @@ namespace apache {
 namespace zookeeper {
 
 Op::
-Op(int32_t type, const std::string& path) : type_(type), path_(path) {
+Op(OpCode::type type, const std::string& path) : type_(type), path_(path) {
 }
 
 Op::
 ~Op() {
 }
 
-int32_t Op::
+OpCode::type Op::
 getType() const {
   return type_;
 }
@@ -44,7 +44,7 @@ getPath() const {
 Op::Create::
 Create(const std::string& path, const std::string& data,
        const std::vector<data::ACL>& acl, CreateMode::type mode) :
-  Op((int32_t) OpCode::Create, path), data_(data), acl_(acl), mode_(mode) {
+  Op(OpCode::Create, path), data_(data), acl_(acl), mode_(mode) {
 }
 
 Op::Create::
@@ -69,7 +69,7 @@ getMode() const {
 
 Op::Remove::
 Remove(const std::string& path, int32_t version) :
-  Op((int32_t) OpCode::Remove, path), version_(version) {
+  Op(OpCode::Remove, path), version_(version) {
 }
 
 Op::Remove::
@@ -84,7 +84,7 @@ getVersion() const {
 
 Op::SetData::
 SetData(const std::string& path, const std::string& data, int32_t version) :
-  Op((int32_t) OpCode::SetData, path), version_(version) {
+  Op(OpCode::SetData, path), version_(version) {
 }
 
 Op::SetData::
@@ -103,7 +103,7 @@ getVersion() const {
 
 Op::Check::
 Check(const std::string& path, int32_t version) :
-  Op((int32_t) OpCode::Check, path), version_(version) {
+  Op(OpCode::Check, path), version_(version) {
 }
 
 Op::Check::
@@ -116,16 +116,32 @@ getVersion() const {
 }
 
 OpResult::
-OpResult(int32_t type) : type_(type) {
+OpResult(OpCode::type type, ReturnCode::type rc) : type_(type), rc_(rc) {
 }
 
 OpResult::
 ~OpResult() {
 }
 
+OpCode::type OpResult::
+getType() const {
+  return type_;
+}
+
+ReturnCode::type OpResult::
+getReturnCode() const {
+  return rc_;
+}
+
+void OpResult::
+setReturnCode(ReturnCode::type rc) {
+  rc_ = rc;
+}
+
+
 OpResult::Create::
-Create(const std::string& path) :
-  OpResult((int32_t) OpCode::Create), pathCreated_(path) {
+Create(ReturnCode::type rc, const std::string& path) :
+  OpResult(OpCode::Create, rc), pathCreated_(path) {
 }
 
 OpResult::Create::
@@ -136,5 +152,14 @@ const std::string OpResult::Create::
 getPathCreated() const {
   return pathCreated_;
 }
+
+OpResult::Remove::
+Remove(ReturnCode::type rc) : OpResult(OpCode::Remove, rc) {
+}
+
+OpResult::Remove::
+~Remove() {
+}
+
 
 }}}  // namespace org::apache::zookeeper

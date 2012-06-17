@@ -235,10 +235,8 @@ class MyMultiCallback : public MultiCallback, public Waitable {
                  const boost::ptr_vector<OpResult>& results) {
       boost::ptr_vector<OpResult>& res = (boost::ptr_vector<OpResult>&)results;
       results_.clear();
-      if (rc == ReturnCode::Ok) {
-        while (res.begin() != res.end()) {
-          results_.push_back(res.release(res.begin()).release());
-        }
+      while (res.begin() != res.end()) {
+        results_.push_back(res.release(res.begin()).release());
       }
       rc_ = rc;
       notifyCompleted();
@@ -798,7 +796,7 @@ multi(const boost::ptr_vector<Op>& ops,
     return rc;
   }
   callback->waitForCompleted();
-  return intToReturnCode(rc);
+  return callback->rc_;
 }
 
 ReturnCode::type ZooKeeperImpl::
