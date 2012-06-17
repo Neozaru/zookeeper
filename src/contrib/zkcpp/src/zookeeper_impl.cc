@@ -237,7 +237,7 @@ class MyMultiCallback : public MultiCallback, public Waitable {
       results_.clear();
       if (rc == ReturnCode::Ok) {
         while (res.begin() != res.end()) {
-          res.push_back(res.release(res.begin()).release());
+          results_.push_back(res.release(res.begin()).release());
         }
       }
       rc_ = rc;
@@ -455,9 +455,15 @@ syncCompletion(int rc, const std::string& value, const void* data) {
 }
 
 void ZooKeeperImpl::
-multiCompletion(int rc, const void* data) {
+multiCompletion(int rc, const boost::ptr_vector<OpResult>& results,
+                const void *data) {
+  MultiCompletionContext* context = (MultiCompletionContext*)data;
+  MultiCallback* callback = (MultiCallback*)context->callback_.get();
+  if (callback) {
+    callback->process((ReturnCode::type)rc, results);
+  }
+  delete context;
 }
-
 
 ZooKeeperImpl::
 ZooKeeperImpl() : handle_(NULL), inited_(false), state_(SessionState::Expired) {
@@ -773,7 +779,7 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
 ReturnCode::type ZooKeeperImpl::
 multi(const boost::ptr_vector<Op>& ops,
       boost::shared_ptr<MultiCallback> cb) {
-  void_completion_t completion = NULL;
+  multi_completion_t completion = NULL;
   MultiCompletionContext* context = NULL;
   if (cb.get()) {
     completion = &multiCompletion;

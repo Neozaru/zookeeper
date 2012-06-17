@@ -115,4 +115,26 @@ getVersion() const {
   return version_;
 }
 
+OpResult::
+OpResult(int32_t type) : type_(type) {
+}
+
+OpResult::
+~OpResult() {
+}
+
+OpResult::Create::
+Create(const std::string& path) :
+  OpResult((int32_t) OpCode::Create), pathCreated_(path) {
+}
+
+OpResult::Create::
+~Create() {
+}
+
+const std::string OpResult::Create::
+getPathCreated() const {
+  return pathCreated_;
+}
+
 }}}  // namespace org::apache::zookeeper

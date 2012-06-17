@@ -27,12 +27,18 @@ class TestOp : public CPPUNIT_NS::TestFixture
   public:
     CPPUNIT_TEST_SUITE(TestOp);
     CPPUNIT_TEST(testOp);
+    CPPUNIT_TEST(testOpResult);
     CPPUNIT_TEST_SUITE_END();
 
     void testOp() {
       boost::ptr_vector<Op> ops;
       ops.push_back(new Op::Check("/path", -1));
       ops.push_back(new Op::Remove("/path", -1));
+    }
+
+    void testOpResult() {
+      boost::ptr_vector<OpResult> results;
+      results.push_back(new OpResult::Create("/path"));
     }
 };
 

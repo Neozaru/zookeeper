@@ -532,6 +532,9 @@ ZOOAPI struct sockaddr* zookeeper_get_connected_host(zhandle_t *zh,
  *   pointer.
  */
 typedef void (*void_completion_t)(int rc, const void *data);
+typedef void (*multi_completion_t)(int rc,
+             const boost::ptr_vector<OpResult>& results,
+             const void *data);
 
 /**
  * \brief signature of a completion function that returns a Stat structure.
@@ -1090,7 +1093,7 @@ ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
         zoo_op_result_t *results, void_completion_t, const void *data);
 ZOOAPI int zoo_amulti2(zhandle_t *zh,
         const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
-        void_completion_t, const void *data);
+        multi_completion_t, const void *data);
 
 /**
  * \brief return an error string.

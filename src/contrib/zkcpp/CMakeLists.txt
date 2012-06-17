@@ -43,6 +43,7 @@ file(GLOB testsrc
   ${PROJECT_SOURCE_DIR}/tests/TestRecordIo.cc
   ${PROJECT_SOURCE_DIR}/tests/TestZookeeperInit.cc
   #${PROJECT_SOURCE_DIR}/tests/TestMulti.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestMulti2.cc
   ${PROJECT_SOURCE_DIR}/tests/TestOp.cc
   #${PROJECT_SOURCE_DIR}/tests/TestOperations.cc
   ${PROJECT_SOURCE_DIR}/tests/ZKMocks.cc

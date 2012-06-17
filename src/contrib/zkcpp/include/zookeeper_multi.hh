@@ -104,7 +104,6 @@ class OpResult {
     virtual ~OpResult() = 0;
 
     int32_t getType() const;
-    std::string getPath() const;
 
     class Create;
     class Remove;
@@ -112,30 +111,30 @@ class OpResult {
     class Check;
 
   protected:
-    OpResult(int32_t type, const std::string& path);
+    OpResult(int32_t type);
 
   private:
-    const int32_t type_;
-    const std::string path_;
+    int32_t type_;
 };
 
-class OpResult::Create : public Op {
+class OpResult::Create : public OpResult {
   public:
     Create(const std::string& pathCreated);
     virtual ~Create();
+    const std::string getPathCreated() const;
 
   private:
     Create();
-    const std::string pathCreated_;
+    std::string pathCreated_;
 };
 
-class OpResult::Remove : public Op {
+class OpResult::Remove : public OpResult {
   public:
     Remove();
     virtual ~Remove();
 };
 
-class OpResult::SetData : public Op {
+class OpResult::SetData : public OpResult {
   public:
     explicit SetData(const data::Stat& stat);
     virtual ~SetData();
@@ -145,7 +144,7 @@ class OpResult::SetData : public Op {
     data::Stat stat_;
 };
 
-class OpResult::Check : public Op {
+class OpResult::Check : public OpResult {
   public:
     Check();
     virtual ~Check();

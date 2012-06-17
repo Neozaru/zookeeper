@@ -20,6 +20,7 @@
 #  define USE_STATIC_LIB
 #endif
 
+#include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/foreach.hpp>
 #include <boost/random.hpp>
@@ -161,6 +162,7 @@ class completion_t {
         acl_completion_t acl_result;
         string_completion_t string_result;
         struct watcher_object_list *watcher_result;
+        multi_completion_t multi_result;
     };
     completion_head_t clist; /* For multi-op */
 };
@@ -184,7 +186,8 @@ static const char* format_current_endpoint_info(zhandle_t* zh);
 static void deserialize_response(int type, int xid, int failed, int rc,
     completion_list_t *cptr, hadoop::IBinArchive& iarchive);
 static int deserialize_multi(int xid, completion_list_t *cptr,
-                             hadoop::IBinArchive& iarchive);
+                             hadoop::IBinArchive& iarchive,
+                             boost::ptr_vector<OpResult>& results);
 
 /* completion routine forward declarations */
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
@@ -1433,6 +1436,8 @@ completion_list_t *dequeue_completion(completion_head_t *list)
         boost::lock_guard<boost::mutex> lock(*(list->lock));
         cptr = list->head;
         if (cptr) {
+            assert(list);
+            assert(cptr);
             list->head = cptr->next;
             if (!list->head) {
                 assert(list->last == cptr);
@@ -1446,7 +1451,10 @@ completion_list_t *dequeue_completion(completion_head_t *list)
 
 static int
 deserialize_multi(int xid, completion_list_t *cptr,
-                  hadoop::IBinArchive& iarchive) {
+                  hadoop::IBinArchive& iarchive,
+                  boost::ptr_vector<OpResult>& results) {
+
+  boost::ptr_vector<OpResult> temp;
   int rc = 0;
   completion_head_t *clist = &cptr->c.clist;
   assert(clist);
@@ -1463,9 +1471,22 @@ deserialize_multi(int xid, completion_list_t *cptr,
       if (rc == 0 && error != 0 && error != ZRUNTIMEINCONSISTENCY) {
         rc = error;
       }
+    } else {
+      switch(entry->c.type) {
+        case COMPLETION_VOID:
+          LOG_DEBUG("got delete or check response");
+          break;
+        case COMPLETION_STAT:
+          LOG_DEBUG("got setdata response");
+          break;
+        case COMPLETION_STRING:
+          proto::CreateResponse res;
+          res.deserialize(iarchive, "reply");
+          LOG_DEBUG("got create response for: " << res.getpath() << ": " << mheader.geterr());
+          results.push_back(new OpResult::Create(res.getpath()));
+          break;
+      }
     }
-    deserialize_response(entry->c.type, xid, mheader.gettype() == -1,
-                         mheader.geterr(), entry, iarchive);
     mheader.deserialize(iarchive, "multiheader");
   }
   return rc;
@@ -1557,13 +1578,19 @@ static void deserialize_response(int type, int xid, int failed, int rc,
         cptr->c.void_result(rc, cptr->data);
       }
       break;
-    case COMPLETION_MULTI:
+    case COMPLETION_MULTI: {
+      assert(cptr);
+      #if 0
       LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#08x failed=%d rc=%d") %
           cptr->xid % failed % rc);
-      rc = deserialize_multi(xid, cptr, iarchive);
-      assert(cptr->c.void_result);
-      cptr->c.void_result(rc, cptr->data);
+          #endif
+      boost::ptr_vector<OpResult> results;
+      rc = deserialize_multi(xid, cptr, iarchive, results);
+      LOG_DEBUG("GOT BACK");
+      assert(cptr->c.multi_result);
+      cptr->c.multi_result(rc, results, cptr->data);
       break;
+    }
     default:
       LOG_DEBUG("Unsupported completion type=" << cptr->c.type);
   }
@@ -1865,7 +1892,7 @@ static int add_string_completion(zhandle_t *zh, int xid,
     return add_completion(zh, xid, COMPLETION_STRING, (const void*)dc, data, 0, 0);
 }
 
-static int add_multi_completion(zhandle_t *zh, int xid, void_completion_t dc,
+static int add_multi_completion(zhandle_t *zh, int xid, multi_completion_t dc,
         const void *data, completion_head_t *clist)
 {
     return add_completion(zh, xid, COMPLETION_MULTI, (const void*)dc, data, 0, clist);
@@ -2589,7 +2616,7 @@ static int CheckVersionRequest_init(zhandle_t *zh, struct CheckVersionRequest *r
 
 int zoo_amulti2(zhandle_t *zh,
     const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
-    void_completion_t completion, const void *data) {
+    multi_completion_t completion, const void *data) {
   std::string serialized;
   StringOutStream stream(serialized);
   hadoop::OBinArchive oarchive(stream);
@@ -2599,9 +2626,12 @@ int zoo_amulti2(zhandle_t *zh,
   header.settype(ZOO_MULTI_OP);
   header.serialize(oarchive, "header");
 
-  completion_head_t clist = { 0 };
-  clist.lock.reset(new boost::mutex());
-  clist.cond.reset(new boost::condition_variable());
+  // TODO allocate in heap.
+  completion_head_t* clist = new completion_head_t;
+  clist->head = NULL;
+  clist->last = NULL;
+  clist->lock.reset(new boost::mutex());
+  clist->cond.reset(new boost::condition_variable());
   zoo_op_result_t* result = NULL;
 
   size_t index = 0;
@@ -2675,7 +2705,8 @@ int zoo_amulti2(zhandle_t *zh,
                                                << " in multi-op.");
         return ZUNIMPLEMENTED;
     }
-    queue_completion(&clist, entry);
+    assert(entry);
+    queue_completion(clist, entry);
   }
 
   // End of multi request.
@@ -2690,7 +2721,7 @@ int zoo_amulti2(zhandle_t *zh,
 
   /* BEGIN: CRTICIAL SECTION */
   enter_critical(zh);
-  add_multi_completion(zh, header.getxid(), completion, data, &clist);
+  add_multi_completion(zh, header.getxid(), completion, data, clist);
   queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
@@ -2702,7 +2733,7 @@ int zoo_amulti2(zhandle_t *zh,
 }
 
 int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
-        zoo_op_result_t *results, void_completion_t completion, const void *data)
+        zoo_op_result_t *results, multi_completion_t completion, const void *data)
 {
     struct RequestHeader h = { STRUCT_INITIALIZER(xid, get_xid()), STRUCT_INITIALIZER(type, ZOO_MULTI_OP) };
     struct MultiHeader mh = { STRUCT_INITIALIZER(type, -1), STRUCT_INITIALIZER(done, 1), STRUCT_INITIALIZER(err, -1) };
