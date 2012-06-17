@@ -58,9 +58,11 @@ void collectKeys(zk_hashtable *ht, std::vector<std::string>& keys);
  * with it. If it does, move the watcher object to the map of
  * active watchers (only if the checker allows to do so)
  */
-    void activateWatcher(zhandle_t *zh, watcher_registration_t* reg, int rc);
-    watcher_object_list_t *collectWatchers(zhandle_t *zh,int type, char *path);
-    void deliverWatchers(zhandle_t *zh, int type, int state, char *path, struct watcher_object_list **list);
+void activateWatcher(zhandle_t *zh, watcher_registration_t* reg, int rc);
+watcher_object_list_t *collectWatchers(zhandle_t *zh, int type,
+                                       const std::string& path);
+void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
+    struct watcher_object_list **list);
 
 #ifdef __cplusplus
 }

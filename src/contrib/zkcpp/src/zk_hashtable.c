@@ -203,7 +203,8 @@ static void collect_session_watchers(zhandle_t *zh,
     copy_table(zh->active_child_watchers, *list);
 }
 
-static void add_for_event(zk_hashtable *ht, char *path, watcher_object_list_t **list)
+static void add_for_event(zk_hashtable *ht, const std::string& path,
+                          watcher_object_list_t **list)
 {
 
     watcher_object_list_t* wl;
@@ -232,8 +233,8 @@ static void do_foreach_watcher(watcher_object_t* wo,zhandle_t* zh,
     free_duplicate_path(client_path, path);
 }
 
-watcher_object_list_t *collectWatchers(zhandle_t *zh,int type, char *path)
-{
+watcher_object_list_t *collectWatchers(zhandle_t *zh,int type,
+                                       const std::string& path) {
     struct watcher_object_list *list = create_watcher_object_list(0); 
 
     if(type==ZOO_SESSION_EVENT){
@@ -248,24 +249,25 @@ watcher_object_list_t *collectWatchers(zhandle_t *zh,int type, char *path)
     case CREATED_EVENT_DEF:
     case CHANGED_EVENT_DEF:
         // look up the watchers for the path and move them to a delivery list
-        add_for_event(zh->active_node_watchers,path,&list);
-        add_for_event(zh->active_exist_watchers,path,&list);
+        add_for_event(zh->active_node_watchers,path.c_str(),&list);
+        add_for_event(zh->active_exist_watchers,path.c_str(),&list);
         break;
     case CHILD_EVENT_DEF:
         // look up the watchers for the path and move them to a delivery list
-        add_for_event(zh->active_child_watchers,path,&list);
+        add_for_event(zh->active_child_watchers,path.c_str(),&list);
         break;
     case DELETED_EVENT_DEF:
         // look up the watchers for the path and move them to a delivery list
-        add_for_event(zh->active_node_watchers,path,&list);
-        add_for_event(zh->active_exist_watchers,path,&list);
-        add_for_event(zh->active_child_watchers,path,&list);
+        add_for_event(zh->active_node_watchers,path.c_str(),&list);
+        add_for_event(zh->active_exist_watchers,path.c_str(),&list);
+        add_for_event(zh->active_child_watchers,path.c_str(),&list);
         break;
     }
     return list;
 }
 
-void deliverWatchers(zhandle_t *zh, int type,int state, char *path, watcher_object_list_t **list)
+void deliverWatchers(zhandle_t *zh, int type,int state, const char* path,
+                     watcher_object_list_t **list)
 {
     if (!list || !(*list)) return;
     do_foreach_watcher((*list)->head, zh, path, type, state);

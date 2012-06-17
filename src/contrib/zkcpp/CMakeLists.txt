@@ -31,8 +31,23 @@ file(GLOB testsrc
   ${PROJECT_SOURCE_DIR}/src/*.c
   ${PROJECT_SOURCE_DIR}/generated/*.c
   ${PROJECT_SOURCE_DIR}/generated/*.cc
-  ${PROJECT_SOURCE_DIR}/tests/*.cc
-  ${PROJECT_SOURCE_DIR}/tests/*.c
+  ${PROJECT_SOURCE_DIR}/tests/TestDriver.cc
+  ${PROJECT_SOURCE_DIR}/tests/MocksBase.cc
+  ${PROJECT_SOURCE_DIR}/tests/LibCSymTable.cc
+  ${PROJECT_SOURCE_DIR}/tests/LibCMocks.cc
+  ${PROJECT_SOURCE_DIR}/tests/Util.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestClientRetry.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestZookeeperClose.cc
+  #${PROJECT_SOURCE_DIR}/tests/TestWatchers.cc
+  ${PROJECT_SOURCE_DIR}/tests/ThreadingUtil.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestRecordIo.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestZookeeperInit.cc
+  #${PROJECT_SOURCE_DIR}/tests/TestMulti.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestOp.cc
+  #${PROJECT_SOURCE_DIR}/tests/TestOperations.cc
+  ${PROJECT_SOURCE_DIR}/tests/ZKMocks.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestCppClient.cc
+  #${PROJECT_SOURCE_DIR}/tests/TestClient.cc
   ${PROJECT_SOURCE_DIR}/tests/*.h
 )
 

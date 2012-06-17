@@ -74,17 +74,17 @@ void activeWatcher(zhandle_t *zh, int type, int state, const char *path,void* ct
 class AsyncCompletion{
 public:
     virtual ~AsyncCompletion(){}
-    virtual void aclCompl(int rc, ACL_vector *acl,Stat *stat){}
-    virtual void dataCompl(int rc, const std::string& value, const Stat *stat){}
-    virtual void statCompl(int rc, const Stat *stat){}
+    virtual void aclCompl(int rc, ACL_vector *acl, const data::Stat& stat){}
+    virtual void dataCompl(int rc, const std::string& value, const data::Stat& stat){}
+    virtual void statCompl(int rc, const data::Stat& stat){}
     virtual void stringCompl(int rc, const char *value){}
     virtual void stringsCompl(int rc,const String_vector *strings){}
     virtual void voidCompl(int rc){}
 };
-void asyncCompletion(int rc, ACL_vector *acl,Stat *stat, const void *data);
-void asyncCompletion(int rc, const std::string& value, const Stat *stat,
+void asyncCompletion(int rc, ACL_vector *acl, data::Stat& stat, const void *data);
+void asyncCompletion(int rc, const std::string& value, const data::Stat& stat,
         const void *data);
-void asyncCompletion(int rc, const Stat *stat, const void *data);
+void asyncCompletion(int rc, const data::Stat& stat, const void *data);
 void asyncCompletion(int rc, const char *value, const void *data);
 void asyncCompletion(int rc,const String_vector *strings, const void *data);
 void asyncCompletion(int rc, const void *data);

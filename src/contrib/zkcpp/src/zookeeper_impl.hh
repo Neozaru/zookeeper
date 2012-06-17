@@ -48,28 +48,28 @@ class ZooKeeperImpl {
             boost::shared_ptr<Watch> watch,
             boost::shared_ptr<ExistsCallback> callback);
     ReturnCode::type exists(const std::string& path, boost::shared_ptr<Watch> watch,
-                            ZnodeStat& stat);
+                            data::Stat& stat);
     ReturnCode::type get(const std::string& path,
                    boost::shared_ptr<Watch>,
                    boost::shared_ptr<GetCallback> callback);
     ReturnCode::type get(const std::string& path,
                          boost::shared_ptr<Watch> watch,
-                         std::string& data, ZnodeStat& stat);
+                         std::string& data, data::Stat& stat);
     ReturnCode::type set(const std::string& path, const std::string& data,
                    int version, boost::shared_ptr<SetCallback> callback);
     ReturnCode::type set(const std::string& path, const std::string& data,
-                   int version, ZnodeStat& stat);
+                   int version, data::Stat& stat);
     ReturnCode::type getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
                            boost::shared_ptr<GetChildrenCallback> callback);
     ReturnCode::type getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
                            std::vector<std::string>& children,
-                           ZnodeStat& stat);
+                           data::Stat& stat);
     ReturnCode::type getAcl(const std::string& path,
                       boost::shared_ptr<GetAclCallback> callback);
     ReturnCode::type getAcl(const std::string& path,
-                            std::vector<data::ACL>& acl, ZnodeStat& stat);
+                            std::vector<data::ACL>& acl, data::Stat& stat);
     ReturnCode::type setAcl(const std::string& path, int version,
                       const std::vector<data::ACL>& acl,
                       boost::shared_ptr<SetAclCallback> callback);
@@ -87,23 +87,23 @@ class ZooKeeperImpl {
 
   private:
     static ReturnCode::type intToReturnCode(int rc);
-    static void copyStat(const Stat* src, ZnodeStat& dst);
     static void watchCallback(zhandle_t *zh, int type, int state, const char *path,
                          void *watcherCtx);
-    static void stringCompletion(int rc, const char *value, const void *data);
+    static void stringCompletion(int rc, const std::string& value,
+                                 const void *data);
     static void removeCompletion(int rc, const void *data);
     static void setAclCompletion(int rc, const void *data);
-    static void syncCompletion(int rc, const void *data);
-    static void existsCompletion(int rc, const struct Stat* stat,
+    static void syncCompletion(int rc, const std::string& path, const void *data);
+    static void existsCompletion(int rc, const data::Stat& stat,
                                  const void* data);
-    static void setCompletion(int rc, const struct Stat* stat,
+    static void setCompletion(int rc, const data::Stat& stat,
                               const void* data);
     static void dataCompletion(int rc, const std::string& value,
-                               const struct Stat *stat, const void *data);
-    static void childrenCompletion(int rc, const struct String_vector *strings,
-                                   const struct Stat *stat, const void *data);
-    static void aclCompletion(int rc, struct ACL_vector *acl,
-                              struct Stat *stat, const void *data);
+                               const data::Stat& stat, const void *data);
+    static void childrenCompletion(int rc, const std::vector<std::string>& children,
+                                   const data::Stat& stat, const void *data);
+    static void aclCompletion(int rc, const std::vector<data::ACL>& acl,
+                              const data::Stat& stat, const void *data);
     static void authCompletion(int rc, const void *data);
     static void syncCompletion(int rc, const char *value, const void *data);
     static void multiCompletion(int rc, const void *data);

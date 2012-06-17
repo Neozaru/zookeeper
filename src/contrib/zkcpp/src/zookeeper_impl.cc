@@ -97,28 +97,29 @@ class MyCreateCallback : public CreateCallback, public Waitable {
 
 class MyExistsCallback : public ExistsCallback, public Waitable {
   public:
-    MyExistsCallback(ZnodeStat& stat) : stat_(stat) {}
+    MyExistsCallback(data::Stat& stat) : stat_(stat) {}
     void process(ReturnCode::type rc, const std::string& path,
-                 const ZnodeStat& stat) {
+                 const data::Stat& stat) {
       if (rc == ReturnCode::Ok) {
         stat_ = stat;
       }
       rc_ = rc;
+      stat_ = stat;
       path_ = path;
       notifyCompleted();
     }
 
     ReturnCode::type rc_;
     std::string path_;
-    ZnodeStat& stat_;
+    data::Stat& stat_;
 };
 
 class MyGetCallback : public GetCallback, public Waitable {
   public:
-    MyGetCallback(std::string& data, ZnodeStat& stat) :
+    MyGetCallback(std::string& data, data::Stat& stat) :
       data_(data), stat_(stat) {}
     void process(ReturnCode::type rc, const std::string& path,
-                 const std::string& data, const ZnodeStat& stat) {
+                 const std::string& data, const data::Stat& stat) {
       if (rc == ReturnCode::Ok) {
         data_ = data;
         stat_ = stat;
@@ -131,17 +132,17 @@ class MyGetCallback : public GetCallback, public Waitable {
     ReturnCode::type rc_;
     std::string path_;
     std::string& data_;
-    ZnodeStat& stat_;
+    data::Stat& stat_;
 };
 
 class MyGetAclCallback : public GetAclCallback, public Waitable {
   public:
-    MyGetAclCallback(std::vector<data::ACL>& acl, ZnodeStat& stat) :
+    MyGetAclCallback(std::vector<data::ACL>& acl, data::Stat& stat) :
       acl_(acl), stat_(stat) {}
 
     void process(ReturnCode::type rc, const std::string& path,
                  const std::vector<data::ACL>& acl,
-                 const ZnodeStat& stat) {
+                 const data::Stat& stat) {
       if (rc == ReturnCode::Ok) {
         acl_ = acl;
         stat_ = stat;
@@ -154,7 +155,7 @@ class MyGetAclCallback : public GetAclCallback, public Waitable {
     ReturnCode::type rc_;
     std::string path_;
     std::vector<data::ACL>& acl_;
-    ZnodeStat& stat_;
+    data::Stat& stat_;
 };
 
 class MySetAclCallback : public SetAclCallback, public Waitable {
@@ -173,12 +174,12 @@ class MySetAclCallback : public SetAclCallback, public Waitable {
 
 class MyGetChildrenCallback : public GetChildrenCallback, public Waitable {
   public:
-    MyGetChildrenCallback(std::vector<std::string>& children, ZnodeStat& stat) :
+    MyGetChildrenCallback(std::vector<std::string>& children, data::Stat& stat) :
       children_(children), stat_(stat) {}
 
     void process(ReturnCode::type rc, const std::string& path,
                  const std::vector<std::string>& children,
-                 const ZnodeStat& stat) {
+                 const data::Stat& stat) {
       if (rc == ReturnCode::Ok) {
         children_ = children;
         stat_ = stat;
@@ -191,15 +192,15 @@ class MyGetChildrenCallback : public GetChildrenCallback, public Waitable {
     ReturnCode::type rc_;
     std::string path_;
     std::vector<std::string>& children_;
-    ZnodeStat& stat_;
+    data::Stat& stat_;
 };
 
 
 class MySetCallback : public SetCallback, public Waitable {
   public:
-    MySetCallback(ZnodeStat& stat) : stat_(stat) {}
+    MySetCallback(data::Stat& stat) : stat_(stat) {}
     void process(ReturnCode::type rc, const std::string& path,
-                 const ZnodeStat& stat) {
+                 const data::Stat& stat) {
       if (rc == ReturnCode::Ok) {
         stat_ = stat;
       }
@@ -210,7 +211,7 @@ class MySetCallback : public SetCallback, public Waitable {
 
     ReturnCode::type rc_;
     std::string path_;
-    ZnodeStat& stat_;
+    data::Stat& stat_;
 };
 
 class MyRemoveCallback : public RemoveCallback, public Waitable {
@@ -308,33 +309,6 @@ intToReturnCode(int rc) {
   return (ReturnCode::type)rc;
 }
 
-void ZooKeeperImpl::
-copyStat(const Stat* src, ZnodeStat& dst) {
-  if (!src) {
-    return;
-  }
-        LOG_DEBUG(
-          boost::format("czxid=%ld mzxid=%ld ctime=%ld mtime=%ld version=%d "
-                        "cversion=%d aversion=%d ephemeralOwner=%ld "
-                        "dataLength=%d numChildren=%d pzxid=%ld") %
-                        src->czxid % src->mzxid % src->ctime % src->mtime %
-                        src->version % src->cversion % src->aversion %
-                        src->ephemeralOwner % src->dataLength %
-                        src->numChildren % src->pzxid);
-
-  dst.setCzxid(src->czxid);
-  dst.setMzxid(src->mzxid);
-  dst.setCtime(src->ctime);
-  dst.setMtime(src->mtime);
-  dst.setVersion(src->version);
-  dst.setCversion(src->cversion);
-  dst.setAversion(src->aversion);
-  dst.setEphemeralOwner(src->ephemeralOwner);
-  dst.setDataLength(src->dataLength);
-  dst.setNumChildren(src->numChildren);
-  dst.setPzxid(src->pzxid);
-}
-
 class CompletionContext {
   public:
     CompletionContext(boost::shared_ptr<void> callback,
@@ -362,16 +336,11 @@ class MultiCompletionContext {
 };
 
 void ZooKeeperImpl::
-stringCompletion(int rc, const char* value, const void* data) {
+stringCompletion(int rc, const std::string& value, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
-  std::string result;
-  if (rc == ReturnCode::Ok) {
-    assert(value != NULL);
-    result = value;
-  }
   CreateCallback* callback = (CreateCallback*)context->callback_.get();
   if (callback) {
-    callback->process((ReturnCode::type)rc, context->path_, result);
+    callback->process((ReturnCode::type)rc, context->path_, value);
   }
   delete context;
 }
@@ -397,104 +366,69 @@ setAclCompletion(int rc, const void* data) {
 }
 
 void ZooKeeperImpl::
-existsCompletion(int rc, const struct Stat* stat,
+existsCompletion(int rc, const data::Stat& stat,
                            const void* data) {
   CompletionContext* context = (CompletionContext*)data;
   ExistsCallback* callback = (ExistsCallback*)context->callback_.get();
   if (callback) {
-    ZnodeStat statObject;
-    copyStat(stat, statObject);
-    callback->process((ReturnCode::type)rc, context->path_, statObject);
+    callback->process((ReturnCode::type)rc, context->path_, stat);
   }
   delete context;
 }
 
 void ZooKeeperImpl::
-setCompletion(int rc, const struct Stat* stat,
-                           const void* data) {
+setCompletion(int rc, const data::Stat& stat, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
   SetCallback* callback = (SetCallback*)context->callback_.get();
   if (callback) {
-    ZnodeStat statObject;
-    copyStat(stat, statObject);
-    callback->process((ReturnCode::type)rc, context->path_, statObject);
+    callback->process((ReturnCode::type)rc, context->path_, stat);
   }
   delete context;
 }
 
 void ZooKeeperImpl::
 dataCompletion(int rc, const std::string& value,
-               const struct Stat *stat, const void *data) {
+               const data::Stat& stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
-  ZnodeStat statCopy;
-  if (rc == ReturnCode::Ok) {
-    assert(stat);
-  }
   GetCallback* callback = (GetCallback*)context->callback_.get();
   if (callback) {
-    // TODO(michim) avoid copy
-    result = value;
-    copyStat(stat, statCopy);
-    callback->process((ReturnCode::type)rc, context->path_, result, statCopy);
+    callback->process((ReturnCode::type)rc, context->path_, value, stat);
   }
   delete context;
 }
 
 void ZooKeeperImpl::
-childrenCompletion(int rc, const struct String_vector *strings,
-                   const struct Stat *stat, const void *data) {
+childrenCompletion(int rc, const std::vector<std::string>& children,
+                   const data::Stat& stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
   LOG_DEBUG("getChildren() for " << context->path_ << " returned: " <<
             ReturnCode::toString((ReturnCode::type)rc));
   GetChildrenCallback* callback =
     (GetChildrenCallback*)context->callback_.get();
   assert(callback);
-  std::vector<std::string> children;
-  if (rc == ReturnCode::Ok) {
-    assert(strings);
-    for (int i = 0; i < strings->count; i++) {
-      children.push_back(strings->data[i]);
-      LOG_DEBUG("Got a child for " << context->path_ << ": " <<
-                strings->data[i]);
-    }
-  }
-  // TODO(michim) avoid copy
-  ZnodeStat statObject;
-  copyStat(stat, statObject);
-  callback->process((ReturnCode::type)rc, context->path_, children,
-                    statObject);
+  callback->process((ReturnCode::type)rc, context->path_, children, stat);
   delete context;
 }
 
 void ZooKeeperImpl::
-aclCompletion(int rc, struct ACL_vector *acl,
-              struct Stat *stat, const void *data) {
+aclCompletion(int rc, const std::vector<data::ACL>& acl,
+              const data::Stat& stat, const void *data) {
   CompletionContext* context = (CompletionContext*)data;
   LOG_DEBUG("getAcl() for " << context->path_ << " returned: " <<
             ReturnCode::toString((ReturnCode::type)rc));
   GetAclCallback* callback = (GetAclCallback*)context->callback_.get();
   assert(callback);
-  std::vector<data::ACL> aclVector;
   if (rc == ReturnCode::Ok) {
-    assert(acl);
-    for (int i = 0; i < acl->count; i++) {
-      data::ACL temp;
-      temp.getid().getscheme() = acl->data[i].id.scheme;
-      temp.getid().getid() = acl->data[i].id.id;
-      temp.setperms(acl->data[i].perms);
-      aclVector.push_back(temp);
+    for (size_t i = 0; i < acl.size(); i++) {
       LOG_DEBUG(
         boost::format("Got an ACL for %s: %s:%s:'%s'") %
-                      context->path_ % acl->data[i].id.scheme %
-                      acl->data[i].id.id %
-                      Permission::toString(acl->data[i].perms));
+                      context->path_ % acl[i].getid().getscheme() %
+                      acl[i].getid().getid() %
+                      Permission::toString(acl[i].getperms()));
     }
   }
-  ZnodeStat statObject;
-  copyStat(stat, statObject);
-  callback->process((ReturnCode::type)rc, context->path_,
-                     aclVector, statObject);
+  callback->process((ReturnCode::type)rc, context->path_, acl, stat);
   delete context;
 }
 
@@ -510,7 +444,7 @@ authCompletion(int rc, const void* data) {
 }
 
 void ZooKeeperImpl::
-syncCompletion(int rc, const char* value, const void* data) {
+syncCompletion(int rc, const std::string& value, const void* data) {
   CompletionContext* context = (CompletionContext*)data;
   std::string result;
   SyncCallback* callback = (SyncCallback*)context->callback_.get();
@@ -660,7 +594,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       ZnodeStat& stat) {
+       data::Stat& stat) {
   boost::shared_ptr<MyExistsCallback> callback(new MyExistsCallback(stat));
   ReturnCode::type rc = exists(path, watch, callback);
   if (rc != ReturnCode::Ok) {
@@ -694,7 +628,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeperImpl::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
-    std::string& data, ZnodeStat& stat) {
+    std::string& data, data::Stat& stat) {
   boost::shared_ptr<MyGetCallback> callback(new MyGetCallback(data, stat));
   ReturnCode::type rc = get(path, watch, callback);
   if (rc != ReturnCode::Ok) {
@@ -722,7 +656,7 @@ set(const std::string& path, const std::string& data,
 
 ReturnCode::type ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
-    int32_t version, ZnodeStat& stat) {
+    int32_t version, data::Stat& stat) {
   boost::shared_ptr<MySetCallback> callback(new MySetCallback(stat));
   ReturnCode::type rc = set(path, data, version, callback);
   if (rc != ReturnCode::Ok) {
@@ -757,7 +691,7 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeperImpl::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
-            std::vector<std::string>& children, ZnodeStat& stat) {
+            std::vector<std::string>& children, data::Stat& stat) {
   boost::shared_ptr<MyGetChildrenCallback>
     callback(new MyGetChildrenCallback(children, stat));
   ReturnCode::type rc = getChildren(path, watch, callback);
@@ -784,7 +718,7 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
 
 ReturnCode::type ZooKeeperImpl::
 getAcl(const std::string& path,
-       std::vector<data::ACL>& acl, ZnodeStat& stat) {
+       std::vector<data::ACL>& acl, data::Stat& stat) {
   boost::shared_ptr<MyGetAclCallback> callback(new MyGetAclCallback(acl, stat));
   ReturnCode::type rc = getAcl(path, callback);
   if (rc != ReturnCode::Ok) {

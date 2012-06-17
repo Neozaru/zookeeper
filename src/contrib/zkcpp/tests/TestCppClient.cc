@@ -152,7 +152,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
 
   void testCreate() {
     ZooKeeper zk, zk2;
-    ZnodeStat stat;
+    data::Stat stat;
     std::string pathCreated;
     std::vector<data::ACL> acl;
     data::ACL temp;
@@ -189,18 +189,18 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     rc = zk.exists("/hello", boost::shared_ptr<Watch>(new TestInitWatch()),
         stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
-    CPPUNIT_ASSERT_EQUAL(stat.getCzxid(), stat.getMzxid());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getVersion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
-    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
-    CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+    CPPUNIT_ASSERT_EQUAL(stat.getczxid(), stat.getmzxid());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getcversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getaversion());
+    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getephemeralOwner());
+    CPPUNIT_ASSERT_EQUAL(5, stat.getdataLength());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getnumChildren());
   }
 
   void testBasic() {
     ZooKeeper zk;
-    ZnodeStat stat;
+    data::Stat stat;
     std::string znodeName = "/testBasic";
     std::string dataInput = "hello";
     std::string dataInput2 = "goodbye";
@@ -249,25 +249,25 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     // exists()
     rc = zk.exists(znodeName, boost::shared_ptr<Watch>(), stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
-    CPPUNIT_ASSERT_EQUAL(stat.getCzxid(), stat.getMzxid());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getVersion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
-    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
-    CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+    CPPUNIT_ASSERT_EQUAL(stat.getczxid(), stat.getmzxid());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getcversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getaversion());
+    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getephemeralOwner());
+    CPPUNIT_ASSERT_EQUAL(5, stat.getdataLength());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getnumChildren());
 
     // get()
     rc = zk.get(znodeName, boost::shared_ptr<Watch>(), dataOutput, stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
     CPPUNIT_ASSERT_EQUAL(dataInput, dataOutput);
-    CPPUNIT_ASSERT_EQUAL(stat.getCzxid(), stat.getMzxid());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getVersion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
-    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
-    CPPUNIT_ASSERT_EQUAL(5, stat.getDataLength());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+    CPPUNIT_ASSERT_EQUAL(stat.getczxid(), stat.getmzxid());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getcversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getaversion());
+    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getephemeralOwner());
+    CPPUNIT_ASSERT_EQUAL(5, stat.getdataLength());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getnumChildren());
 
     // set() with bad version
     rc = zk.set(znodeName, dataInput2, 10, stat);
@@ -277,13 +277,13 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     rc = zk.set(znodeName, dataInput2, 0, stat);
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
     CPPUNIT_ASSERT_EQUAL(dataInput, dataOutput);
-    CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
-    CPPUNIT_ASSERT_EQUAL(1, stat.getVersion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getCversion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
-    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
-    CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getNumChildren());
+    CPPUNIT_ASSERT(stat.getczxid() < stat.getmzxid());
+    CPPUNIT_ASSERT_EQUAL(1, stat.getversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getcversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getaversion());
+    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getephemeralOwner());
+    CPPUNIT_ASSERT_EQUAL(7, stat.getdataLength());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getnumChildren());
 
     // add some children
     int numChildren = 10;
@@ -307,13 +307,13 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
       CPPUNIT_ASSERT(itr != children.end());
     }
 
-    CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
-    CPPUNIT_ASSERT_EQUAL(1, stat.getVersion());
-    CPPUNIT_ASSERT_EQUAL(numChildren, stat.getCversion());
-    CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
-    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
-    CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
-    CPPUNIT_ASSERT_EQUAL(numChildren, stat.getNumChildren());
+    CPPUNIT_ASSERT(stat.getczxid() < stat.getmzxid());
+    CPPUNIT_ASSERT_EQUAL(1, stat.getversion());
+    CPPUNIT_ASSERT_EQUAL(numChildren, stat.getcversion());
+    CPPUNIT_ASSERT_EQUAL(0, stat.getaversion());
+    CPPUNIT_ASSERT_EQUAL(0, (int)stat.getephemeralOwner());
+    CPPUNIT_ASSERT_EQUAL(7, stat.getdataLength());
+    CPPUNIT_ASSERT_EQUAL(numChildren, stat.getnumChildren());
 
     // remove() with children
     rc = zk.remove(znodeName, 1);
@@ -326,13 +326,13 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
       CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
       rc = zk.exists(znodeName, boost::shared_ptr<Watch>(), stat);
       CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, rc);
-      CPPUNIT_ASSERT(stat.getCzxid() < stat.getMzxid());
-      CPPUNIT_ASSERT_EQUAL(1, stat.getVersion());
-      CPPUNIT_ASSERT_EQUAL(numChildren + i + 1, stat.getCversion());
-      CPPUNIT_ASSERT_EQUAL(0, stat.getAversion());
-      CPPUNIT_ASSERT_EQUAL(0, (int)stat.getEphemeralOwner());
-      CPPUNIT_ASSERT_EQUAL(7, stat.getDataLength());
-      CPPUNIT_ASSERT_EQUAL(numChildren - i - 1, stat.getNumChildren());
+      CPPUNIT_ASSERT(stat.getczxid() < stat.getmzxid());
+      CPPUNIT_ASSERT_EQUAL(1, stat.getversion());
+      CPPUNIT_ASSERT_EQUAL(numChildren + i + 1, stat.getcversion());
+      CPPUNIT_ASSERT_EQUAL(0, stat.getaversion());
+      CPPUNIT_ASSERT_EQUAL(0, (int)stat.getephemeralOwner());
+      CPPUNIT_ASSERT_EQUAL(7, stat.getdataLength());
+      CPPUNIT_ASSERT_EQUAL(numChildren - i - 1, stat.getnumChildren());
     }
 
     // remove() with bad version
@@ -350,7 +350,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
 
   void testAcl() {
     ZooKeeper zk;
-    ZnodeStat stat;
+    data::Stat stat;
     std::vector<data::ACL> acl, aclOut;
 
     shared_ptr<TestInitWatch> watch(new TestInitWatch());
@@ -413,7 +413,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
   void testAddAuth() {
     ZooKeeper zk, zk2;
     std::string pathCreated;
-    ZnodeStat stat;
+    data::Stat stat;
     ReturnCode::type rc;
     std::vector<data::ACL> acl;
 
@@ -514,7 +514,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
   void testPing() {
     ZooKeeper zk, zkIdle;
     std::string pathCreated;
-    ZnodeStat stat;
+    data::Stat stat;
     ReturnCode::type rc;
     std::vector<data::ACL> acl;
     data::ACL temp;

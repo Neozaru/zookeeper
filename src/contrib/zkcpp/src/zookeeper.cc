@@ -83,7 +83,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeper::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       ZnodeStat& stat) {
+       data::Stat& stat) {
   return impl_->exists(path, watch, stat);
 }
 
@@ -95,7 +95,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeper::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
-    std::string& data, ZnodeStat& stat) {
+    std::string& data, data::Stat& stat) {
   return impl_->get(path, watch, data, stat);
 }
 
@@ -107,7 +107,7 @@ set(const std::string& path, const std::string& data,
 
 ReturnCode::type ZooKeeper::
 set(const std::string& path, const std::string& data,
-    int32_t version, ZnodeStat& stat) {
+    int32_t version, data::Stat& stat) {
   return impl_->set(path, data, version, stat);
 }
 
@@ -119,7 +119,7 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeper::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
-            std::vector<std::string>& children, ZnodeStat& stat) {
+            std::vector<std::string>& children, data::Stat& stat) {
   return impl_->getChildren(path, watch, children, stat);
 }
 
@@ -130,7 +130,7 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> callback) {
 
 ReturnCode::type ZooKeeper::
 getAcl(const std::string& path,
-       std::vector<data::ACL>& acl, ZnodeStat& stat) {
+       std::vector<data::ACL>& acl, data::Stat& stat) {
   return impl_->getAcl(path, acl, stat);
 }
 
@@ -291,256 +291,6 @@ getPermissions() const {
 void Acl::
 setPermissions(int32_t permissions) {
   impl_->setPermissions(permissions);
-}
-
-class ZnodeStatImpl {
-  public:
-    int64_t getCzxid() {
-      return czxid_;
-    }
-
-    void setCzxid(int64_t czxid) {
-      czxid_ = czxid;
-    }
-
-    int64_t getMzxid() {
-      return mzxid_;
-    }
-
-    void setMzxid(int64_t mzxid) {
-      mzxid_ = mzxid;
-    }
-
-    int64_t getCtime() {
-      return ctime_;
-    }
-
-    void setCtime(int64_t ctime) {
-      ctime_ = ctime;
-    }
-
-    int64_t getMtime() {
-      return mtime_;
-    }
-
-    void setMtime(int64_t mtime) {
-      mtime_ = mtime;
-    }
-
-    int32_t getVersion() {
-      return version_;
-    }
-
-    void setVersion(int32_t version) {
-      version_ = version;
-    }
-
-    int32_t getCversion() {
-      return cversion_;
-    }
-
-    void setCversion(int32_t cversion) {
-      cversion_ = cversion;
-    }
-
-    int32_t getAversion() {
-      return aversion_;
-    }
-
-    void setAversion(int32_t aversion) {
-      aversion_ = aversion;
-    }
-
-    int64_t getEphemeralOwner() {
-      return ephemeralOwner_;
-    }
-
-    void setEphemeralOwner(int64_t ephemeralOwner) {
-      ephemeralOwner_ = ephemeralOwner;
-    }
-
-    int32_t getDataLength() {
-      return dataLength_;
-    }
-
-    void setDataLength(int32_t dataLength) {
-      dataLength_ = dataLength;
-    }
-
-    int32_t getNumChildren() {
-      return numChildren_;
-    }
-
-    void setNumChildren(int32_t numChildren) {
-      numChildren_ = numChildren;
-    }
-
-    int64_t getPzxid() {
-      return pzxid_;
-    }
-
-    void setPzxid(int64_t pzxid) {
-      pzxid_ = pzxid;
-    }
-
-  private:
-    int64_t czxid_;
-    int64_t mzxid_;
-    int64_t ctime_;
-    int64_t mtime_;
-    int32_t version_;
-    int32_t cversion_;
-    int32_t aversion_;
-    int64_t ephemeralOwner_;
-    int32_t dataLength_;
-    int32_t numChildren_;
-    int64_t pzxid_;
-};
-
-ZnodeStat::
-ZnodeStat() : impl_(new ZnodeStatImpl()) {
-}
-
-void copyStat(const ZnodeStat& src, ZnodeStat& dst) {
-  dst.setCzxid(src.getCzxid());
-  dst.setMzxid(src.getMzxid());
-  dst.setCtime(src.getCtime());
-  dst.setMtime(src.getMtime());
-  dst.setVersion(src.getVersion());
-  dst.setCversion(src.getCversion());
-  dst.setAversion(src.getAversion());
-  dst.setEphemeralOwner(src.getEphemeralOwner());
-  dst.setDataLength(src.getDataLength());
-  dst.setNumChildren(src.getNumChildren());
-  dst.setPzxid(src.getPzxid());
-}
-
-ZnodeStat::
-ZnodeStat(const ZnodeStat& orig) : impl_(new ZnodeStatImpl()) {
-  copyStat(orig, *this);
-}
-
-ZnodeStat& ZnodeStat::
-operator=(const ZnodeStat& orig) {
-  copyStat(orig, *this);
-  return *this;
-}
-
-ZnodeStat::
-~ZnodeStat() {
-  assert(impl_);
-  delete impl_;
-  impl_ = NULL;
-}
-
-int64_t ZnodeStat::
-getCzxid() const {
-  return impl_->getCzxid();
-}
-
-void ZnodeStat::
-setCzxid(int64_t czxid) {
-  impl_->setCzxid(czxid);
-}
-
-int64_t ZnodeStat::
-getMzxid() const {
-  return impl_->getMzxid();
-}
-
-void ZnodeStat::
-setMzxid(int64_t mzxid) {
-  impl_->setMzxid(mzxid);
-}
-
-int64_t ZnodeStat::
-getCtime() const {
-  return impl_->getCtime();
-}
-
-void ZnodeStat::
-setCtime(int64_t ctime) {
-  impl_->setCtime(ctime);
-}
-
-int64_t ZnodeStat::
-getMtime() const {
-  return impl_->getMtime();
-}
-
-void ZnodeStat::
-setMtime(int64_t mtime) {
-  impl_->setMtime(mtime);
-}
-
-int32_t ZnodeStat::
-getVersion() const {
-  return impl_->getVersion();
-}
-
-void ZnodeStat::
-setVersion(int32_t version) {
-  impl_->setVersion(version);
-}
-
-int32_t ZnodeStat::
-getCversion() const {
-  return impl_->getCversion();
-}
-
-void ZnodeStat::
-setCversion(int32_t cversion) {
-  impl_->setCversion(cversion);
-}
-
-int32_t ZnodeStat::
-getAversion() const {
-  return impl_->getAversion();
-}
-
-void ZnodeStat::
-setAversion(int32_t aversion) {
-  impl_->setAversion(aversion);
-}
-
-int64_t ZnodeStat::
-getEphemeralOwner() const {
-  return impl_->getEphemeralOwner();
-}
-
-void ZnodeStat::
-setEphemeralOwner(int64_t ephemeralOwner) {
-  impl_->setEphemeralOwner(ephemeralOwner);
-}
-
-int32_t ZnodeStat::
-getDataLength() const {
-  return impl_->getDataLength();
-}
-
-void ZnodeStat::
-setDataLength(int32_t dataLength) {
-  impl_->setDataLength(dataLength);
-}
-
-int32_t ZnodeStat::
-getNumChildren() const {
-  return impl_->getNumChildren();
-}
-
-void ZnodeStat::
-setNumChildren(int32_t numChildren) {
-  impl_->setNumChildren(numChildren);
-}
-
-int64_t ZnodeStat::
-getPzxid() const {
-  return impl_->getPzxid();
-}
-
-void ZnodeStat::
-setPzxid(int64_t pzxid) {
-  impl_->setPzxid(pzxid);
 }
 
 namespace ReturnCode {

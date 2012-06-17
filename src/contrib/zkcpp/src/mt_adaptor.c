@@ -42,33 +42,6 @@ ENABLE_LOGGING;
 #include <unistd.h>
 #include <sys/time.h>
 
-struct sync_completion *alloc_sync_completion(void)
-{
-    return (struct sync_completion*)calloc(1, sizeof(struct sync_completion));
-}
-int wait_sync_completion(struct sync_completion *sc)
-{
-    boost::unique_lock<boost::mutex> lock(sc->lock_);
-    while (!sc->complete) {
-        sc->cond_.wait(lock);
-    }
-    return 0;
-}
-
-void free_sync_completion(struct sync_completion *sc)
-{
-    if (sc) {
-        free(sc);
-    }
-}
-
-void notify_sync_completion(struct sync_completion *sc)
-{
-    boost::unique_lock<boost::mutex> lock(sc->lock_);
-    sc->complete = 1;
-    sc->cond_.notify_all();
-}
-
 int process_async(int outstanding_sync)
 {
     return 0;

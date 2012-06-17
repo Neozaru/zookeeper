@@ -59,90 +59,6 @@ class Acl {
     AclImpl* impl_;
 };
 
-class ZnodeStatImpl;
-
-/**
- * Metadata of a znode.
- */
-class ZnodeStat {
-  public:
-    ZnodeStat();
-    ZnodeStat(const ZnodeStat& orig);
-    ZnodeStat& operator=(const ZnodeStat& orig);
-    ~ZnodeStat();
-
-    /**
-     * Gets the zxid of the transaction that caused this znode to be created.
-     */
-    int64_t getCzxid() const;
-
-    /**
-     * Gets the zxid of the transaction that last modified this znode.
-     */
-    int64_t getMzxid() const;
-
-    /**
-     * Gets the time in milliseconds from epoch when this znode was created.
-     */
-    int64_t getCtime() const;
-
-    /**
-     * Gets the time in milliseconds from epoch when this znode was last
-     * modified.
-     */
-    int64_t getMtime() const;
-
-    /**
-     * Gets the number of transactions applied to the data of this znode.
-     */
-    int32_t getVersion() const;
-
-    /**
-     * Gets the number of transactions that added or removed the children of
-     * this znode.
-     */
-    int32_t getCversion() const;
-
-    /**
-     * Gets the number of transactions that modified the ACL of this znode.
-     */
-    int32_t getAversion() const;
-
-    /**
-     * Gets the session id of the owner of this znode if the znode is an
-     * ephemeral node.
-     *
-     * If it is not an ephemeral node, it will be zero.
-     */
-    int64_t getEphemeralOwner() const;
-
-    /**
-     * Gets the data length this znode.
-     */
-    int32_t getDataLength() const;
-
-    /**
-     * Gets the number of children this znode has.
-     */
-    int32_t getNumChildren() const;
-    int64_t getPzxid() const;
-
-    void setCzxid(int64_t czxid);
-    void setMzxid(int64_t mzxid);
-    void setCtime(int64_t ctime);
-    void setMtime(int64_t mtime);
-    void setVersion(int32_t version);
-    void setCversion(int32_t cversion);
-    void setAversion(int32_t aversion);
-    void setEphemeralOwner(int64_t ephemeralOwner);
-    void setDataLength(int32_t dataLength);
-    void setNumChildren(int32_t numChildren);
-    void setPzxid(int64_t pzxid);
-
-  private:
-    ZnodeStatImpl* impl_;
-};
-
 /**
  * Callback interface for watch event.
  */
@@ -169,7 +85,7 @@ class SetCallback {
      * @param stat Stat of the resulting znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const ZnodeStat& stat) = 0;
+                         const data::Stat& stat) = 0;
     virtual ~SetCallback() {}
 };
 
@@ -184,7 +100,7 @@ class ExistsCallback {
      * @param stat stat of the znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const ZnodeStat& stat) = 0;
+                         const data::Stat& stat) = 0;
     virtual ~ExistsCallback() {}
 };
 
@@ -200,7 +116,7 @@ class GetCallback {
      * @param stat Stat associated with this znode. Valid iff rc == Ok.
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
-                         const std::string& data, const ZnodeStat& stat) = 0;
+                         const std::string& data, const data::Stat& stat) = 0;
     virtual ~GetCallback() {}
 };
 
@@ -217,7 +133,7 @@ class GetAclCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::vector<data::ACL>& acl,
-                         const ZnodeStat& stat) = 0;
+                         const data::Stat& stat) = 0;
     virtual ~GetAclCallback() {}
 };
 
@@ -234,7 +150,7 @@ class GetChildrenCallback {
      */
     virtual void process(ReturnCode::type rc, const std::string& path,
                          const std::vector<std::string>& children,
-                         const ZnodeStat& stat) = 0;
+                         const data::Stat& stat) = 0;
     virtual ~GetChildrenCallback() {}
 };
 
@@ -480,7 +396,7 @@ class ZooKeeper : boost::noncopyable {
      *         - ReturnCode::NoNode The znode does not exist.
      */
     ReturnCode::type exists(const std::string& path,
-                            boost::shared_ptr<Watch> watch, ZnodeStat& stat);
+                            boost::shared_ptr<Watch> watch, data::Stat& stat);
 
     /**
      * Gets the data associated with a znode.
@@ -501,7 +417,7 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type get(const std::string& path,
                          boost::shared_ptr<Watch> watch,
-                         std::string& data, ZnodeStat& stat);
+                         std::string& data, data::Stat& stat);
 
     /**
      * Sets the data associated with a znode.
@@ -522,7 +438,7 @@ class ZooKeeper : boost::noncopyable {
      * Sets the data associated with a znode synchronously.
      */
     ReturnCode::type set(const std::string& path, const std::string& data,
-                         int32_t version, ZnodeStat& stat);
+                         int32_t version, data::Stat& stat);
 
     /**
      * Gets the children and the stat of a znode asynchronously.
@@ -551,7 +467,7 @@ class ZooKeeper : boost::noncopyable {
     ReturnCode::type getChildren(const std::string& path,
                            boost::shared_ptr<Watch> watch,
                            std::vector<std::string>& children,
-                           ZnodeStat& stat);
+                           data::Stat& stat);
 
     /**
      * Gets the acl associated with a znode.
@@ -568,7 +484,7 @@ class ZooKeeper : boost::noncopyable {
      * Gets the acl associated with a znode synchronously.
      */
     ReturnCode::type getAcl(const std::string& path,
-                            std::vector<data::ACL>& acl, ZnodeStat& stat);
+                            std::vector<data::ACL>& acl, data::Stat& stat);
 
     /**
      * Sets the Acl associated with a znode.

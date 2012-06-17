@@ -263,12 +263,12 @@ public:
     static volatile int count;
     static const char* hp_chroot;
 
-    static void statCompletion(int rc, const struct Stat *stat, const void *data) {
+    static void statCompletion(int rc, const data::Stat& stat, const void *data) {
         int tmp = (int) (long) data;
         CPPUNIT_ASSERT_EQUAL(tmp, rc);
     }
 
-    static void stringCompletion(int rc, const char *value, const void *data) {
+    static void stringCompletion(int rc, const std::string& value, const void *data) {
         char *path = (char*)data;
 
         if (rc == ZCONNECTIONLOSS && path) {
@@ -282,7 +282,8 @@ public:
         }
     }
 
-    static void create_completion_fn(int rc, const char* value, const void *data) {
+    static void create_completion_fn(int rc, const std::string& value,
+                                     const void *data) {
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
         count++;
     }

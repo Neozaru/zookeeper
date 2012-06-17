@@ -90,16 +90,16 @@ SyncedBoolCondition WatcherAction::isWatcherTriggered() const{
 
 // *****************************************************************************
 // a set of async completion signatures
-void asyncCompletion(int rc, ACL_vector *acl,Stat *stat, const void *data){
+void asyncCompletion(int rc, ACL_vector *acl, data::Stat& stat, const void *data){
     assert("Completion data is NULL"&&data);
     static_cast<AsyncCompletion*>((void*)data)->aclCompl(rc,acl,stat);
 }
-void asyncCompletion(int rc, const std::string& value, const Stat *stat,
+void asyncCompletion(int rc, const std::string& value, const data::Stat& stat,
         const void *data){
     assert("Completion data is NULL"&&data);
     static_cast<AsyncCompletion*>((void*)data)->dataCompl(rc,value,stat);    
 }
-void asyncCompletion(int rc, const Stat *stat, const void *data){    
+void asyncCompletion(int rc, const data::Stat& stat, const void *data){
     assert("Completion data is NULL"&&data);
     static_cast<AsyncCompletion*>((void*)data)->statCompl(rc,stat);
 }
@@ -217,7 +217,7 @@ struct RefCounterValue{
             if(zh_==0)
                 return false;
         }
-        return get_ref_counter(zh_)==expectedCounter_;
+        return get_ref_counter(zh_)==(uint32_t)expectedCounter_;
     }
     zhandle_t* const& zh_;
     int32_t expectedCounter_;

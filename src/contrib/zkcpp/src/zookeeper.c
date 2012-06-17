@@ -181,8 +181,10 @@ static const char* format_endpoint_info(const struct sockaddr_storage* ep);
 static const char* format_current_endpoint_info(zhandle_t* zh);
 
 /* deserialize forward declarations */
-static void deserialize_response(int type, int xid, int failed, int rc, completion_list_t *cptr, struct iarchive *ia);
-static int deserialize_multi(int xid, completion_list_t *cptr, struct iarchive *ia);
+static void deserialize_response(int type, int xid, int failed, int rc,
+    completion_list_t *cptr, hadoop::IBinArchive& iarchive);
+static int deserialize_multi(int xid, completion_list_t *cptr,
+                             hadoop::IBinArchive& iarchive);
 
 /* completion routine forward declarations */
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
@@ -878,14 +880,7 @@ void free_completions(zhandle_t *zh,int callCompletion,int reason)
         completion_list_t *cptr = tmp_list.head;
 
         tmp_list.head = cptr->next;
-        if (cptr->c.data_result == SYNCHRONOUS_MARKER) {
-            struct sync_completion
-                        *sc = (struct sync_completion*)cptr->data;
-            sc->rc = reason;
-            notify_sync_completion(sc);
-            zh->outstanding_sync--;
-            destroy_completion_entry(cptr);
-        } else if (callCompletion) {
+        if (callCompletion) {
             if(cptr->xid == PING_XID){
                 // Nothing to do with a ping response
                 destroy_completion_entry(cptr);
@@ -1419,7 +1414,7 @@ static int queue_session_event(zhandle_t *zh, int state)
     }
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
-    cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, (char*)"");
+    cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, "");
     queue_completion(&zh->completions_to_process, cptr);
     if (process_async(zh->outstanding_sync)) {
         process_completions(zh);
@@ -1449,400 +1444,252 @@ completion_list_t *dequeue_completion(completion_head_t *list)
     return cptr;
 }
 
-static void process_sync_completion(
-        completion_list_t *cptr,
-        struct sync_completion *sc,
-        struct iarchive *ia,
-	zhandle_t *zh)
-{
-    LOG_DEBUG(boost::format("Processing sync_completion with type=%d xid=%#x rc=%d") %
-                           cptr->c.type % cptr->xid % sc->rc);
-
-    switch(cptr->c.type) {
-    case COMPLETION_DATA: 
-        if (sc->rc==0) {
-            struct GetDataResponse res;
-            int len;
-            deserialize_GetDataResponse(ia, "reply", &res);
-            if (res.data.len <= sc->data.buff_len) {
-                len = res.data.len;
-            } else {
-                len = sc->data.buff_len;
-            }
-            sc->data.buff_len = len;
-            // check if len is negative
-            // just of NULL which is -1 int
-            if (len == -1) {
-                sc->data.buffer = NULL;
-            } else {
-                memcpy(sc->data.buffer, res.data.buff, len);
-            }
-            sc->data.stat = res.stat;
-            deallocate_GetDataResponse(&res);
-        }
-        break;
-    case COMPLETION_STAT:
-        if (sc->rc==0) {
-            struct SetDataResponse res;
-            deserialize_SetDataResponse(ia, "reply", &res);
-            sc->stat = res.stat;
-            deallocate_SetDataResponse(&res);
-        }
-        break;
-    case COMPLETION_STRINGLIST:
-        if (sc->rc==0) {
-            struct GetChildrenResponse res;
-            deserialize_GetChildrenResponse(ia, "reply", &res);
-            sc->strs2 = res.children;
-            /* We don't deallocate since we are passing it back */
-            // deallocate_GetChildrenResponse(&res);
-        }
-        break;
-    case COMPLETION_STRINGLIST_STAT:
-        if (sc->rc==0) {
-            struct GetChildren2Response res;
-            deserialize_GetChildren2Response(ia, "reply", &res);
-            sc->strs_stat.strs2 = res.children;
-            sc->strs_stat.stat2 = res.stat;
-            /* We don't deallocate since we are passing it back */
-            // deallocate_GetChildren2Response(&res);
-        }
-        break;
-    case COMPLETION_STRING:
-        if (sc->rc==0) {
-            struct CreateResponse res;
-            int len;
-            const char * client_path;
-            deserialize_CreateResponse(ia, "reply", &res);
-            //ZOOKEEPER-1027
-            client_path = sub_string(zh, res.path); 
-            len = strlen(client_path) + 1;if (len > sc->str.str_len) {
-                len = sc->str.str_len;
-            }
-            if (len > 0) {
-                memcpy(sc->str.str, client_path, len - 1);
-                sc->str.str[len - 1] = '\0';
-            }
-            free_duplicate_path(client_path, res.path);
-            deallocate_CreateResponse(&res);
-        }
-        break;
-    case COMPLETION_ACLLIST:
-        if (sc->rc==0) {
-            struct GetACLResponse res;
-            deserialize_GetACLResponse(ia, "reply", &res);
-            sc->acl.acl = res.acl;
-            sc->acl.stat = res.stat;
-            /* We don't deallocate since we are passing it back */
-            //deallocate_GetACLResponse(&res);
-        }
-        break;
-    case COMPLETION_VOID:
-        break;
-    case COMPLETION_MULTI:
-        sc->rc = deserialize_multi(cptr->xid, cptr, ia);
-        break;
-    default:
-        LOG_DEBUG("Unsupported completion type=" << cptr->c.type);
-        break;
+static int
+deserialize_multi(int xid, completion_list_t *cptr,
+                  hadoop::IBinArchive& iarchive) {
+  int rc = 0;
+  completion_head_t *clist = &cptr->c.clist;
+  assert(clist);
+  proto::MultiHeader mheader;
+  mheader.deserialize(iarchive, "multiheader");
+  while (!mheader.getdone()) {
+    completion_list_t *entry = dequeue_completion(clist);
+    assert(entry);
+    if (mheader.gettype() == -1) {
+      proto::ErrorResponse errorResponse;
+      errorResponse.deserialize(iarchive, "error");
+      int32_t error = errorResponse.geterr();
+      mheader.seterr(error);
+      if (rc == 0 && error != 0 && error != ZRUNTIMEINCONSISTENCY) {
+        rc = error;
+      }
     }
+    deserialize_response(entry->c.type, xid, mheader.gettype() == -1,
+                         mheader.geterr(), entry, iarchive);
+    mheader.deserialize(iarchive, "multiheader");
+  }
+  return rc;
 }
 
-static int deserialize_multi(int xid, completion_list_t *cptr, struct iarchive *ia)
-{
-    int rc = 0;
-    completion_head_t *clist = &cptr->c.clist;
-    struct MultiHeader mhdr = { STRUCT_INITIALIZER(type , 0), STRUCT_INITIALIZER(done , 0), STRUCT_INITIALIZER(err , 0) };
-    assert(clist);
-    deserialize_MultiHeader(ia, "multiheader", &mhdr);
-    while (!mhdr.done) {
-        completion_list_t *entry = dequeue_completion(clist);
-        assert(entry);
-
-        if (mhdr.type == -1) {
-            struct ErrorResponse er;
-            deserialize_ErrorResponse(ia, "error", &er);
-            mhdr.err = er.err ;
-            if (rc == 0 && er.err != 0 && er.err != ZRUNTIMEINCONSISTENCY) {
-                rc = er.err;
-            }
-        }
-
-        deserialize_response(entry->c.type, xid, mhdr.type == -1, mhdr.err, entry, ia);
-        deserialize_MultiHeader(ia, "multiheader", &mhdr);
-    }
-
-    return rc;
-}
-
-static void deserialize_response(int type, int xid, int failed, int rc, completion_list_t *cptr, struct iarchive *ia)
-{
-    switch (type) {
+static void deserialize_response(int type, int xid, int failed, int rc,
+    completion_list_t *cptr, hadoop::IBinArchive& iarchive) {
+  switch (type) {
     case COMPLETION_DATA:
-        LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#08x failed=%d rc=%d") %
-                                cptr->xid % failed % rc);
-        if (failed) {
-            cptr->c.data_result(rc, "", 0, cptr->data);
-        } else {
-            struct GetDataResponse res;
-            deserialize_GetDataResponse(ia, "reply", &res);
-            std::string value;
-            if (res.data.buff != NULL && res.data.len > 0) {
-              value.assign(res.data.buff, res.data.len);
-            }
-            cptr->c.data_result(rc, value, &res.stat, cptr->data);
-            deallocate_GetDataResponse(&res);
-        }
-        break;
+      LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#08x failed=%d rc=%d") %
+          cptr->xid % failed % rc);
+      if (failed) {
+        data::Stat stat;
+        cptr->c.data_result(rc, "", stat, cptr->data);
+      } else {
+        proto::GetDataResponse res;
+        res.deserialize(iarchive, "reply");
+        cptr->c.data_result(rc, res.getdata(), res.getstat(), cptr->data);
+      }
+      break;
     case COMPLETION_STAT:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STAT for xid=%#08x failed=%d rc=%d") % 
-                                cptr->xid % failed % rc);
-        if (failed) {
-            cptr->c.stat_result(rc, 0, cptr->data);
-        } else {
-            struct SetDataResponse res;
-            deserialize_SetDataResponse(ia, "reply", &res);
-            cptr->c.stat_result(rc, &res.stat, cptr->data);
-            deallocate_SetDataResponse(&res);
-        }
-        break;
+      LOG_DEBUG(boost::format("Calling COMPLETION_STAT for xid=%#08x failed=%d rc=%d") % 
+          cptr->xid % failed % rc);
+      if (failed) {
+        data::Stat stat;
+        cptr->c.stat_result(rc, stat, cptr->data);
+      } else {
+        proto::SetDataResponse res;
+        res.deserialize(iarchive, "reply");
+        cptr->c.stat_result(rc, res.getstat(), cptr->data);
+      }
+      break;
     case COMPLETION_STRINGLIST:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST for xid=%#08x failed=%d rc=%d") %
-                                cptr->xid % failed % rc);
-        if (failed) {
-            cptr->c.strings_result(rc, 0, cptr->data);
-        } else {
-            struct GetChildrenResponse res;
-            deserialize_GetChildrenResponse(ia, "reply", &res);
-            cptr->c.strings_result(rc, &res.children, cptr->data);
-            deallocate_GetChildrenResponse(&res);
-        }
-        break;
+      LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST for xid=%#08x failed=%d rc=%d") %
+          cptr->xid % failed % rc);
+      if (failed) {
+        std::vector<std::string> res;
+        cptr->c.strings_result(rc, res, cptr->data);
+      } else {
+        proto::GetChildrenResponse res;
+        res.deserialize(iarchive, "reply");
+        cptr->c.strings_result(rc, res.getchildren(), cptr->data);
+      }
+      break;
     case COMPLETION_STRINGLIST_STAT:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST_STAT for xid=%#08x failed=%d rc=%d") %
-                                cptr->xid % failed % rc);
-        if (failed) {
-            cptr->c.strings_stat_result(rc, 0, 0, cptr->data);
-        } else {
-            struct GetChildren2Response res;
-            deserialize_GetChildren2Response(ia, "reply", &res);
-            cptr->c.strings_stat_result(rc, &res.children, &res.stat, cptr->data);
-            deallocate_GetChildren2Response(&res);
-        }
-        break;
+      LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST_STAT for xid=%#08x failed=%d rc=%d") %
+          cptr->xid % failed % rc);
+      if (failed) {
+        std::vector<std::string> children;
+        data::Stat stat;
+        cptr->c.strings_stat_result(rc, children, stat, cptr->data);
+      } else {
+        proto::GetChildren2Response res;
+        res.deserialize(iarchive, "reply");
+        cptr->c.strings_stat_result(rc, res.getchildren(), res.getstat(), cptr->data);
+      }
+      break;
     case COMPLETION_STRING:
-        LOG_DEBUG(boost::format("Calling COMPLETION_STRING for xid=%#08x failed=%d, rc=%d") %
-                                cptr->xid % failed % rc);
-        if (failed) {
-            cptr->c.string_result(rc, 0, cptr->data);
-        } else {
-            struct CreateResponse res;
-            deserialize_CreateResponse(ia, "reply", &res);
-            cptr->c.string_result(rc, res.path, cptr->data);
-            deallocate_CreateResponse(&res);
-        }
-        break;
+      LOG_DEBUG(boost::format("Calling COMPLETION_STRING for xid=%#08x failed=%d, rc=%d") %
+          cptr->xid % failed % rc);
+      if (failed) {
+        cptr->c.string_result(rc, "", cptr->data);
+      } else {
+        proto::CreateResponse res;
+        res.deserialize(iarchive, "reply");
+        cptr->c.string_result(rc, res.getpath(), cptr->data);
+      }
+      break;
     case COMPLETION_ACLLIST:
-        LOG_DEBUG(boost::format("Calling COMPLETION_ACLLIST for xid=%#08x failed=%d rc=%d") %
-                                cptr->xid % failed % rc);
-        if (failed) {
-            cptr->c.acl_result(rc, 0, 0, cptr->data);
-        } else {
-            struct GetACLResponse res;
-            deserialize_GetACLResponse(ia, "reply", &res);
-            cptr->c.acl_result(rc, &res.acl, &res.stat, cptr->data);
-            deallocate_GetACLResponse(&res);
-        }
-        break;
+      LOG_DEBUG(boost::format("Calling COMPLETION_ACLLIST for xid=%#08x failed=%d rc=%d") %
+          cptr->xid % failed % rc);
+      if (failed) {
+        std::vector<data::ACL> acl;
+        data::Stat stat;
+        cptr->c.acl_result(rc, acl, stat, cptr->data);
+      } else {
+        proto::GetACLResponse res;
+        res.deserialize(iarchive, "reply");
+        cptr->c.acl_result(rc, res.getacl(), res.getstat(), cptr->data);
+      }
+      break;
     case COMPLETION_VOID:
-        LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#08x failed=%d rc=%d") %
-                                cptr->xid % failed % rc);
-        if (xid == PING_XID) {
-            // We want to skip the ping
-        } else {
-            assert(cptr->c.void_result);
-            cptr->c.void_result(rc, cptr->data);
-        }
-        break;
-    case COMPLETION_MULTI:
-        LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#08x failed=%d rc=%d") %
-                                cptr->xid % failed % rc);
-        rc = deserialize_multi(xid, cptr, ia);
+      LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#08x failed=%d rc=%d") %
+          cptr->xid % failed % rc);
+      if (xid == PING_XID) {
+        // We want to skip the ping
+      } else {
         assert(cptr->c.void_result);
         cptr->c.void_result(rc, cptr->data);
-        break;
+      }
+      break;
+    case COMPLETION_MULTI:
+      LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#08x failed=%d rc=%d") %
+          cptr->xid % failed % rc);
+      rc = deserialize_multi(xid, cptr, iarchive);
+      assert(cptr->c.void_result);
+      cptr->c.void_result(rc, cptr->data);
+      break;
     default:
-        LOG_DEBUG("Unsupported completion type=" << cptr->c.type);
-    }
+      LOG_DEBUG("Unsupported completion type=" << cptr->c.type);
+  }
 }
 
 
 /* handles async completion (both single- and multithreaded) */
-void process_completions(zhandle_t *zh)
-{
-    completion_list_t *cptr;
-    while ((cptr = dequeue_completion(&zh->completions_to_process)) != 0) {
-        struct ReplyHeader hdr;
-        buffer_t *bptr = cptr->buffer;
-        struct iarchive *ia = create_buffer_iarchive(bptr->buffer,
-                bptr->len);
-        deserialize_ReplyHeader(ia, "hdr", &hdr);
+void process_completions(zhandle_t *zh) {
+  completion_list_t *cptr;
+  while ((cptr = dequeue_completion(&zh->completions_to_process)) != 0) {
+    buffer_t *bptr = cptr->buffer;
+    MemoryInStream stream(bptr->buffer, bptr->len);
+    hadoop::IBinArchive iarchive(stream);
+    proto::ReplyHeader header;
+    header.deserialize(iarchive, "header");
 
-        if (hdr.xid == WATCHER_EVENT_XID) {
-            int type, state;
-            struct WatcherEvent evt;
-            deserialize_WatcherEvent(ia, "event", &evt);
-            /* We are doing a notification, so there is no pending request */
-            type = evt.type;
-            state = evt.state;
-            /* This is a notification so there aren't any pending requests */
-            LOG_DEBUG(boost::format("Calling a watcher for node [%s], type = %d event=%s") %
-                                    (evt.path==NULL?"NULL":evt.path) % cptr->c.type %
-                                    watcherEvent2String(type));
-            deliverWatchers(zh,type,state,evt.path, &cptr->c.watcher_result);
-            deallocate_WatcherEvent(&evt);
-        } else {
-            deserialize_response(cptr->c.type, hdr.xid, hdr.err != 0, hdr.err, cptr, ia);
-        }
-        destroy_completion_entry(cptr);
-        close_buffer_iarchive(&ia);
+    if (header.getxid() == WATCHER_EVENT_XID) {
+      /* We are doing a notification, so there is no pending request */
+      int type, state;
+      proto::WatcherEvent event;
+      event.deserialize(iarchive, "event");
+      type = event.gettype();
+      state = event.getstate();
+      LOG_DEBUG(boost::format("Calling a watcher for node [%s], type = %d event=%s") %
+          event.getpath() % cptr->c.type % watcherEvent2String(type));
+      deliverWatchers(zh,type,state,event.getpath().c_str(), &cptr->c.watcher_result);
+    } else {
+      deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
+                           header.geterr(), cptr, iarchive);
     }
+    destroy_completion_entry(cptr);
+  }
 }
 
-int zookeeper_process(zhandle_t *zh, int events)
-{
-    buffer_t *bptr;
-    int rc;
+int
+zookeeper_process(zhandle_t *zh, int events) {
+  buffer_t *bptr;
+  int rc;
 
-    if (zh==NULL)
-        return ZBADARGUMENTS;
-    if (is_unrecoverable(zh))
-        return ZINVALIDSTATE;
-    api_prolog(zh);
-    // TODO decide what to do
-    //IF_DEBUG(checkResponseLatency(zh));
-    rc = check_events(zh, events);
-    if (rc!=ZOK)
-        return api_epilog(zh, rc);
+  if (zh==NULL)
+    return ZBADARGUMENTS;
+  if (is_unrecoverable(zh))
+    return ZINVALIDSTATE;
+  api_prolog(zh);
+  rc = check_events(zh, events);
+  if (rc!=ZOK)
+    return api_epilog(zh, rc);
+  while (rc >= 0 && (bptr=dequeue_buffer(zh->to_process.get()))) {
+    MemoryInStream stream(bptr->buffer, bptr->curr_offset);
+    hadoop::IBinArchive iarchive(stream);
+    proto::ReplyHeader header;
+    header.deserialize(iarchive, "header");
 
-    // TODO decide what to do
-    //IF_DEBUG(isSocketReadable(zh));
-
-    while (rc >= 0 && (bptr=dequeue_buffer(zh->to_process.get()))) {
-        struct ReplyHeader hdr;
-        struct iarchive *ia = create_buffer_iarchive(
-                                    bptr->buffer, bptr->curr_offset);
-        deserialize_ReplyHeader(ia, "hdr", &hdr);
-        if (hdr.zxid > 0) {
-            zh->last_zxid = hdr.zxid;
-        } else {
-            // fprintf(stderr, "Got %#x for %#x\n", hdr.zxid, hdr.xid);
-        }
-
-        if (hdr.xid == WATCHER_EVENT_XID) {
-            struct WatcherEvent evt;
-            int type = 0;
-            char *path = NULL;
-            completion_list_t *c = NULL;
-
-            LOG_DEBUG("Processing WATCHER_EVENT");
-
-            deserialize_WatcherEvent(ia, "event", &evt);
-            type = evt.type;
-            path = evt.path;
-            /* We are doing a notification, so there is no pending request */
-            c = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0);
-            c->buffer = bptr;
-            c->c.watcher_result = collectWatchers(zh, type, path);
-
-            // We cannot free until now, otherwise path will become invalid
-            deallocate_WatcherEvent(&evt);
-            queue_completion(&zh->completions_to_process, c);
-        } else if (hdr.xid == SET_WATCHES_XID) {
-            LOG_DEBUG("Processing SET_WATCHES");
-            free_buffer(bptr);
-        } else if (hdr.xid == AUTH_XID){
-            LOG_DEBUG("Processing AUTH_XID");
-
-            /* special handling for the AUTH response as it may come back
-             * out-of-band */
-            auth_completion_func(hdr.err,zh);
-            free_buffer(bptr);
-            /* authentication completion may change the connection state to
-             * unrecoverable */
-            if(is_unrecoverable(zh)){
-                handle_error(zh, ZAUTHFAILED);
-                close_buffer_iarchive(&ia);
-                return api_epilog(zh, ZAUTHFAILED);
-            }
-        } else {
-            int rc = hdr.err;
-            /* Find the request corresponding to the response */
-            completion_list_t *cptr = dequeue_completion(&zh->sent_requests);
-
-            /* [ZOOKEEPER-804] Don't assert if zookeeper_close has been called. */
-            if (zh->close_requested == 1) {
-                if (cptr) {
-                    destroy_completion_entry(cptr);
-                    cptr = NULL;
-                }
-                close_buffer_iarchive(&ia);
-                return api_epilog(zh,ZINVALIDSTATE);
-            }
-            assert(cptr);
-            /* The requests are going to come back in order */
-            if (cptr->xid != hdr.xid) {
-                LOG_DEBUG("Processing unexpected or out-of-order response!");
-
-                // received unexpected (or out-of-order) response
-                close_buffer_iarchive(&ia);
-                free_buffer(bptr);
-                // put the completion back on the queue (so it gets properly
-                // signaled and deallocated) and disconnect from the server
-                // TODO destroy completion
-                //queue_completion(&zh->sent_requests,cptr);
-                return handle_socket_error_msg(zh, __LINE__,ZRUNTIMEINCONSISTENCY,
-                "");
-            }
-
-            activateWatcher(zh, cptr->watcher, rc);
-
-            if (cptr->c.void_result != SYNCHRONOUS_MARKER) {
-                if(hdr.xid == PING_XID){
-                    int elapsed = 0;
-                    struct timeval now;
-                    gettimeofday(&now, 0);
-                    elapsed = calculate_interval(&zh->last_ping, &now);
-                    LOG_DEBUG("Got ping response in " << elapsed << "ms");
-
-                    // Nothing to do with a ping response
-                    free_buffer(bptr);
-                    destroy_completion_entry(cptr);
-                } else {
-                    cptr->buffer = bptr;
-                    queue_completion(&zh->completions_to_process, cptr);
-                }
-            } else {
-                struct sync_completion
-                        *sc = (struct sync_completion*)cptr->data;
-                sc->rc = rc;
-                
-                process_sync_completion(cptr, sc, ia, zh); 
-                
-                notify_sync_completion(sc);
-                free_buffer(bptr);
-                zh->outstanding_sync--;
-                destroy_completion_entry(cptr);
-            }
-        }
-
-        close_buffer_iarchive(&ia);
-
+    if (header.getzxid() > 0) {
+      zh->last_zxid = header.getzxid();
     }
-    if (process_async(zh->outstanding_sync)) {
-        process_completions(zh);
+
+    if (header.getxid() == WATCHER_EVENT_XID) {
+      LOG_DEBUG("Processing WATCHER_EVENT");
+      proto::WatcherEvent event;
+      event.deserialize(iarchive, "event");
+      completion_list_t* c =
+        create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0);
+      c->buffer = bptr;
+      c->c.watcher_result = collectWatchers(zh, event.gettype(),
+                                            event.getpath());
+      queue_completion(&zh->completions_to_process, c);
+    } else if (header.getxid() == SET_WATCHES_XID) {
+      LOG_DEBUG("Processing SET_WATCHES");
+      free_buffer(bptr);
+    } else if (header.getxid() == AUTH_XID) {
+      LOG_DEBUG("Processing AUTH_XID");
+      // special handling for the AUTH response as it may come back out-of-band
+      auth_completion_func(header.geterr(), zh);
+      free_buffer(bptr);
+      // auth completion may change the connection state to unrecoverable
+      if(is_unrecoverable(zh)){
+        handle_error(zh, ZAUTHFAILED);
+        return api_epilog(zh, ZAUTHFAILED);
+      }
+    } else {
+      /* Find the request corresponding to the response */
+      completion_list_t *cptr = dequeue_completion(&zh->sent_requests);
+
+      /* [ZOOKEEPER-804] Don't assert if zookeeper_close has been called. */
+      if (zh->close_requested == 1) {
+        if (cptr) {
+          destroy_completion_entry(cptr);
+          cptr = NULL;
+        }
+        return api_epilog(zh,ZINVALIDSTATE);
+      }
+      assert(cptr);
+      /* The requests are going to come back in order */
+      if (cptr->xid != header.getxid()) {
+        // received unexpected (or out-of-order) response
+        LOG_DEBUG("Processing unexpected or out-of-order response!");
+        free_buffer(bptr);
+        // put the completion back on the queue (so it gets properly
+        // signaled and deallocated) and disconnect from the server
+        // TODO destroy completion
+        //queue_completion(&zh->sent_requests,cptr);
+        return handle_socket_error_msg(zh, __LINE__,ZRUNTIMEINCONSISTENCY,
+            "");
+      }
+
+      activateWatcher(zh, cptr->watcher, rc);
+      if (header.getxid() == PING_XID) {
+        int elapsed = 0;
+        struct timeval now;
+        gettimeofday(&now, 0);
+        elapsed = calculate_interval(&zh->last_ping, &now);
+        LOG_DEBUG("Got ping response in " << elapsed << "ms");
+        free_buffer(bptr);
+        destroy_completion_entry(cptr);
+      } else {
+        cptr->buffer = bptr;
+        queue_completion(&zh->completions_to_process, cptr);
+      }
     }
-    return api_epilog(zh,ZOK);}
+  }
+  if (process_async(zh->outstanding_sync)) {
+    process_completions(zh);
+  }
+  return api_epilog(zh,ZOK);
+}
 
 int zoo_state(zhandle_t *zh)
 {
@@ -3006,25 +2853,6 @@ void zoo_check_op_init(zoo_op_t *op, const char *path, int version)
     op->check_op.version = version;
 }
 
-int zoo_multi(zhandle_t *zh, int count, const zoo_op_t *ops, zoo_op_result_t *results)
-{
-    int rc;
- 
-    struct sync_completion *sc = alloc_sync_completion();
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-   
-    rc = zoo_amulti(zh, count, ops, results, (void (*)(int, const void*))SYNCHRONOUS_MARKER, sc);
-    if (rc == ZOK) {
-        wait_sync_completion(sc);
-        rc = sc->rc;
-    }
-    free_sync_completion(sc);
-
-    return rc;
-}
-
 /* specify timeout of 0 to make the function non-blocking */
 /* timeout is in milliseconds */
 int flush_send_queue(zhandle_t*zh, int timeout)
@@ -3219,256 +3047,4 @@ static const char* format_current_endpoint_info(zhandle_t* zh)
 void zoo_deterministic_conn_order(int yesOrNo)
 {
     disable_conn_permute=yesOrNo;
-}
-
-/*---------------------------------------------------------------------------*
- * SYNC API
- *---------------------------------------------------------------------------*/
-int zoo_create(zhandle_t *zh, const char *path, const char *value,
-        int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl, int flags,
-        char *path_buffer, int path_buffer_len)
-{
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    sc->str.str = path_buffer;
-    sc->str.str_len = path_buffer_len;
-    rc=zoo_acreate(zh, path, value, valuelen, acl, flags, (void (*)(int, const char*, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-int zoo_delete(zhandle_t *zh, const char *path, int version)
-{
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    rc=zoo_adelete(zh, path, version, (void (*)(int, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-int zoo_exists(zhandle_t *zh, const char *path, int watch, struct Stat *stat)
-{
-    return zoo_wexists(zh,path,watch?zh->watcher:0,zh->context,stat);
-}
-
-int zoo_wexists(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx, struct Stat *stat)
-{
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    rc=zoo_awexists(zh,path,watcher,watcherCtx,(void (*)(int, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-        if (rc == 0&& stat) {
-            *stat = sc->stat;
-        }
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-int zoo_get(zhandle_t *zh, const char *path, int watch, char *buffer,
-        int* buffer_len, struct Stat *stat)
-{
-    return zoo_wget(zh,path,watch?zh->watcher:0,zh->context,
-            buffer,buffer_len,stat);
-}
-
-int zoo_wget(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx,
-        char *buffer, int* buffer_len, struct Stat *stat)
-{
-    struct sync_completion *sc;
-    int rc=0;
-
-    if(buffer_len==NULL)
-        return ZBADARGUMENTS;
-    if((sc=alloc_sync_completion())==NULL)
-        return ZSYSTEMERROR;
-
-    sc->data.buffer = buffer;
-    sc->data.buff_len = *buffer_len;
-    rc=zoo_awget(zh, path, watcher, watcherCtx, (void (*)(int, const std::string&, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-        if (rc == 0) {
-            if(stat)
-                *stat = sc->data.stat;
-            *buffer_len = sc->data.buff_len;
-        }
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-int zoo_set(zhandle_t *zh, const char *path, const char *buffer, int buflen,
-        int version)
-{
-  return zoo_set2(zh, path, buffer, buflen, version, 0);
-}
-
-int zoo_set2(zhandle_t *zh, const char *path, const char *buffer, int buflen,
-        int version, struct Stat *stat)
-{
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    rc=zoo_aset(zh, path, buffer, buflen, version, (void (*)(int, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-        if (rc == 0 && stat) {
-            *stat = sc->stat;
-        }
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-static int zoo_wget_children_(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx,
-        struct String_vector *strings)
-{
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    rc= zoo_awget_children (zh, path, watcher, watcherCtx, (void (*)(int, const String_vector*, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-        if (rc == 0) {
-            if (strings) {
-                *strings = sc->strs2;
-            } else {
-                deallocate_String_vector(&sc->strs2);
-            }
-        }
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-static int zoo_wget_children2_(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx,
-        struct String_vector *strings, struct Stat *stat)
-{
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    rc= zoo_awget_children2(zh, path, watcher, watcherCtx, (void (*)(int, const String_vector*, const Stat*, const void*))SYNCHRONOUS_MARKER, sc);
-
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-        if (rc == 0) {
-            *stat = sc->strs_stat.stat2;
-            if (strings) {
-                *strings = sc->strs_stat.strs2;
-            } else {
-                deallocate_String_vector(&sc->strs_stat.strs2);
-            }
-        }
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-int zoo_get_children(zhandle_t *zh, const char *path, int watch,
-        struct String_vector *strings)
-{
-    return zoo_wget_children_(zh,path,watch?zh->watcher:0,zh->context,strings);
-}
-
-int zoo_wget_children(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx,
-        struct String_vector *strings)
-{
-    return zoo_wget_children_(zh,path,watcher,watcherCtx,strings);
-}
-
-int zoo_get_children2(zhandle_t *zh, const char *path, int watch,
-        struct String_vector *strings, struct Stat *stat)
-{
-    return zoo_wget_children2_(zh,path,watch?zh->watcher:0,zh->context,strings,stat);
-}
-
-int zoo_wget_children2(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx,
-        struct String_vector *strings, struct Stat *stat)
-{
-    return zoo_wget_children2_(zh,path,watcher,watcherCtx,strings,stat);
-}
-
-int zoo_get_acl(zhandle_t *zh, const char *path,
-        std::vector<org::apache::zookeeper::data::ACL>& acl,
-        struct Stat *stat)
-{
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    rc=zoo_aget_acl(zh, path, (void (*)(int, ACL_vector*, Stat*, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-        if (rc == 0&& stat) {
-            *stat = sc->acl.stat;
-        }
-        if (rc == 0) {
-          acl.clear();
-          for (int i = 0; i < sc->acl.acl.count; i++) {
-            data::ACL temp;
-            temp.getid().getscheme() = sc->acl.acl.data[i].id.scheme;
-            temp.getid().getid() = sc->acl.acl.data[i].id.id;
-            temp.setperms(sc->acl.acl.data[i].perms);
-            acl.push_back(temp);
-            deallocate_ACL_vector(&sc->acl.acl);
-          }
-        }
-    }
-    free_sync_completion(sc);
-    return rc;
-}
-
-int zoo_set_acl(zhandle_t *zh, const char *path, int version,
-                const std::vector<data::ACL>& acl) {
-    struct sync_completion *sc = alloc_sync_completion();
-    int rc;
-    if (!sc) {
-        return ZSYSTEMERROR;
-    }
-    rc=zoo_aset_acl(zh, path, version, acl,
-            (void (*)(int, const void*))SYNCHRONOUS_MARKER, sc);
-    if(rc==ZOK){
-        wait_sync_completion(sc);
-        rc = sc->rc;
-    }
-    free_sync_completion(sc);
-    return rc;
 }
