@@ -103,6 +103,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
   CPPUNIT_TEST_SUITE(TestMulti);
   CPPUNIT_TEST(testCreate);
   CPPUNIT_TEST(testCreateFailure);
+  CPPUNIT_TEST(testCreateDelete);
+  CPPUNIT_TEST(testNestedCreate);
   CPPUNIT_TEST(testInvalidVersion);
   CPPUNIT_TEST_SUITE_END();
   const std::string HOSTPORT;
@@ -192,6 +194,73 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(ReturnCode::NodeExists, zk.multi(ops, results));
     CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
   }
+
+
+  /**
+   * Test create followed by delete.
+   */
+  void testCreateDelete() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi5", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi5", -1));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+
+    // '/multi5' should have been deleted
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5", boost::shared_ptr<Watch>(), stat));
+  }
+
+  /**
+   * Test nested creates that rely on state in earlier op in multi
+   */
+  void testNestedCreate() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi5", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi5/a", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi5/a/1", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi5/a/1", 0));
+    ops.push_back(new Op::Remove("/multi5/a", 0));
+    ops.push_back(new Op::Remove("/multi5", 0));
+
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(6, (int)results.size());
+
+    // '/multi5' should have been deleted
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5/a/1", boost::shared_ptr<Watch>(), stat));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5/a", boost::shared_ptr<Watch>(), stat));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5", boost::shared_ptr<Watch>(), stat));
+  }
+
 
   /**
    * Test invalid versions

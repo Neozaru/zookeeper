@@ -153,6 +153,11 @@ getPathCreated() const {
   return pathCreated_;
 }
 
+void OpResult::Create::
+setPathCreated(const std::string& pathCreated) {
+  pathCreated_ = pathCreated;
+}
+
 OpResult::Remove::
 Remove(ReturnCode::type rc) : OpResult(OpCode::Remove, rc) {
 }
@@ -160,6 +165,15 @@ Remove(ReturnCode::type rc) : OpResult(OpCode::Remove, rc) {
 OpResult::Remove::
 ~Remove() {
 }
+
+OpResult::Check::
+Check() : OpResult(OpCode::Check, ReturnCode::Ok) {
+}
+
+OpResult::Check::
+~Check() {
+}
+
 
 
 }}}  // namespace org::apache::zookeeper

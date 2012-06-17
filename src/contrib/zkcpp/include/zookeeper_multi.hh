@@ -125,6 +125,7 @@ class OpResult::Create : public OpResult {
     Create(ReturnCode::type rc, const std::string& pathCreated);
     virtual ~Create();
     const std::string getPathCreated() const;
+    void setPathCreated(const std::string& pathCreated);
 
   private:
     Create();

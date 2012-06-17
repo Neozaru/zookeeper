@@ -1460,7 +1460,6 @@ deserialize_multi(int xid, completion_list_t *cptr,
   assert(clist);
   proto::MultiHeader mheader;
   mheader.deserialize(iarchive, "multiheader");
-  int i = 0;
   while (!mheader.getdone()) {
     if (mheader.gettype() == -1) {
       proto::ErrorResponse errorResponse;
@@ -1475,21 +1474,31 @@ deserialize_multi(int xid, completion_list_t *cptr,
         rc = error;
       }
     } else {
-      switch((*clist)[i].getType()) {
+      switch((clist->begin())->getType()) {
         case OpCode::Remove: {
           ReturnCode::type zrc = (ReturnCode::type) mheader.geterr();
           LOG_DEBUG("got delete response for: " << ReturnCode::toString(zrc));
-          results.push_back(new OpResult::Remove(zrc));
+          OpResult* result = clist->release(clist->begin()).release();
+          results.push_back(result);
           break;
           }
-        case OpCode::Create:
+        case OpCode::Create: {
           proto::CreateResponse res;
           res.deserialize(iarchive, "reply");
           ReturnCode::type zrc = (ReturnCode::type) mheader.geterr();
           LOG_DEBUG("got create response for: " << res.getpath() << ": " <<
                     ReturnCode::toString(zrc));
-          results.push_back(new OpResult::Create(zrc, res.getpath()));
+          OpResult* result = clist->release(clist->begin()).release();
+          dynamic_cast<OpResult::Create*>(result)->setPathCreated(res.getpath());
+          results.push_back(result);
           break;
+        }
+        case OpCode::Check: {
+          ReturnCode::type zrc = (ReturnCode::type) mheader.geterr();
+          LOG_DEBUG("got delete response for: " << ReturnCode::toString(zrc));
+          results.push_back(new OpResult::Remove(zrc));
+          break;
+        }
       }
     }
     mheader.deserialize(iarchive, "multiheader");
@@ -2532,8 +2541,6 @@ int zoo_amulti2(zhandle_t *zh,
   header.setxid(get_xid());
   header.settype(ZOO_MULTI_OP);
   header.serialize(oarchive, "header");
-
-  // TODO allocate in heap.
   boost::ptr_vector<OpResult>* results = new boost::ptr_vector<OpResult>();
 
   size_t index = 0;
@@ -2592,6 +2599,7 @@ int zoo_amulti2(zhandle_t *zh,
         checkReq.getpath() = pathStr;
         checkReq.setversion(checkOp->getVersion());
         checkReq.serialize(oarchive, "req");
+        results->push_back(new OpResult::Check());
         break;
       }
       default:
