@@ -2737,6 +2737,125 @@ static int CheckVersionRequest_init(zhandle_t *zh, struct CheckVersionRequest *r
     return ZOK;
 }
 
+int zoo_amulti2(zhandle_t *zh, int count,
+    const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
+    zoo_op_result_t *results, void_completion_t completion, const void *data) {
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(get_xid());
+  header.settype(ZOO_MULTI_OP);
+  header.serialize(oarchive, "header");
+
+  completion_head_t clist = { 0 };
+  clist.lock.reset(new boost::mutex());
+  clist.cond.reset(new boost::condition_variable());
+
+  int index = 0;
+  for (index=0; index < count; index++) {
+    std::string pathStr;
+    zoo_op_result_t *result = results+index;
+    completion_list_t *entry = NULL;
+
+    proto::MultiHeader mheader;
+    mheader.settype(ops[index].getType());
+    mheader.setdone(0);
+    mheader.seterr(-1);
+    mheader.serialize(oarchive, "req");
+
+    int rc = getRealString(zh, 0, ops[index].getPath().c_str(), pathStr);
+    if (rc != ZOK) {
+      return rc;
+    }
+
+    switch(ops[index].getType()) {
+      case ZOO_CREATE_OP: {
+        const Op::Create* createOp = dynamic_cast<const Op::Create*>(&(ops[index]));
+        assert(createOp != NULL);
+        proto::CreateRequest createReq;
+        createReq.getpath() = pathStr;
+        createReq.getdata() = createOp->getData();
+        createReq.getacl() = createOp->getAcl();
+        createReq.setflags(createOp->getMode());
+        createReq.serialize(oarchive, "req");
+        // TODO(michim) don't malloc.
+        result->value = (char*)malloc(256);
+        result->valuelen =256;
+        entry = create_completion_entry(header.getxid(), COMPLETION_STRING,
+                (const void*)op_result_string_completion, result, 0, 0);
+        break;
+      }
+      case ZOO_DELETE_OP: {
+        const Op::Remove* removeOp = dynamic_cast<const Op::Remove*>(&(ops[index]));
+        assert(removeOp != NULL);
+        proto::DeleteRequest removeReq;
+        removeReq.getpath() = pathStr;
+        removeReq.setversion(removeOp->getVersion());
+        removeReq.serialize(oarchive, "req");
+        entry = create_completion_entry(header.getxid(), COMPLETION_VOID,
+                (const void*)op_result_void_completion, result, 0, 0);
+        break;
+      }
+
+      case ZOO_SETDATA_OP: {
+        const Op::SetData* setDataOp = dynamic_cast<const Op::SetData*>(&(ops[index]));
+        assert(setDataOp != NULL);
+        proto::SetDataRequest setDataReq;
+        setDataReq.getpath() = pathStr;
+        setDataReq.getdata() = setDataOp->getData();
+        setDataReq.setversion(setDataOp->getVersion());
+        setDataReq.serialize(oarchive, "req");
+        // TODO(michim) dont' malloc.
+        result->stat = (Stat*)malloc(sizeof(Stat));
+        entry = create_completion_entry(header.getxid(), COMPLETION_STAT,
+                (const void*)op_result_stat_completion, result, 0, 0);
+        break;
+     }
+
+      case ZOO_CHECK_OP: {
+        const Op::Check* checkOp = dynamic_cast<const Op::Check*>(&(ops[index]));
+        assert(checkOp != NULL);
+        proto::CheckVersionRequest checkReq;
+        checkReq.getpath() = pathStr;
+        checkReq.setversion(checkOp->getVersion());
+        checkReq.serialize(oarchive, "req");
+        entry = create_completion_entry(header.getxid(), COMPLETION_VOID,
+                (const void*)op_result_void_completion, result, 0, 0);
+        break;
+      }
+      default:
+        LOG_ERROR("Unimplemented sub-op type=" << ops[index].getType()
+                                               << " in multi-op.");
+        return ZUNIMPLEMENTED;
+    }
+    queue_completion(&clist, entry);
+  }
+
+  // End of multi request.
+  proto::MultiHeader mheader;
+  mheader.settype(-1);
+  mheader.setdone(1);
+  mheader.seterr(-1);
+  mheader.serialize(oarchive, "req");
+  // TODO(michim) avoid copy
+  char* buffer = (char*)malloc(serialized.size());
+  memmove(buffer, serialized.c_str(), serialized.size());
+
+  /* BEGIN: CRTICIAL SECTION */
+  enter_critical(zh);
+  add_multi_completion(zh, header.getxid(), completion, data, &clist);
+  queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  leave_critical(zh);
+
+  LOG_DEBUG(boost::format("Sending multi request xid=%#x with %d subrequests to %s") %
+      header.getxid() % index % format_current_endpoint_info(zh));
+  /* make a best (non-blocking) effort to send the requests asap */
+  adaptor_send_queue(zh, 0);
+  return ZOK;
+}
+
 int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
         zoo_op_result_t *results, void_completion_t completion, const void *data)
 {

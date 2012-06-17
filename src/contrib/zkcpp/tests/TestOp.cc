@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 #include <string>
-#include <vector>
+#include <boost/ptr_container/ptr_vector.hpp>
 #include <cppunit/extensions/HelperMacros.h>
 #include <zookeeper_multi.hh>
 
@@ -30,14 +30,9 @@ class TestOp : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST_SUITE_END();
 
     void testOp() {
-      Op::Check checkOp("/path", -1);
-      Op::Check checkOp2(checkOp);
-      Op::Check checkOp3 = checkOp;
-      Op test = checkOp;
-
-      std::vector<Op> ops;
-      ops.push_back(Op::Check("/path", -1));
-      ops.push_back(Op::Remove("/path", -1));
+      boost::ptr_vector<Op> ops;
+      ops.push_back(new Op::Check("/path", -1));
+      ops.push_back(new Op::Remove("/path", -1));
     }
 };
 

@@ -19,6 +19,7 @@
 #ifndef SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_H_
 #define SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_H_
 
+#include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/utility.hpp>
 #include <stdint.h>
@@ -318,6 +319,20 @@ class AddAuthCallback {
     virtual ~AddAuthCallback() {}
 };
 
+/**
+ * Callback interface for ZooKeeper::multi() operation.
+ */
+class MultiCallback {
+  public:
+    /**
+     * @param rc Ok if this multi() operation was successful.
+     * @param results The results of a multi operation.
+     */
+    virtual void process(ReturnCode::type rc,
+                         const boost::ptr_vector<OpResult>& results) = 0;
+    virtual ~MultiCallback() {}
+};
+
 class ZooKeeperImpl;
 class ZooKeeper : boost::noncopyable {
   public:
@@ -605,6 +620,12 @@ class ZooKeeper : boost::noncopyable {
      */
     ReturnCode::type sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
+
+    ReturnCode::type multi(const boost::ptr_vector<Op>& ops,
+                           boost::shared_ptr<MultiCallback> callback);
+
+    ReturnCode::type multi(const boost::ptr_vector<Op>& ops,
+                           boost::ptr_vector<OpResult>& results);
 
     /**
      * Closes this ZooKeeper session.

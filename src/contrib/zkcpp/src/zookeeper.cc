@@ -152,12 +152,17 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> callback) {
   return impl_->sync(path, callback);
 }
 
-//  ReturnCode::type ZooKeeper::
-//  multi(int count, const zoo_op_t *ops,
-//          zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
+ReturnCode::type ZooKeeper::
+multi(const boost::ptr_vector<Op>& ops,
+      boost::shared_ptr<MultiCallback> callback) {
+  return impl_->multi(ops, callback);
+}
 
-//  ReturnCode::type ZooKeeper::
-//  multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
+ReturnCode::type ZooKeeper::
+multi(const boost::ptr_vector<Op>& ops,
+      boost::ptr_vector<OpResult>& results) {
+  return impl_->multi(ops, results);
+}
 
 SessionState::type ZooKeeper::
 getState() {

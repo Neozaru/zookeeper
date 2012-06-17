@@ -30,10 +30,10 @@ namespace zookeeper {
 
 class Op {
   public:
-    virtual ~Op();
+    virtual ~Op() = 0;
 
-    int32_t getType();
-    std::string getPath();
+    int32_t getType() const;
+    std::string getPath() const;
 
     class Create;
     class Remove;
@@ -44,48 +44,111 @@ class Op {
     Op(int32_t type, const std::string& path);
 
   private:
-    Op();
-    int32_t type_;
-    std::string path_;
+    const int32_t type_;
+    const std::string path_;
 };
 
 class Op::Create : public Op {
   public:
     Create(const std::string& path, const std::string& data,
            const std::vector<data::ACL>& acl, CreateMode::type mode);
-    Create(const Create& orig);
-    Create& operator=(const Create& orig);
     virtual ~Create();
+    const std::string& getData() const;
+    const std::vector<data::ACL>& getAcl() const;
+    CreateMode::type getMode() const;
 
   private:
     Create();
+    const std::string data_;
+    const std::vector<data::ACL> acl_;
+    const CreateMode::type mode_;
 };
 
 class Op::Remove : public Op {
   public:
     Remove(const std::string& path, int32_t version);
     virtual ~Remove();
+    int32_t getVersion() const;
 
   private:
     Remove();
+    const int32_t version_;
 };
 
 class Op::SetData : public Op {
   public:
     SetData(const std::string& path, const std::string& data,
             int32_t version);
+    const std::string& getData() const;
+    int32_t getVersion() const;
     virtual ~SetData();
 
   private:
     SetData();
+    const std::string data_;
+    const int32_t version_;
 };
 
 class Op::Check : public Op {
   public:
     Check(const std::string& path, int32_t version);
     virtual ~Check();
+    int32_t getVersion() const;
   private:
     Check();
+    const int32_t version_;
+};
+
+class OpResult {
+  public:
+    virtual ~OpResult() = 0;
+
+    int32_t getType() const;
+    std::string getPath() const;
+
+    class Create;
+    class Remove;
+    class SetData;
+    class Check;
+
+  protected:
+    OpResult(int32_t type, const std::string& path);
+
+  private:
+    const int32_t type_;
+    const std::string path_;
+};
+
+class OpResult::Create : public Op {
+  public:
+    Create(const std::string& pathCreated);
+    virtual ~Create();
+
+  private:
+    Create();
+    const std::string pathCreated_;
+};
+
+class OpResult::Remove : public Op {
+  public:
+    Remove();
+    virtual ~Remove();
+};
+
+class OpResult::SetData : public Op {
+  public:
+    explicit SetData(const data::Stat& stat);
+    virtual ~SetData();
+
+  private:
+    SetData();
+    data::Stat stat_;
+};
+
+class OpResult::Check : public Op {
+  public:
+    Check();
+    virtual ~Check();
 };
 
 }}}

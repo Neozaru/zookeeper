@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 #include "zookeeper_impl.hh"
+#include "zk_adaptor.h"
 #include <boost/thread/condition.hpp>
 #include <cerrno>
 #include <cstring>
@@ -806,12 +807,17 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
          completion, context);
 }
 
-// ReturnCode::type ZooKeeperImpl::
-// multi(int count, const zoo_op_t *ops,
-//        zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
+ReturnCode::type ZooKeeperImpl::
+multi(const boost::ptr_vector<Op>& ops,
+      boost::shared_ptr<MultiCallback> callback) {
+  return ReturnCode::Ok;
+}
 
-// ReturnCode::type ZooKeeperImpl::
-// multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
+ReturnCode::type ZooKeeperImpl::
+multi(const boost::ptr_vector<Op>& ops,
+      boost::ptr_vector<OpResult>& results) {
+  return ReturnCode::Ok;
+}
 
 ReturnCode::type ZooKeeperImpl::
 close() {

@@ -29,11 +29,13 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#include <boost/ptr_container/ptr_vector.hpp>
 #include "proto.h"
 #include "zookeeper_version.h"
 #include "recordio.h"
 #include "zookeeper.jute.h"
 #include "zookeeper.jute.hh"
+#include "zookeeper_multi.hh"
 
 /**
  * \file zookeeper.h 
@@ -1084,6 +1086,9 @@ ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
  * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
  */
 ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops, 
+        zoo_op_result_t *results, void_completion_t, const void *data);
+ZOOAPI int zoo_amulti2(zhandle_t *zh, int count,
+        const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
         zoo_op_result_t *results, void_completion_t, const void *data);
 
 /**

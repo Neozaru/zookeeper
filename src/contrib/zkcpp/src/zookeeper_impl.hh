@@ -77,10 +77,10 @@ class ZooKeeperImpl {
                       const std::vector<data::ACL>& acl);
     ReturnCode::type sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
-    //ReturnCode::type multi(int count, const zoo_op_t *ops,
-    //      zoo_op_result_t *results, boost::shared_ptr<VoidCallback> callback);
-
-    //ReturnCode::type multi(int count, const zoo_op_t *ops, zoo_op_result_t *results);
+    ReturnCode::type multi(const boost::ptr_vector<Op>& ops,
+                           boost::shared_ptr<MultiCallback> callback);
+    ReturnCode::type multi(const boost::ptr_vector<Op>& ops,
+                           boost::ptr_vector<OpResult>& results);
     ReturnCode::type close();
     SessionState::type getState();
     void setState(SessionState::type state);

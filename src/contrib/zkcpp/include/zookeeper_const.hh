@@ -291,6 +291,21 @@ namespace Permission {
 
   const std::string toString(int32_t flags);
 };
+
+/**
+ * Namespace for ZooKeeper op code enum.
+ */
+namespace OpCode {
+  enum type {
+    Create = 1,
+    Remove = 2,
+    SetData = 5,
+    Check = 13,
+  };
+
+  const std::string toString(OpCode::type code);
+};
+
 }}}
 
 #endif  // SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_CONST_H_

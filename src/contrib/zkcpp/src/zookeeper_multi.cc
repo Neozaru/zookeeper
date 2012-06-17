@@ -24,10 +24,6 @@ namespace apache {
 namespace zookeeper {
 
 Op::
-Op() {
-}
-
-Op::
 Op(int32_t type, const std::string& path) : type_(type), path_(path) {
 }
 
@@ -36,46 +32,87 @@ Op::
 }
 
 int32_t Op::
-getType() {
+getType() const {
   return type_;
 }
 
 std::string Op::
-getPath() {
+getPath() const {
   return path_;
 }
 
 Op::Create::
 Create(const std::string& path, const std::string& data,
-       const std::vector<data::ACL>& acl, CreateMode::type mode) {
+       const std::vector<data::ACL>& acl, CreateMode::type mode) :
+  Op((int32_t) OpCode::Create, path), data_(data), acl_(acl), mode_(mode) {
 }
 
 Op::Create::
 ~Create() {
 }
 
+
+const std::string& Op::Create::
+getData() const {
+  return data_;
+}
+
+const std::vector<data::ACL>& Op::Create::
+getAcl() const {
+  return acl_;
+}
+
+CreateMode::type Op::Create::
+getMode() const {
+  return mode_;
+}
+
 Op::Remove::
-Remove(const std::string& path, int32_t version) {
+Remove(const std::string& path, int32_t version) :
+  Op((int32_t) OpCode::Remove, path), version_(version) {
 }
 
 Op::Remove::
 ~Remove() {
 }
 
+int32_t Op::Remove::
+getVersion() const {
+  return version_;
+}
+
+
 Op::SetData::
-SetData(const std::string& path, const std::string& data, int32_t version) {
+SetData(const std::string& path, const std::string& data, int32_t version) :
+  Op((int32_t) OpCode::SetData, path), version_(version) {
 }
 
 Op::SetData::
 ~SetData() {
 }
 
+const std::string& Op::SetData::
+getData() const {
+  return data_;
+}
+
+int32_t Op::SetData::
+getVersion() const {
+  return version_;
+}
+
 Op::Check::
-Check(const std::string& path, int32_t version) {
+Check(const std::string& path, int32_t version) :
+  Op((int32_t) OpCode::Check, path), version_(version) {
 }
 
 Op::Check::
 ~Check() {
+}
+
+int32_t Op::Check::
+getVersion() const {
+  return version_;
 }
 
 }}}  // namespace org::apache::zookeeper
