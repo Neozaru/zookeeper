@@ -1,0 +1,231 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <algorithm>
+#include <boost/thread/condition.hpp>
+#include <cppunit/extensions/HelperMacros.h>
+#include "CppAssertHelper.h"
+#include "logging.hh"
+ENABLE_LOGGING;
+
+#include <stdlib.h>
+#include <unistd.h>
+
+#include "CollectionUtil.h"
+#include "ThreadingUtil.h"
+
+using namespace Util;
+
+#include "Vector.h"
+using namespace std;
+
+#include <cstring>
+#include <list>
+
+#include <zookeeper.h>
+#include <zookeeper.hh>
+#include <errno.h>
+#include <recordio.h>
+#include "Util.h"
+using namespace boost;
+using namespace org::apache::zookeeper;
+
+class TestInitWatch : public Watch {
+  public:
+    void process(WatchEvent::type event, SessionState::type state,
+        const std::string& path) {
+      if (event == WatchEvent::SessionStateChanged) {
+        if (state == SessionState::Connected) {
+          {
+            boost::lock_guard<boost::mutex> lock(mutex);
+            connected = true;
+          }
+          cond.notify_all();
+        } else if (state == SessionState::AuthFailed) {
+          {
+            boost::lock_guard<boost::mutex> lock(mutex);
+            authFailed_ = true;
+          }
+          cond.notify_all();
+        }
+      }
+    }
+
+    bool waitForConnected(uint32_t timeoutMs) {
+      boost::system_time const timeout=boost::get_system_time() +
+        boost::posix_time::milliseconds(timeoutMs);
+
+      boost::mutex::scoped_lock lock(mutex);
+      while (!connected) {
+        if(!cond.timed_wait(lock,timeout)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    bool waitForAuthFailed(uint32_t timeoutMs) {
+      boost::system_time const timeout=boost::get_system_time() +
+        boost::posix_time::milliseconds(timeoutMs);
+
+      boost::mutex::scoped_lock lock(mutex);
+      while (!authFailed_) {
+        if(!cond.timed_wait(lock,timeout)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    boost::condition_variable cond;
+    boost::mutex mutex;
+    bool connected;
+    bool authFailed_;
+};
+
+class TestMulti: public CPPUNIT_NS::TestFixture
+{
+  CPPUNIT_TEST_SUITE(TestMulti);
+  CPPUNIT_TEST(testCreate);
+  CPPUNIT_TEST(testCreateFailure);
+  CPPUNIT_TEST(testInvalidVersion);
+  CPPUNIT_TEST_SUITE_END();
+  const std::string HOSTPORT;
+  std::vector<data::ACL> acl;
+  public:
+
+  TestMulti() : HOSTPORT("127.0.0.1:22181") {
+  }
+
+  void startServer() {
+    char cmd[1024];
+    sprintf(cmd, "%s start %s", ZKSERVER_CMD, HOSTPORT.c_str());
+    CPPUNIT_ASSERT(system(cmd) == 0);
+  }
+
+  void stopServer() {
+    char cmd[1024];
+    sprintf(cmd, "%s stop %s", ZKSERVER_CMD, HOSTPORT.c_str());
+    CPPUNIT_ASSERT(system(cmd) == 0);
+  }
+
+  /**
+   * Test basic multi-op create functionality
+   */
+  void testCreate() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi1", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi1/a", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi1/b", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(OpCode::Create, results[0].getType());
+    OpResult::Create& res = dynamic_cast<OpResult::Create&>(results[0]);
+    CPPUNIT_ASSERT_EQUAL(std::string("/multi1"), res.getPathCreated());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, res.getReturnCode());
+
+    CPPUNIT_ASSERT_EQUAL(OpCode::Create, results[1].getType());
+    res = dynamic_cast<OpResult::Create&>(results[1]);
+    CPPUNIT_ASSERT_EQUAL(std::string("/multi1/a"), res.getPathCreated());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, res.getReturnCode());
+
+    CPPUNIT_ASSERT_EQUAL(OpCode::Create, results[2].getType());
+    res = dynamic_cast<OpResult::Create&>(results[2]);
+    CPPUNIT_ASSERT_EQUAL(std::string("/multi1/b"), res.getPathCreated());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, res.getReturnCode());
+  }
+
+  /**
+   * Test create failure.
+   */
+  void testCreateFailure() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi2", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi2/a", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi2/a", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NodeExists, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+  }
+
+  /**
+   * Test invalid versions
+   */
+  void testInvalidVersion() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi3", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi3", 1));
+    ops.push_back(new Op::Create("/multi3", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi3/a", "", acl, CreateMode::Persistent));
+
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(4, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, results[1].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency, results[2].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency, results[3].getReturnCode());
+  }
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION(TestMulti);
