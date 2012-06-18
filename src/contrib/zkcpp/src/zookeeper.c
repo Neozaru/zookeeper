@@ -1715,7 +1715,7 @@ zookeeper_process(zhandle_t *zh, int events) {
         // put the completion back on the queue (so it gets properly
         // signaled and deallocated) and disconnect from the server
         // TODO destroy completion
-        //queue_completion(&zh->sent_requests,cptr);
+        queue_completion(&zh->sent_requests,cptr);
         return handle_socket_error_msg(zh, __LINE__,ZRUNTIMEINCONSISTENCY,
             "");
       }
@@ -2160,7 +2160,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
     serialized.size());
   leave_critical(zh);
 
-  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
+  LOG_DEBUG(boost::format("Sending set request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
@@ -2642,49 +2642,6 @@ int zoo_amulti2(zhandle_t *zh,
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
   return ZOK;
-}
-
-void zoo_create_op_init(zoo_op_t *op, const char *path, const char *value,
-        int valuelen,  const struct ACL_vector *acl, int flags, 
-        char *path_buffer, int path_buffer_len)
-{
-    assert(op);
-    op->type = ZOO_CREATE_OP;
-    op->create_op.path = path;
-    op->create_op.data = value;
-    op->create_op.datalen = valuelen;
-    op->create_op.acl = acl;
-    op->create_op.flags = flags;
-    op->create_op.buf = path_buffer;
-    op->create_op.buflen = path_buffer_len;
-}
-
-void zoo_delete_op_init(zoo_op_t *op, const char *path, int version)
-{
-    assert(op);
-    op->type = ZOO_DELETE_OP;
-    op->delete_op.path = path;
-    op->delete_op.version = version;
-}
-
-void zoo_set_op_init(zoo_op_t *op, const char *path, const char *buffer, 
-        int buflen, int version, struct Stat *stat)
-{
-    assert(op);
-    op->type = ZOO_SETDATA_OP;
-    op->set_op.path = path;
-    op->set_op.data = buffer;
-    op->set_op.datalen = buflen;
-    op->set_op.version = version;
-    op->set_op.stat = stat;
-}
-
-void zoo_check_op_init(zoo_op_t *op, const char *path, int version)
-{
-    assert(op);
-    op->type = ZOO_CHECK_OP;
-    op->check_op.path = path;
-    op->check_op.version = version;
 }
 
 /* specify timeout of 0 to make the function non-blocking */

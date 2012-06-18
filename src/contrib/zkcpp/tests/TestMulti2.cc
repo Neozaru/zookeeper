@@ -92,6 +92,7 @@ class TestMulti: public CPPUNIT_NS::TestFixture
   CPPUNIT_TEST(testUpdateConflict);
   CPPUNIT_TEST(testDeleteUpdateConflict);
   CPPUNIT_TEST(testCheck);
+  //CPPUNIT_TEST(testWatch);
   CPPUNIT_TEST_SUITE_END();
   const std::string HOSTPORT;
   std::vector<data::ACL> acl;
@@ -444,6 +445,57 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     // '/multi0/b' should NOT have been created
     CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
         zk.exists("/multi0/b", boost::shared_ptr<Watch>(), stat));
+  }
+
+  class MultiWatch : public Watch {
+    public:
+    ZooKeeper& zk_;
+    MultiWatch(ZooKeeper& zk) : zk_(zk) {}
+    void process(WatchEvent::type event, SessionState::type state,
+        const std::string& path) {
+      std::string data;
+      data::Stat stat;
+      boost::ptr_vector<Op> ops;
+      ops.push_back(new Op::SetData("/multiwatch", "X", 0));
+      boost::ptr_vector<OpResult> results;
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk_.multi(ops, results));
+      #if 0
+      CPPUNIT_ASSERT_EQUAL(1, (int)results.size());
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+          zk_.get("/multiwatch", boost::shared_ptr<Watch>(), data, stat));
+          #endif
+    }
+  };
+
+  /**
+   * Test multi-op called from a watch
+   */
+  void testWatch() {
+    ZooKeeper zk;
+    std::string data;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.create("/multiwatch", "", acl, CreateMode::Persistent, pathCreated));
+
+    boost::shared_ptr<MultiWatch> multiWatch(new MultiWatch(zk));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.get("/multiwatch", multiWatch, data, stat));
+
+    // setdata on node '/multiwatch' this should trip the watch
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.set("/multiwatch", "", -1, stat));
+    sleep(10);
   }
 
 };
