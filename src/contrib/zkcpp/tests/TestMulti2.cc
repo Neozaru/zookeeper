@@ -105,6 +105,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
   CPPUNIT_TEST(testCreateFailure);
   CPPUNIT_TEST(testCreateDelete);
   CPPUNIT_TEST(testNestedCreate);
+  CPPUNIT_TEST(testSetData);
+  CPPUNIT_TEST(testUpdateConflict);
   CPPUNIT_TEST(testInvalidVersion);
   CPPUNIT_TEST_SUITE_END();
   const std::string HOSTPORT;
@@ -261,6 +263,80 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5", boost::shared_ptr<Watch>(), stat));
   }
 
+  /**
+   * Test setdata functionality
+   */
+  void testSetData() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated, data;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi6", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi6/a", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+
+    ops.clear();
+    ops.push_back(new Op::SetData("/multi6", "1", 0));
+    ops.push_back(new Op::SetData("/multi6/a", "2", 0));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+      zk.get("/multi6", boost::shared_ptr<Watch>(), data, stat));
+    CPPUNIT_ASSERT_EQUAL(std::string("1"), data);
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+      zk.get("/multi6/a", boost::shared_ptr<Watch>(), data, stat));
+    CPPUNIT_ASSERT_EQUAL(std::string("2"), data);
+  }
+
+  /**
+   * Test update conflicts
+   */
+  void testUpdateConflict() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated, data;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi7", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::SetData("/multi7", "X", 0));
+    ops.push_back(new Op::SetData("/multi7/a", "Y", 0));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    //Updating version solves conflict -- order matters
+    dynamic_cast<Op::SetData&>(ops[2]).setVersion(1);
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+      zk.get("/multi7/a", boost::shared_ptr<Watch>(), data, stat));
+    CPPUNIT_ASSERT_EQUAL(std::string("Y"), data);
+  }
 
   /**
    * Test invalid versions

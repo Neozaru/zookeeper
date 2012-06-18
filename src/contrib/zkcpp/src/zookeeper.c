@@ -1493,6 +1493,17 @@ deserialize_multi(int xid, completion_list_t *cptr,
           results.push_back(result);
           break;
         }
+        case OpCode::SetData: {
+          proto::SetDataResponse res;
+          res.deserialize(iarchive, "reply");
+          ReturnCode::type zrc = (ReturnCode::type) mheader.geterr();
+          LOG_DEBUG("got setData response: " << ReturnCode::toString(zrc));
+          OpResult* result = clist->release(clist->begin()).release();
+          dynamic_cast<OpResult::SetData*>(result)->setStat(res.getstat());
+          results.push_back(result);
+          break;
+        }
+
         case OpCode::Check: {
           ReturnCode::type zrc = (ReturnCode::type) mheader.geterr();
           LOG_DEBUG("got delete response for: " << ReturnCode::toString(zrc));
@@ -2589,6 +2600,7 @@ int zoo_amulti2(zhandle_t *zh,
         setDataReq.getdata() = setDataOp->getData();
         setDataReq.setversion(setDataOp->getVersion());
         setDataReq.serialize(oarchive, "req");
+        results->push_back(new OpResult::SetData());
         break;
      }
 

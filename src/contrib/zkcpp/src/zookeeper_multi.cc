@@ -84,7 +84,7 @@ getVersion() const {
 
 Op::SetData::
 SetData(const std::string& path, const std::string& data, int32_t version) :
-  Op(OpCode::SetData, path), version_(version) {
+  Op(OpCode::SetData, path), data_(data), version_(version) {
 }
 
 Op::SetData::
@@ -100,6 +100,12 @@ int32_t Op::SetData::
 getVersion() const {
   return version_;
 }
+
+void Op::SetData::
+setVersion(int32_t version) {
+  version_ = version;
+}
+
 
 Op::Check::
 Check(const std::string& path, int32_t version) :
@@ -164,6 +170,24 @@ Remove(ReturnCode::type rc) : OpResult(OpCode::Remove, rc) {
 
 OpResult::Remove::
 ~Remove() {
+}
+
+OpResult::SetData::
+SetData() : OpResult(OpCode::SetData, ReturnCode::Ok) {
+}
+
+OpResult::SetData::
+~SetData() {
+}
+
+const data::Stat OpResult::SetData::
+getStat() const {
+  return stat_;
+}
+
+void OpResult::SetData::
+setStat(const data::Stat& stat) {
+  stat_ = stat;
 }
 
 OpResult::Check::

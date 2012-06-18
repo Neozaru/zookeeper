@@ -81,12 +81,13 @@ class Op::SetData : public Op {
             int32_t version);
     const std::string& getData() const;
     int32_t getVersion() const;
+    void setVersion(int32_t version);
     virtual ~SetData();
 
   private:
     SetData();
     const std::string data_;
-    const int32_t version_;
+    int32_t version_;
 };
 
 class Op::Check : public Op {
@@ -140,11 +141,12 @@ class OpResult::Remove : public OpResult {
 
 class OpResult::SetData : public OpResult {
   public:
-    explicit SetData(const data::Stat& stat);
+    SetData();
     virtual ~SetData();
+    const data::Stat getStat() const;
+    void setStat(const data::Stat& stat);
 
   private:
-    SetData();
     data::Stat stat_;
 };
 
