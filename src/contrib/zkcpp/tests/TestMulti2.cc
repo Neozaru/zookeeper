@@ -19,29 +19,11 @@
 #include <algorithm>
 #include <boost/thread/condition.hpp>
 #include <cppunit/extensions/HelperMacros.h>
-#include "CppAssertHelper.h"
 #include "logging.hh"
 ENABLE_LOGGING;
 
-#include <stdlib.h>
-#include <unistd.h>
-
-#include "CollectionUtil.h"
-#include "ThreadingUtil.h"
-
-using namespace Util;
-
-#include "Vector.h"
-using namespace std;
-
-#include <cstring>
-#include <list>
-
 #include <zookeeper.h>
 #include <zookeeper.hh>
-#include <errno.h>
-#include <recordio.h>
-#include "Util.h"
 using namespace boost;
 using namespace org::apache::zookeeper;
 
@@ -104,10 +86,11 @@ class TestMulti: public CPPUNIT_NS::TestFixture
   CPPUNIT_TEST(testCreate);
   CPPUNIT_TEST(testCreateFailure);
   CPPUNIT_TEST(testCreateDelete);
+  CPPUNIT_TEST(testInvalidVersion);
   CPPUNIT_TEST(testNestedCreate);
   CPPUNIT_TEST(testSetData);
   CPPUNIT_TEST(testUpdateConflict);
-  CPPUNIT_TEST(testInvalidVersion);
+  CPPUNIT_TEST(testDeleteUpdateConflict);
   CPPUNIT_TEST_SUITE_END();
   const std::string HOSTPORT;
   std::vector<data::ACL> acl;
@@ -258,9 +241,12 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(6, (int)results.size());
 
     // '/multi5' should have been deleted
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5/a/1", boost::shared_ptr<Watch>(), stat));
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5/a", boost::shared_ptr<Watch>(), stat));
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5", boost::shared_ptr<Watch>(), stat));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi5/a/1", boost::shared_ptr<Watch>(), stat));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi5/a", boost::shared_ptr<Watch>(), stat));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi5", boost::shared_ptr<Watch>(), stat));
   }
 
   /**
@@ -368,8 +354,46 @@ class TestMulti: public CPPUNIT_NS::TestFixture
 
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
     CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, results[1].getReturnCode());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency, results[2].getReturnCode());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency, results[3].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency,
+        results[2].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency,
+        results[3].getReturnCode());
+  }
+
+  /**
+   * Test delete-update conflicts
+   */
+  void testDeleteUpdateConflict() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi8", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi8", 0));
+    ops.push_back(new Op::SetData("/multi8", "X", 0));
+
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[1].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, results[2].getReturnCode());
+
+    // '/multi' should never have been created as entire op should fail
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi8", boost::shared_ptr<Watch>(), stat));
   }
 };
 
