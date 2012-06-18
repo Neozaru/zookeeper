@@ -1503,11 +1503,11 @@ deserialize_multi(int xid, completion_list_t *cptr,
           results.push_back(result);
           break;
         }
-
         case OpCode::Check: {
           ReturnCode::type zrc = (ReturnCode::type) mheader.geterr();
-          LOG_DEBUG("got delete response for: " << ReturnCode::toString(zrc));
-          results.push_back(new OpResult::Remove(zrc));
+          LOG_DEBUG("got check response for: " << ReturnCode::toString(zrc));
+          OpResult* result = clist->release(clist->begin()).release();
+          results.push_back(result);
           break;
         }
       }

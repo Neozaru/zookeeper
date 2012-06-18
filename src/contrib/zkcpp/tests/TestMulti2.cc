@@ -91,6 +91,7 @@ class TestMulti: public CPPUNIT_NS::TestFixture
   CPPUNIT_TEST(testSetData);
   CPPUNIT_TEST(testUpdateConflict);
   CPPUNIT_TEST(testDeleteUpdateConflict);
+  CPPUNIT_TEST(testCheck);
   CPPUNIT_TEST_SUITE_END();
   const std::string HOSTPORT;
   std::vector<data::ACL> acl;
@@ -395,6 +396,56 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
         zk.exists("/multi8", boost::shared_ptr<Watch>(), stat));
   }
+
+  /**
+   * Test basic multi-op check functionality
+   */
+  void testCheck() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.create("/multi0", "", acl, CreateMode::Persistent, pathCreated));
+
+    // Conditionally create /multi0/a' only if '/multi0' at version 0
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Check("/multi0", 0));
+    ops.push_back(new Op::Create("/multi0/a", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[1].getReturnCode());
+
+    // '/multi0/a' should have been created as it passed version check
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.exists("/multi0/a", boost::shared_ptr<Watch>(), stat));
+
+    // Only create '/multi0/b' if '/multi0' at version 10 (which it's not)
+    ops.clear();
+    ops.push_back(new Op::Check("/multi0", 10));
+    ops.push_back(new Op::Create("/multi0/b", "", acl, CreateMode::Persistent));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency,
+        results[1].getReturnCode());
+
+    // '/multi0/b' should NOT have been created
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi0/b", boost::shared_ptr<Watch>(), stat));
+  }
+
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(TestMulti);
