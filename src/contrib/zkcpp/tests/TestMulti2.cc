@@ -323,7 +323,7 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi7", "", acl, CreateMode::Persistent));
     ops.push_back(new Op::SetData("/multi7", "X", 0));
-    ops.push_back(new Op::SetData("/multi7/a", "Y", 0));
+    ops.push_back(new Op::SetData("/multi7", "Y", 0));
     boost::ptr_vector<OpResult> results;
     CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.multi(ops, results));
     CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
@@ -334,7 +334,7 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
 
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zk.get("/multi7/a", boost::shared_ptr<Watch>(), data, stat));
+      zk.get("/multi7", boost::shared_ptr<Watch>(), data, stat));
     CPPUNIT_ASSERT_EQUAL(std::string("Y"), data);
   }
 
