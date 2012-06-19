@@ -165,13 +165,12 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
     CPPUNIT_ASSERT_EQUAL(SessionState::Expired, zk.getState());
     ReturnCode::type rc = zk.create("/hello", "world",  acl,
         CreateMode::Persistent, pathCreated);
-    CPPUNIT_ASSERT_EQUAL(rc, ReturnCode::InvalidState);
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadArguments, rc);
 
     shared_ptr<TestInitWatch> watch(new TestInitWatch());
 
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk2.init("localhost:12346", 30000,
           watch));
-    CPPUNIT_ASSERT_EQUAL(rc, ReturnCode::InvalidState);
 
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
 

@@ -659,8 +659,6 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
         goto abort;
     }
 
-    zh->state = ZOO_CONNECTING_STATE;
-    assert(!zh->close_requested);
     LOG_DEBUG("Init completed. ZooKeeper state="<< state2String(zh->state));
     return zh;
 abort:
@@ -1659,7 +1657,6 @@ zookeeper_process(zhandle_t *zh, int events) {
     return ZINVALIDSTATE;
   api_prolog(zh);
   rc = check_events(zh, events);
-  assert(rc == ZOK);
   if (rc!=ZOK)
     return api_epilog(zh, rc);
   while (rc >= 0 && (bptr=dequeue_buffer(zh->to_process.get()))) {
