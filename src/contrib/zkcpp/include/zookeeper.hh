@@ -36,29 +36,6 @@ namespace apache {
 /** ZooKeeper namespace. */
 namespace zookeeper {
 
-class AclImpl;
-class Acl {
-  public:
-    Acl();
-    Acl(const std::string& scheme, const std::string& expression,
-        int32_t permissions);
-    Acl(const Acl& orig);
-    Acl& operator=(const Acl& orig);
-    bool operator==(const Acl& orig) const;
-    ~Acl();
-    const std::string getScheme() const;
-    void setScheme(const std::string& scheme);
-
-    const std::string getExpression() const;
-    void setExpression(const std::string& expression);
-
-    int32_t getPermissions() const;
-    void setPermissions(int32_t permissions);
-
-  private:
-    AclImpl* impl_;
-};
-
 /**
  * Callback interface for watch event.
  */
