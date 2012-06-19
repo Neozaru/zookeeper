@@ -108,6 +108,7 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
   CPPUNIT_TEST(testAcl);
   CPPUNIT_TEST(testAddAuth);
   CPPUNIT_TEST(testPing);
+  CPPUNIT_TEST(testBadHost);
   CPPUNIT_TEST_SUITE_END();
   const std::string HOSTPORT;
 
@@ -555,6 +556,24 @@ class TestCppClient : public CPPUNIT_NS::TestFixture
       std::string path = str(boost::format("/testping_%d") % i);
       rc = zkIdle.exists(path, boost::shared_ptr<Watch>(), stat);
       CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, rc);
+    }
+  }
+
+  class BadRemoveCallback : public RemoveCallback {
+    void process(ReturnCode::type rc, const std::string& path) {
+      LOG_DEBUG("callback called: " << ReturnCode::toString(rc) <<
+                " " << path);
+    }
+  };
+
+  void testBadHost() {
+    ZooKeeper zk;
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.init("localhost:12345", 5000, watch));
+    for (int i = 0; i < 10; i++) {
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+          zk.remove("/test", -1, boost::shared_ptr<RemoveCallback>()));
     }
   }
 };

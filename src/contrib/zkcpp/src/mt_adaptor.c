@@ -219,9 +219,11 @@ void *do_io(void *v)
         rc = zookeeper_process(zh, interest);
         // check the current state of the zhandle and terminate 
         // if it is_unrecoverable()
-        if(is_unrecoverable(zh))
-            break;
+        if(is_unrecoverable(zh)) {
+          break;
+        }
     }
+    assert(zh->close_requested);
     api_epilog(zh, 0);    
     LOG_DEBUG("IO thread terminated");
     return 0;

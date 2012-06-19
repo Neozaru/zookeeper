@@ -27,59 +27,6 @@ ENABLE_LOGGING;
 using namespace boost;
 using namespace org::apache::zookeeper;
 
-class TestInitWatch : public Watch {
-  public:
-    void process(WatchEvent::type event, SessionState::type state,
-        const std::string& path) {
-      if (event == WatchEvent::SessionStateChanged) {
-        if (state == SessionState::Connected) {
-          {
-            boost::lock_guard<boost::mutex> lock(mutex);
-            connected = true;
-          }
-          cond.notify_all();
-        } else if (state == SessionState::AuthFailed) {
-          {
-            boost::lock_guard<boost::mutex> lock(mutex);
-            authFailed_ = true;
-          }
-          cond.notify_all();
-        }
-      }
-    }
-
-    bool waitForConnected(uint32_t timeoutMs) {
-      boost::system_time const timeout=boost::get_system_time() +
-        boost::posix_time::milliseconds(timeoutMs);
-
-      boost::mutex::scoped_lock lock(mutex);
-      while (!connected) {
-        if(!cond.timed_wait(lock,timeout)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    bool waitForAuthFailed(uint32_t timeoutMs) {
-      boost::system_time const timeout=boost::get_system_time() +
-        boost::posix_time::milliseconds(timeoutMs);
-
-      boost::mutex::scoped_lock lock(mutex);
-      while (!authFailed_) {
-        if(!cond.timed_wait(lock,timeout)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    boost::condition_variable cond;
-    boost::mutex mutex;
-    bool connected;
-    bool authFailed_;
-};
-
 class TestMulti: public CPPUNIT_NS::TestFixture
 {
   CPPUNIT_TEST_SUITE(TestMulti);
@@ -127,9 +74,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi1", "", acl, CreateMode::Persistent));
@@ -169,9 +115,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi2", "", acl, CreateMode::Persistent));
@@ -197,9 +142,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi5", "", acl, CreateMode::Persistent));
@@ -226,9 +170,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+      shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi5", "", acl, CreateMode::Persistent));
@@ -265,9 +208,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi6", "", acl, CreateMode::Persistent));
@@ -304,9 +246,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi7", "", acl, CreateMode::Persistent));
@@ -340,9 +281,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi3", "", acl, CreateMode::Persistent));
@@ -376,9 +316,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
 
     boost::ptr_vector<Op> ops;
     ops.push_back(new Op::Create("/multi8", "", acl, CreateMode::Persistent));
@@ -412,11 +351,12 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+        shared_ptr<Watch>()));
+    LOG_DEBUG("INIT DONE");
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
         zk.create("/multi0", "", acl, CreateMode::Persistent, pathCreated));
+    LOG_DEBUG("CREATE DONE");
 
     // Conditionally create /multi0/a' only if '/multi0' at version 0
     boost::ptr_vector<Op> ops;
@@ -482,9 +422,8 @@ class TestMulti: public CPPUNIT_NS::TestFixture
     temp.setperms(Permission::All);
     acl.push_back(temp);
 
-    shared_ptr<TestInitWatch> watch(new TestInitWatch());
-    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
-    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000,
+          shared_ptr<Watch>()));
     CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
         zk.create("/multiwatch", "", acl, CreateMode::Persistent, pathCreated));
 

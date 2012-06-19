@@ -523,10 +523,6 @@ create(const std::string& path, const std::string& data,
                   const std::vector<data::ACL>& acl, CreateMode::type mode,
                   boost::shared_ptr<CreateCallback> callback,
                   bool isSynchronous) {
-  if ((int)this->getState() < 0) {
-    return ReturnCode::InvalidState;
-  }
-
   string_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (callback.get()) {
@@ -542,12 +538,14 @@ ReturnCode::type ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
        const std::vector<data::ACL>& acl, CreateMode::type mode,
        std::string& pathCreated) {
+  LOG_DEBUG("Entering create()");
   boost::shared_ptr<MyCreateCallback> callback(
     new MyCreateCallback(path, pathCreated));
   ReturnCode::type rc = create(path, data, acl, mode, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
+  LOG_DEBUG("wait for callback: create()");
   callback->waitForCompleted();
   return callback->rc_;
 }

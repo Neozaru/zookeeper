@@ -659,6 +659,9 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
         goto abort;
     }
 
+    zh->state = ZOO_CONNECTING_STATE;
+    assert(!zh->close_requested);
+    LOG_DEBUG("Init completed. ZooKeeper state="<< state2String(zh->state));
     return zh;
 abort:
     errnosave=errno;
@@ -1596,10 +1599,7 @@ static void deserialize_response(int type, int xid, int failed, int rc,
     case COMPLETION_VOID:
       LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#08x failed=%d rc=%d") %
           cptr->xid % failed % rc);
-      if (xid == PING_XID) {
-        // We want to skip the ping
-      } else {
-        assert(cptr->c.void_result);
+      if (xid != PING_XID && cptr->c.void_result) {
         cptr->c.void_result(rc, cptr->data);
       }
       break;
@@ -1609,8 +1609,9 @@ static void deserialize_response(int type, int xid, int failed, int rc,
           cptr->xid % failed % rc);
       boost::ptr_vector<OpResult> results;
       rc = deserialize_multi(xid, cptr, iarchive, results);
-      assert(cptr->c.multi_result);
-      cptr->c.multi_result(rc, results, cptr->data);
+      if (cptr->c.multi_result) {
+        cptr->c.multi_result(rc, results, cptr->data);
+      }
       break;
     }
     default:
@@ -1658,6 +1659,7 @@ zookeeper_process(zhandle_t *zh, int events) {
     return ZINVALIDSTATE;
   api_prolog(zh);
   rc = check_events(zh, events);
+  assert(rc == ZOK);
   if (rc!=ZOK)
     return api_epilog(zh, rc);
   while (rc >= 0 && (bptr=dequeue_buffer(zh->to_process.get()))) {
@@ -1914,6 +1916,7 @@ static int add_multi_completion(zhandle_t *zh, int xid, multi_completion_t dc,
 
 int
 zookeeper_close(zhandle_t *zh) {
+  LOG_DEBUG("Entering zookeeper_close()");
   int rc = ZOK;
   if (zh == 0)
     return ZBADARGUMENTS;
@@ -2159,6 +2162,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
         int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl,
         int flags, string_completion_t completion, const void *data,
         bool isSynchronous) {
+  LOG_DEBUG("Entering zoo_acreate()");
   std::string pathStr;
   int rc = getRealString(zh, flags, path, pathStr);
   if (rc != ZOK) {
