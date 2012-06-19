@@ -727,7 +727,8 @@ ZOOAPI int zoo_state(zhandle_t *zh);
  */
 ZOOAPI int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
         int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl,
-        int flags, string_completion_t completion, const void *data);
+        int flags, string_completion_t completion, const void *data,
+        bool isSynchronous);
 
 /**
  * \brief delete a node in zookeeper.
@@ -753,31 +754,8 @@ ZOOAPI int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_adelete(zhandle_t *zh, const char *path, int version, 
-        void_completion_t completion, const void *data);
+        void_completion_t completion, const void *data, bool isSynchronous);
 
-/**
- * \brief checks the existence of a node in zookeeper.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watch if nonzero, a watch will be set at the server to notify the 
- * client if the node changes. The watch will be set even if the node does not 
- * exist. This allows clients to watch for nodes to appear.
- * \param completion the routine to invoke when the request completes. The completion
- * will be triggered with one of the following codes passed in as the rc argument:
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * \param data the data that will be passed to the completion routine when the 
- * function completes.
- * \return ZOK on success or one of the following errcodes on failure:
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_aexists(zhandle_t *zh, const char *path, int watch, 
-        stat_completion_t completion, const void *data);
 
 /**
  * \brief checks the existence of a node in zookeeper.
@@ -810,7 +788,7 @@ ZOOAPI int zoo_aexists(zhandle_t *zh, const char *path, int watch,
  */
 ZOOAPI int zoo_awexists(zhandle_t *zh, const char *path, 
         watcher_fn watcher, void* watcherCtx, 
-        stat_completion_t completion, const void *data);
+        stat_completion_t completion, const void *data, bool isSynchronous);
 
 /**
  * \brief gets the data associated with a node.
@@ -863,7 +841,7 @@ ZOOAPI int zoo_aget(zhandle_t *zh, const char *path, int watch,
  */
 ZOOAPI int zoo_awget(zhandle_t *zh, const char *path, 
         watcher_fn watcher, void* watcherCtx, 
-        data_completion_t completion, const void *data);
+        data_completion_t completion, const void *data, bool isSynchronous);
 
 /**
  * \brief sets the data associated with a node.
@@ -892,85 +870,8 @@ ZOOAPI int zoo_awget(zhandle_t *zh, const char *path,
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen, 
-        int version, stat_completion_t completion, const void *data);
-
-/**
- * \brief lists the children of a node.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watch if nonzero, a watch will be set at the server to notify 
- * the client if the node changes.
- * \param completion the routine to invoke when the request completes. The completion
- * will be triggered with one of the following codes passed in as the rc argument:
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * \param data the data that will be passed to the completion routine when 
- * the function completes.
- * \return ZOK on success or one of the following errcodes on failure:
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_aget_children(zhandle_t *zh, const char *path, int watch, 
-        strings_completion_t completion, const void *data);
-
-/**
- * \brief lists the children of a node.
- * 
- * This function is similar to \ref zoo_aget_children except it allows one specify 
- * a watcher object rather than a boolean watch flag.
- *  
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watcher if non-null, a watch will be set at the server to notify 
- * the client if the node changes.
- * \param watcherCtx user specific data, will be passed to the watcher callback.
- * Unlike the global context set by \ref zookeeper_init, this watcher context
- * is associated with the given instance of the watcher only.
- * \param completion the routine to invoke when the request completes. The completion
- * will be triggered with one of the following codes passed in as the rc argument:
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * \param data the data that will be passed to the completion routine when 
- * the function completes.
- * \return ZOK on success or one of the following errcodes on failure:
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_awget_children(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx, 
-        strings_completion_t completion, const void *data);
-
-/**
- * \brief lists the children of a node, and get the parent stat.
- * 
- * This function is new in version 3.3.0
- *
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * separating ancestors of the node.
- * \param watch if nonzero, a watch will be set at the server to notify 
- * the client if the node changes.
- * \param completion the routine to invoke when the request completes. The completion
- * will be triggered with one of the following codes passed in as the rc argument:
- * ZOK operation completed successfully
- * ZNONODE the node does not exist.
- * ZNOAUTH the client does not have permission.
- * \param data the data that will be passed to the completion routine when 
- * the function completes.
- * \return ZOK on success or one of the following errcodes on failure:
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_aget_children2(zhandle_t *zh, const char *path, int watch, 
-        strings_stat_completion_t completion, const void *data);
+        int version, stat_completion_t completion, const void *data,
+        bool isSynchronous);
 
 /**
  * \brief lists the children of a node, and get the parent stat.
@@ -1002,7 +903,8 @@ ZOOAPI int zoo_aget_children2(zhandle_t *zh, const char *path, int watch,
  */
 ZOOAPI int zoo_awget_children2(zhandle_t *zh, const char *path,
         watcher_fn watcher, void* watcherCtx, 
-        strings_stat_completion_t completion, const void *data);
+        strings_stat_completion_t completion, const void *data,
+        bool isSynchronous);
 
 /**
  * \brief Flush leader channel.
@@ -1046,7 +948,7 @@ ZOOAPI int zoo_async(zhandle_t *zh, const char *path,
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion, 
-        const void *data);
+        const void *data, bool isSynchronous);
 
 /**
  * \brief sets the acl associated with a node.
@@ -1070,8 +972,9 @@ ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t comple
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version, 
-        const std::vector<org::apache::zookeeper::data::ACL>& acl, void_completion_t, const void *data);
+ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
+        const std::vector<org::apache::zookeeper::data::ACL>& acl,
+        void_completion_t, const void *data, bool isSynchronous);
 
 /**
  * \brief atomically commits multiple zookeeper operations.
@@ -1093,7 +996,7 @@ ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
         zoo_op_result_t *results, void_completion_t, const void *data);
 ZOOAPI int zoo_amulti2(zhandle_t *zh,
         const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
-        multi_completion_t, const void *data);
+        multi_completion_t, const void *data, bool isSynchronous);
 
 /**
  * \brief return an error string.
@@ -1131,7 +1034,8 @@ ZOOAPI const char* zerror(int c);
  * ZSYSTEMERROR - a system error occured
  */
 ZOOAPI int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert, 
-	int certLen, void_completion_t completion, const void *data);
+	int certLen, void_completion_t completion, const void *data,
+        bool isSynchronous);
 
 /**
  * \brief checks if the current zookeeper connection state can't be recovered.

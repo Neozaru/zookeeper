@@ -16,573 +16,487 @@
  * limitations under the License.
  */
 
+#include <algorithm>
+#include <boost/thread/condition.hpp>
 #include <cppunit/extensions/HelperMacros.h>
-#include "CppAssertHelper.h"
-
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/select.h>
-
-#include "CollectionUtil.h"
-#include "ThreadingUtil.h"
-
-using namespace Util;
-
-#include "Vector.h"
-using namespace std;
-
-#include <cstring>
-#include <list>
+#include "logging.hh"
+ENABLE_LOGGING;
 
 #include <zookeeper.h>
-#include "zookeeper.hh"
-#include <errno.h>
-#include <recordio.h>
-#include "Util.h"
+#include <zookeeper.hh>
+using namespace boost;
 using namespace org::apache::zookeeper;
 
-static void yield(zhandle_t *zh, int i)
-{
-  sleep(i);
-}
+class TestInitWatch : public Watch {
+  public:
+    void process(WatchEvent::type event, SessionState::type state,
+        const std::string& path) {
+      if (event == WatchEvent::SessionStateChanged) {
+        if (state == SessionState::Connected) {
+          {
+            boost::lock_guard<boost::mutex> lock(mutex);
+            connected = true;
+          }
+          cond.notify_all();
+        } else if (state == SessionState::AuthFailed) {
+          {
+            boost::lock_guard<boost::mutex> lock(mutex);
+            authFailed_ = true;
+          }
+          cond.notify_all();
+        }
+      }
+    }
 
-typedef struct evt {
-    string path;
-    int type;
-} evt_t;
+    bool waitForConnected(uint32_t timeoutMs) {
+      boost::system_time const timeout=boost::get_system_time() +
+        boost::posix_time::milliseconds(timeoutMs);
 
-typedef struct watchCtx {
-private:
-    list<evt_t> events;
-    watchCtx(const watchCtx&);
-    watchCtx& operator=(const watchCtx&);
-public:
-    bool connected;
-    zhandle_t *zh;
+      boost::mutex::scoped_lock lock(mutex);
+      while (!connected) {
+        if(!cond.timed_wait(lock,timeout)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    bool waitForAuthFailed(uint32_t timeoutMs) {
+      boost::system_time const timeout=boost::get_system_time() +
+        boost::posix_time::milliseconds(timeoutMs);
+
+      boost::mutex::scoped_lock lock(mutex);
+      while (!authFailed_) {
+        if(!cond.timed_wait(lock,timeout)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    boost::condition_variable cond;
     boost::mutex mutex;
-
-    watchCtx() {
-        connected = false;
-        zh = 0;
-    }
-    ~watchCtx() {
-        if (zh) {
-            zookeeper_close(zh);
-            zh = 0;
-        }
-    }
-
-    evt_t getEvent() {
-        evt_t evt;
-        mutex.lock();
-        CPPUNIT_ASSERT( events.size() > 0);
-        evt = events.front();
-        events.pop_front();
-        mutex.unlock();
-        return evt;
-    }
-
-    int countEvents() {
-        int count;
-        mutex.lock();
-        count = events.size();
-        mutex.unlock();
-        return count;
-    }
-
-    void putEvent(evt_t evt) {
-        mutex.lock();
-        events.push_back(evt);
-        mutex.unlock();
-    }
-
-    bool waitForConnected(zhandle_t *zh) {
-        time_t expires = time(0) + 10;
-        while(!connected && time(0) < expires) {
-            yield(zh, 1);
-        }
-        return connected;
-    }
-    bool waitForDisconnected(zhandle_t *zh) {
-        time_t expires = time(0) + 15;
-        while(connected && time(0) < expires) {
-            yield(zh, 1);
-        }
-        return !connected;
-    }
-} watchctx_t;
-
-class Zookeeper_multi : public CPPUNIT_NS::TestFixture
-{
-    CPPUNIT_TEST_SUITE(Zookeeper_multi);
-    CPPUNIT_TEST(testCreate);
-    CPPUNIT_TEST(testCreateDelete);
-    CPPUNIT_TEST(testInvalidVersion);
-    CPPUNIT_TEST(testNestedCreate);
-    CPPUNIT_TEST(testSetData);
-    CPPUNIT_TEST(testUpdateConflict);
-    CPPUNIT_TEST(testDeleteUpdateConflict);
-    CPPUNIT_TEST(testAsyncMulti);
-    CPPUNIT_TEST(testMultiFail);
-    CPPUNIT_TEST(testCheck);
-    CPPUNIT_TEST(testWatch);
-    CPPUNIT_TEST_SUITE_END();
-
-    static void watcher(zhandle_t *, int type, int state, const char *path,void*v){
-        watchctx_t *ctx = (watchctx_t*)v;
-
-        if (state == ZOO_CONNECTED_STATE) {
-            ctx->connected = true;
-        } else {
-            ctx->connected = false;
-        }
-        if (type != ZOO_SESSION_EVENT) {
-            evt_t evt;
-            evt.path = path;
-            evt.type = type;
-            ctx->putEvent(evt);
-        }
-    }
-
-    static const char hostPorts[];
-
-    const char *getHostPorts() {
-        return hostPorts;
-    }
-    
-    zhandle_t *createClient(watchctx_t *ctx) {
-        return createClient(hostPorts, ctx);
-    }
-
-    zhandle_t *createClient(const char *hp, watchctx_t *ctx) {
-        zhandle_t *zk = zookeeper_init(hp, watcher, 10000, 0, ctx, 0);
-        ctx->zh = zk;
-        CPPUNIT_ASSERT_EQUAL(true, ctx->waitForConnected(zk));
-        return zk;
-    }
-
-public:
-    static volatile int count;
-
-    static void multi_completion_fn(int rc, const void *data) {
-        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        count++;
-    }
-
-    static void waitForMultiCompletion(int seconds) {
-        time_t expires = time(0) + seconds;
-        while(count == 0 && time(0) < expires) {
-            sleep(1);
-        }
-        count--;
-    }
-
-    /**
-     * Test basic multi-op create functionality 
-     */
-    void testCreate() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-       
-        int sz = 512;
-        char p1[sz];
-        char p2[sz];
-        char p3[sz];
-        p1[0] = p2[0] = p3[0] = '\0';
-
-        int nops = 3 ;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_create_op_init(&ops[1], "/multi1/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
-        zoo_create_op_init(&ops[2], "/multi1/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        CPPUNIT_ASSERT(strcmp(p1, "/multi1") == 0);
-        CPPUNIT_ASSERT(strcmp(p2, "/multi1/a") == 0);
-        CPPUNIT_ASSERT(strcmp(p3, "/multi1/b") == 0);
-
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[2].err);
-    }
-
-    /**
-     * Test create followed by delete 
-     */
-    void testCreateDelete() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
-        int nops = 2 ;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi2", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_delete_op_init(&ops[1], "/multi2", 0);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        // '/multi2' should have been deleted
-        rc = zoo_exists(zk, "/multi2", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
-    }
-
-    /** 
-     * Test invalid versions
-     */
-    void testInvalidVersion() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int nops = 4;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
-        zoo_delete_op_init(&ops[1], "/multi3", 1);
-        zoo_create_op_init(&ops[2], "/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
-        zoo_create_op_init(&ops[3], "/multi3/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, results[1].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZRUNTIMEINCONSISTENCY, results[2].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZRUNTIMEINCONSISTENCY, results[3].err);
-    }
-
-    /**
-     * Test nested creates that rely on state in earlier op in multi
-     */
-    void testNestedCreate() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
-        int nops = 6;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        /* Create */
-        zoo_create_op_init(&ops[0], "/multi4", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_create_op_init(&ops[1], "/multi4/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_create_op_init(&ops[2], "/multi4/a/1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-
-        /* Delete */
-        zoo_delete_op_init(&ops[3], "/multi4/a/1", 0);
-        zoo_delete_op_init(&ops[4], "/multi4/a", 0);
-        zoo_delete_op_init(&ops[5], "/multi4", 0);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        // Verify tree deleted
-        rc = zoo_exists(zk, "/multi4/a/1", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
-        
-        rc = zoo_exists(zk, "/multi4/a", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
-  
-        rc = zoo_exists(zk, "/multi4", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
-    }
-
-    /**
-     * Test setdata functionality
-     */
-    void testSetData() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        struct Stat s1;
-
-        char buf[sz];
-        int blen = sz ;
-
-        char p1[sz], p2[sz];
-        
-        int nops = 2;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi5",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_create_op_init(&ops[1], "/multi5/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
-       
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        
-        yield(zk, 5);
-
-        zoo_op_t setdata_ops[nops];
-        zoo_op_result_t setdata_results[nops];
-
-        zoo_set_op_init(&setdata_ops[0], "/multi5",   "1", 1, 0, &s1);
-        zoo_set_op_init(&setdata_ops[1], "/multi5/a", "2", 1, 0, &s1);
-
-        rc = zoo_multi(zk, nops, setdata_ops, setdata_results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
-        
-        memset(buf, '\0', blen);
-        rc = zoo_get(zk, "/multi5", 0, buf, &blen, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL(1, blen);
-        CPPUNIT_ASSERT(strcmp("1", buf) == 0);
-        
-        memset(buf, '\0', blen);
-        rc = zoo_get(zk, "/multi5/a", 0, buf, &blen, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL(1, blen);
-        CPPUNIT_ASSERT(strcmp("2", buf) == 0);
-    }
-
-    /**
-     * Test update conflicts
-     */
-    void testUpdateConflict() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char buf[sz];
-        int blen = sz;
-        char p1[sz];
-        p1[0] = '\0';
-        struct Stat s1;
-        int nops = 3;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi6", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_set_op_init(&ops[1], "/multi6", "X", 1, 0, &s1);
-        zoo_set_op_init(&ops[2], "/multi6", "Y", 1, 0, &s1);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);
-
-        //Updating version solves conflict -- order matters
-        ops[2].set_op.version = 1;
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-       
-        memset(buf, 0, sz);
-        rc = zoo_get(zk, "/multi6", 0, buf, &blen, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL(blen, 1);
-        CPPUNIT_ASSERT(strncmp(buf, "Y", 1) == 0);
-    }
-
-    /**
-     * Test delete-update conflicts
-     */
-    void testDeleteUpdateConflict() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
-        struct Stat stat;
-        int nops = 3;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi7", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_delete_op_init(&ops[1], "/multi7", 0);
-        zoo_set_op_init(&ops[2], "/multi7", "Y", 1, 0, &stat);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
-
-        // '/multi' should never have been created as entire op should fail
-        rc = zoo_exists(zk, "/multi7", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
-    }
-
-    void testAsyncMulti() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-       
-        int sz = 512;
-        char p1[sz], p2[sz], p3[sz];
-        p1[0] = '\0';
-        p2[0] = '\0';
-        p3[0] = '\0';
-
-        int nops = 3;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi8",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_create_op_init(&ops[1], "/multi8/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
-        zoo_create_op_init(&ops[2], "/multi8/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz);
- 
-        rc = zoo_amulti(zk, nops, ops, results, multi_completion_fn, 0);
-        waitForMultiCompletion(10);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        CPPUNIT_ASSERT(strcmp(p1, "/multi8") == 0);
-        CPPUNIT_ASSERT(strcmp(p2, "/multi8/a") == 0);
-        CPPUNIT_ASSERT(strcmp(p3, "/multi8/b") == 0);
-
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[2].err);
-    }
-
-    void testMultiFail() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-       
-        int sz = 512;
-        char p1[sz], p2[sz], p3[sz];
-
-        p1[0] = '\0';
-        p2[0] = '\0';
-        p3[0] = '\0';
-
-        int nops = 3;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_create_op_init(&ops[0], "/multi9",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        zoo_create_op_init(&ops[1], "/multi9",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
-        zoo_create_op_init(&ops[2], "/multi9/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZNODEEXISTS, rc);
-    }
-    
-    /**
-     * Test basic multi-op check functionality 
-     */
-    void testCheck() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
-        std::vector<data::ACL> acl;
-        data::ACL temp;
-        temp.getid().getscheme() = "world";
-        temp.getid().getid() = "anyone";
-        temp.setperms(Permission::All);
-        acl.push_back(temp);
-
-        rc = zoo_create(zk, "/multi0", "", 0, acl, 0, p1, sz);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        // Conditionally create /multi0/a' only if '/multi0' at version 0
-        int nops = 2;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_check_op_init(&ops[0], "/multi0", 0);
-        zoo_create_op_init(&ops[1], "/multi0/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
-
-        // '/multi0/a' should have been created as it passed version check
-        rc = zoo_exists(zk, "/multi0/a", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
- 
-        // Only create '/multi0/b' if '/multi0' at version 10 (which it's not)
-        zoo_op_t ops2[nops];
-        zoo_check_op_init(&ops2[0], "/multi0", 10);
-        zoo_create_op_init(&ops2[1], "/multi0/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
-        
-        rc = zoo_multi(zk, nops, ops2, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);
-
-        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, results[0].err);
-        CPPUNIT_ASSERT_EQUAL((int)ZRUNTIMEINCONSISTENCY, results[1].err);
-
-        // '/multi0/b' should NOT have been created
-        rc = zoo_exists(zk, "/multi0/b", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
-    }
-
-    /**
-     * Do a multi op inside a watch callback context.
-     */
-    static void doMultiInWatch(zhandle_t *zk, int type, int state, const char *path, void *ctx) {
-        int rc;
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
-        struct Stat s1;
-
-        int nops = 1;
-        zoo_op_t ops[nops];
-        zoo_op_result_t results[nops];
-
-        zoo_set_op_init(&ops[0], "/multiwatch", "1", 1, -1, NULL);
-
-        rc = zoo_multi(zk, nops, ops, results);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
-
-        memset(p1, '\0', sz);
-        rc = zoo_get(zk, "/multiwatch", 0, p1, &sz, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL(1, sz);
-        CPPUNIT_ASSERT(strcmp("1", p1) == 0);
-        count++;
-    }
-
-    /**
-     * Test multi-op called from a watch
-     */
-     void testWatch() {
-        int rc;
-        watchctx_t ctx;
-        zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
-        std::vector<data::ACL> acl;
-        data::ACL temp;
-        temp.getid().getscheme() = "world";
-        temp.getid().getid() = "anyone";
-        temp.setperms(Permission::All);
-        acl.push_back(temp);
-
-        rc = zoo_create(zk, "/multiwatch", "", 0, acl, 0, NULL, 0);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        // create a watch on node '/multiwatch'
-        rc = zoo_wget(zk, "/multiwatch", doMultiInWatch, &ctx, p1, &sz, NULL);
-
-        // setdata on node '/multiwatch' this should trip the watch
-        rc = zoo_set(zk, "/multiwatch", NULL, -1, -1);
-        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-
-        // wait for multi completion in doMultiInWatch
-        waitForMultiCompletion(5);
-     }
+    bool connected;
+    bool authFailed_;
 };
 
-volatile int Zookeeper_multi::count;
-const char Zookeeper_multi::hostPorts[] = "127.0.0.1:22181";
-CPPUNIT_TEST_SUITE_REGISTRATION(Zookeeper_multi);
+class TestMulti: public CPPUNIT_NS::TestFixture
+{
+  CPPUNIT_TEST_SUITE(TestMulti);
+  CPPUNIT_TEST(testCreate);
+  CPPUNIT_TEST(testCreateFailure);
+  CPPUNIT_TEST(testCreateDelete);
+  CPPUNIT_TEST(testInvalidVersion);
+  CPPUNIT_TEST(testNestedCreate);
+  CPPUNIT_TEST(testSetData);
+  CPPUNIT_TEST(testUpdateConflict);
+  CPPUNIT_TEST(testDeleteUpdateConflict);
+  CPPUNIT_TEST(testCheck);
+  CPPUNIT_TEST(testWatch);
+  CPPUNIT_TEST_SUITE_END();
+  const std::string HOSTPORT;
+  std::vector<data::ACL> acl;
+  public:
+
+  TestMulti() : HOSTPORT("127.0.0.1:22181") {
+  }
+
+  void startServer() {
+    char cmd[1024];
+    sprintf(cmd, "%s start %s", ZKSERVER_CMD, HOSTPORT.c_str());
+    CPPUNIT_ASSERT(system(cmd) == 0);
+  }
+
+  void stopServer() {
+    char cmd[1024];
+    sprintf(cmd, "%s stop %s", ZKSERVER_CMD, HOSTPORT.c_str());
+    CPPUNIT_ASSERT(system(cmd) == 0);
+  }
+
+  /**
+   * Test basic multi-op create functionality
+   */
+  void testCreate() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi1", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi1/a", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi1/b", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(OpCode::Create, results[0].getType());
+    OpResult::Create& res = dynamic_cast<OpResult::Create&>(results[0]);
+    CPPUNIT_ASSERT_EQUAL(std::string("/multi1"), res.getPathCreated());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, res.getReturnCode());
+
+    CPPUNIT_ASSERT_EQUAL(OpCode::Create, results[1].getType());
+    res = dynamic_cast<OpResult::Create&>(results[1]);
+    CPPUNIT_ASSERT_EQUAL(std::string("/multi1/a"), res.getPathCreated());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, res.getReturnCode());
+
+    CPPUNIT_ASSERT_EQUAL(OpCode::Create, results[2].getType());
+    res = dynamic_cast<OpResult::Create&>(results[2]);
+    CPPUNIT_ASSERT_EQUAL(std::string("/multi1/b"), res.getPathCreated());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, res.getReturnCode());
+  }
+
+  /**
+   * Test create failure.
+   */
+  void testCreateFailure() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi2", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi2/a", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi2/a", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NodeExists, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+  }
+
+
+  /**
+   * Test create followed by delete.
+   */
+  void testCreateDelete() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi5", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi5", -1));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+
+    // '/multi5' should have been deleted
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.exists("/multi5", boost::shared_ptr<Watch>(), stat));
+  }
+
+  /**
+   * Test nested creates that rely on state in earlier op in multi
+   */
+  void testNestedCreate() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi5", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi5/a", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi5/a/1", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi5/a/1", 0));
+    ops.push_back(new Op::Remove("/multi5/a", 0));
+    ops.push_back(new Op::Remove("/multi5", 0));
+
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(6, (int)results.size());
+
+    // '/multi5' should have been deleted
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi5/a/1", boost::shared_ptr<Watch>(), stat));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi5/a", boost::shared_ptr<Watch>(), stat));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi5", boost::shared_ptr<Watch>(), stat));
+  }
+
+  /**
+   * Test setdata functionality
+   */
+  void testSetData() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated, data;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi6", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi6/a", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+
+    ops.clear();
+    ops.push_back(new Op::SetData("/multi6", "1", 0));
+    ops.push_back(new Op::SetData("/multi6/a", "2", 0));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+      zk.get("/multi6", boost::shared_ptr<Watch>(), data, stat));
+    CPPUNIT_ASSERT_EQUAL(std::string("1"), data);
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+      zk.get("/multi6/a", boost::shared_ptr<Watch>(), data, stat));
+    CPPUNIT_ASSERT_EQUAL(std::string("2"), data);
+  }
+
+  /**
+   * Test update conflicts
+   */
+  void testUpdateConflict() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated, data;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi7", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::SetData("/multi7", "X", 0));
+    ops.push_back(new Op::SetData("/multi7", "Y", 0));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    //Updating version solves conflict -- order matters
+    dynamic_cast<Op::SetData&>(ops[2]).setVersion(1);
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+      zk.get("/multi7", boost::shared_ptr<Watch>(), data, stat));
+    CPPUNIT_ASSERT_EQUAL(std::string("Y"), data);
+  }
+
+  /**
+   * Test invalid versions
+   */
+  void testInvalidVersion() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi3", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi3", 1));
+    ops.push_back(new Op::Create("/multi3", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Create("/multi3/a", "", acl, CreateMode::Persistent));
+
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(4, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, results[1].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency,
+        results[2].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency,
+        results[3].getReturnCode());
+  }
+
+  /**
+   * Test delete-update conflicts
+   */
+  void testDeleteUpdateConflict() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Create("/multi8", "", acl, CreateMode::Persistent));
+    ops.push_back(new Op::Remove("/multi8", 0));
+    ops.push_back(new Op::SetData("/multi8", "X", 0));
+
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(3, (int)results.size());
+
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[1].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode, results[2].getReturnCode());
+
+    // '/multi' should never have been created as entire op should fail
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi8", boost::shared_ptr<Watch>(), stat));
+  }
+
+  /**
+   * Test basic multi-op check functionality
+   */
+  void testCheck() {
+    ZooKeeper zk;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.create("/multi0", "", acl, CreateMode::Persistent, pathCreated));
+
+    // Conditionally create /multi0/a' only if '/multi0' at version 0
+    boost::ptr_vector<Op> ops;
+    ops.push_back(new Op::Check("/multi0", 0));
+    ops.push_back(new Op::Create("/multi0/a", "", acl, CreateMode::Persistent));
+    boost::ptr_vector<OpResult> results;
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[1].getReturnCode());
+
+    // '/multi0/a' should have been created as it passed version check
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.exists("/multi0/a", boost::shared_ptr<Watch>(), stat));
+
+    // Only create '/multi0/b' if '/multi0' at version 10 (which it's not)
+    ops.clear();
+    ops.push_back(new Op::Check("/multi0", 10));
+    ops.push_back(new Op::Create("/multi0/b", "", acl, CreateMode::Persistent));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, zk.multi(ops, results));
+    CPPUNIT_ASSERT_EQUAL(2, (int)results.size());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::BadVersion, results[0].getReturnCode());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::RuntimeInconsistency,
+        results[1].getReturnCode());
+
+    // '/multi0/b' should NOT have been created
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+        zk.exists("/multi0/b", boost::shared_ptr<Watch>(), stat));
+  }
+
+  class MultiWatch : public Watch {
+    public:
+    ZooKeeper& zk_;
+    MultiWatch(ZooKeeper& zk) : zk_(zk) {}
+    void process(WatchEvent::type event, SessionState::type state,
+        const std::string& path) {
+      std::string data;
+      data::Stat stat;
+      boost::ptr_vector<Op> ops;
+      ops.push_back(new Op::SetData("/multiwatch", "X", 1));
+      boost::ptr_vector<OpResult> results;
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk_.multi(ops, results));
+      CPPUNIT_ASSERT_EQUAL(1, (int)results.size());
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, results[0].getReturnCode());
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+          zk_.get("/multiwatch", boost::shared_ptr<Watch>(), data, stat));
+      CPPUNIT_ASSERT_EQUAL(std::string("X"), data);
+    }
+  };
+
+  /**
+   * Test multi-op called from a watch
+   */
+  void testWatch() {
+    ZooKeeper zk;
+    std::string data;
+    data::Stat stat;
+    std::string pathCreated;
+    std::vector<data::ACL> acl;
+    data::ACL temp;
+    temp.getid().getscheme() = "world";
+    temp.getid().getid() = "anyone";
+    temp.setperms(Permission::All);
+    acl.push_back(temp);
+
+    shared_ptr<TestInitWatch> watch(new TestInitWatch());
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.init(HOSTPORT, 30000, watch));
+    CPPUNIT_ASSERT(watch->waitForConnected(1000));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.create("/multiwatch", "", acl, CreateMode::Persistent, pathCreated));
+
+    boost::shared_ptr<MultiWatch> multiWatch(new MultiWatch(zk));
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zk.get("/multiwatch", multiWatch, data, stat));
+
+    // setdata on node '/multiwatch' this should trip the watch
+    CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zk.set("/multiwatch", "", -1, stat));
+    sleep(1);
+  }
+
+};
+
+CPPUNIT_TEST_SUITE_REGISTRATION(TestMulti);

@@ -165,6 +165,7 @@ class completion_t {
         multi_completion_t multi_result;
     };
     boost::scoped_ptr<boost::ptr_vector<OpResult> > results; /* For multi-op */
+    bool isSynchronous;
 };
 
 class completion_list_t {
@@ -191,21 +192,20 @@ static int deserialize_multi(int xid, completion_list_t *cptr,
 
 /* completion routine forward declarations */
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
-        const void *dc, const void *data,
-        watcher_registration_t* wo, boost::ptr_vector<OpResult>* results);
+        const void *dc, const void *data, watcher_registration_t* wo,
+        boost::ptr_vector<OpResult>* results, bool isSynchronous);
 static completion_list_t* create_completion_entry(int xid, int completion_type,
         const void *dc, const void *data, watcher_registration_t* wo,
-        boost::ptr_vector<OpResult>* results);
+        boost::ptr_vector<OpResult>* results, bool isSynchronous);
 static void destroy_completion_entry(completion_list_t* c);
 static void queue_completion_nolock(completion_head_t *list, completion_list_t *c);
 static void queue_completion(completion_head_t *list, completion_list_t *c);
 static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
                                   const std::string& message);
-static void cleanup_bufs(zhandle_t *zh,int callCompletion,int rc);
+static void cleanup_bufs(zhandle_t *zh, int rc);
 
 static int disable_conn_permute=0; // permute enabled by default
 
-static void *SYNCHRONOUS_MARKER = (void*)&SYNCHRONOUS_MARKER;
 static int isValidPath(const char* path, const int flags);
 
 static ssize_t zookeeper_send(int s, const void* buf, size_t len)
@@ -269,7 +269,7 @@ static void destroy(zhandle_t *zh)
         return;
     }
     /* call any outstanding completions with a special error code */
-    cleanup_bufs(zh,1,ZCLOSING);
+    cleanup_bufs(zh, ZCLOSING);
     if (zh->hostname != 0) {
         free(zh->hostname);
         zh->hostname = NULL;
@@ -866,63 +866,68 @@ void free_buffers(buffer_list_t *list)
         ;
 }
 
-void free_completions(zhandle_t *zh,int callCompletion,int reason)
-{
-    completion_head_t tmp_list;
-    struct oarchive *oa;
-    struct ReplyHeader h;
+void free_completions(zhandle_t *zh, int reason) {
+  completion_head_t tmp_list;
+  {
+    boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
+    tmp_list = zh->sent_requests;
+    zh->sent_requests.head = 0;
+    zh->sent_requests.last = 0;
+    (*(zh->sent_requests.cond)).notify_all();
+  }
+  while (tmp_list.head) {
+    completion_list_t *cptr = tmp_list.head;
 
-    {
-        boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
-        tmp_list = zh->sent_requests;
-        zh->sent_requests.head = 0;
-        zh->sent_requests.last = 0;
-        (*(zh->sent_requests.cond)).notify_all();
-    }
-    while (tmp_list.head) {
-        completion_list_t *cptr = tmp_list.head;
+    tmp_list.head = cptr->next;
+    if(cptr->xid == PING_XID){
+      // Nothing to do with a ping response
+      destroy_completion_entry(cptr);
+    } else if (cptr->c.isSynchronous) {
+      buffer_t *bptr = cptr->buffer;
+      MemoryInStream stream(bptr->buffer, bptr->len);
+      hadoop::IBinArchive iarchive(stream);
+      deserialize_response(cptr->c.type, cptr->xid, true,
+          reason, cptr, iarchive);
+    } else {
+      // Fake the response
+      std::string serialized;
+      StringOutStream stream(serialized);
+      hadoop::OBinArchive oarchive(stream);
+      proto::ReplyHeader header;
+      header.setxid(cptr->xid);
+      header.setzxid(-1);
+      header.seterr(reason);
+      header.serialize(oarchive, "header");
+      char* data  = (char*)malloc(serialized.size());
+      memmove(data, serialized.c_str(), serialized.size());
 
-        tmp_list.head = cptr->next;
-        if (callCompletion) {
-            if(cptr->xid == PING_XID){
-                // Nothing to do with a ping response
-                destroy_completion_entry(cptr);
-            } else {
-                // Fake the response
-                buffer_t *bptr;
-                h.xid = cptr->xid;
-                h.zxid = -1;
-                h.err = reason;
-                oa = create_buffer_oarchive();
-                serialize_ReplyHeader(oa, "header", &h);
-                bptr = (buffer_t*)calloc(sizeof(*bptr), 1);
-                assert(bptr);
-                bptr->len = get_buffer_len(oa);
-                bptr->buffer = get_buffer(oa);
-                close_buffer_oarchive(&oa, 0);
-                cptr->buffer = bptr;
-                queue_completion(&zh->completions_to_process, cptr);
-            }
-        }
+      buffer_t *bptr;
+      bptr = (buffer_t*)calloc(sizeof(*bptr), 1);
+      assert(bptr);
+      bptr->buffer = data;
+      bptr->len = serialized.size();
+      cptr->buffer = bptr;
+      queue_completion(&zh->completions_to_process, cptr);
     }
-    {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
-        BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
-          if (info.completion) {
-            info.completion(reason, info.data);
-            info.data = NULL;
-            info.completion = NULL;
-          }
-        }
+  }
+  {
+    boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
+    BOOST_FOREACH(auth_info& info, zh->auth_h.get()->authList_) {
+      if (info.completion) {
+        info.completion(reason, info.data);
+        info.data = NULL;
+        info.completion = NULL;
+      }
     }
+  }
 }
 
-static void cleanup_bufs(zhandle_t *zh,int callCompletion,int rc)
+static void cleanup_bufs(zhandle_t *zh, int rc)
 {
     enter_critical(zh);
     free_buffers(zh->to_send.get());
     free_buffers(zh->to_process.get());
-    free_completions(zh,callCompletion,rc);
+    free_completions(zh, rc);
     leave_critical(zh);
     if (zh->input_buffer && zh->input_buffer != &zh->primer_buffer) {
         free_buffer(zh->input_buffer);
@@ -941,14 +946,11 @@ static void handle_error(zhandle_t *zh,int rc)
         LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=CONNECTING_STATE");
         PROCESS_SESSION_EVENT(zh, ZOO_CONNECTING_STATE);
     }
-    cleanup_bufs(zh,1,rc);
+    cleanup_bufs(zh, rc);
     zh->fd = -1;
     zh->connect_index++;
     if (!is_unrecoverable(zh)) {
         zh->state = 0;
-    }
-    if (process_async(zh->outstanding_sync)) {
-        process_completions(zh);
     }
 }
 
@@ -1133,9 +1135,9 @@ static struct timeval get_timeval(int interval)
 }
 
  static int add_void_completion(zhandle_t *zh, int xid, void_completion_t dc,
-     const void *data);
+     const void *data, bool isSynchronous);
  static int add_string_completion(zhandle_t *zh, int xid,
-     string_completion_t dc, const void *data);
+     string_completion_t dc, const void *data, bool isSynchronous);
 
  int
  send_ping(zhandle_t* zh) {
@@ -1156,7 +1158,7 @@ static struct timeval get_timeval(int interval)
 
   enter_critical(zh);
   gettimeofday(&zh->last_ping, 0);
-  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0);
+  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0, false);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), data, serialized.size());
   leave_critical(zh);
   return rc<0 ? rc : adaptor_send_queue(zh, 0);
@@ -1407,7 +1409,7 @@ static int queue_session_event(zhandle_t *zh, int state)
         close_buffer_oarchive(&oa, 1);
         goto error;
     }
-    cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0);
+    cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
     cptr->buffer = allocate_buffer(get_buffer(oa), get_buffer_len(oa));
     cptr->buffer->curr_offset = get_buffer_len(oa);
     if (!cptr->buffer) {
@@ -1419,9 +1421,6 @@ static int queue_session_event(zhandle_t *zh, int state)
     close_buffer_oarchive(&oa, 0);
     cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, "");
     queue_completion(&zh->completions_to_process, cptr);
-    if (process_async(zh->outstanding_sync)) {
-        process_completions(zh);
-    }
     return ZOK;
 error:
     errno=ENOMEM;
@@ -1470,8 +1469,8 @@ deserialize_multi(int xid, completion_list_t *cptr,
       OpResult* result = clist->release(clist->begin()).release();
       result->setReturnCode(error);
       results.push_back(result);
-      if (rc == 0 && error != 0 && error != ZRUNTIMEINCONSISTENCY) {
-        rc = error;
+      if (rc == 0 && (int)error != 0 && (int)error != ZRUNTIMEINCONSISTENCY) {
+        rc = (int)error;
       }
     } else {
       switch((clist->begin())->getType()) {
@@ -1676,7 +1675,7 @@ zookeeper_process(zhandle_t *zh, int events) {
       proto::WatcherEvent event;
       event.deserialize(iarchive, "event");
       completion_list_t* c =
-        create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0);
+        create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
       c->buffer = bptr;
       c->c.watcher_result = collectWatchers(zh, event.gettype(),
                                             event.getpath());
@@ -1730,13 +1729,18 @@ zookeeper_process(zhandle_t *zh, int events) {
         free_buffer(bptr);
         destroy_completion_entry(cptr);
       } else {
-        cptr->buffer = bptr;
-        queue_completion(&zh->completions_to_process, cptr);
+        if (cptr->c.isSynchronous) {
+          LOG_DEBUG(boost::format("Processing synchronous request "
+                "from the IO thread: xid=%#08x") % header.getxid());
+          deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
+                               header.geterr(), cptr, iarchive);
+          destroy_completion_entry(cptr);
+        } else {
+          cptr->buffer = bptr;
+          queue_completion(&zh->completions_to_process, cptr);
+        }
       }
     }
-  }
-  if (process_async(zh->outstanding_sync)) {
-    process_completions(zh);
   }
   return api_epilog(zh,ZOK);
 }
@@ -1769,47 +1773,43 @@ static void destroy_watcher_registration(watcher_registration_t* wo){
 }
 
 static completion_list_t* create_completion_entry(int xid, int completion_type,
-        const void *dc, const void *data,watcher_registration_t* wo,
-        boost::ptr_vector<OpResult>* results) {
-    completion_list_t *c = (completion_list_t*)calloc(1,sizeof(completion_list_t));
-    if (!c) {
-        LOG_ERROR("out of memory");
-        return 0;
-    }
-    c->c.type = completion_type;
-    c->data = data;
-    switch(c->c.type) {
+    const void *dc, const void *data,watcher_registration_t* wo,
+    boost::ptr_vector<OpResult>* results, bool isSynchronous) {
+  completion_list_t *c = new completion_list_t();
+  c->c.type = completion_type;
+  c->data = data;
+  switch(c->c.type) {
     case COMPLETION_VOID:
-        c->c.void_result = (void_completion_t)dc;
-        break;
+      c->c.void_result = (void_completion_t)dc;
+      break;
     case COMPLETION_STRING:
-        c->c.string_result = (string_completion_t)dc;
-        break;
+      c->c.string_result = (string_completion_t)dc;
+      break;
     case COMPLETION_DATA:
-        c->c.data_result = (data_completion_t)dc;
-        break;
+      c->c.data_result = (data_completion_t)dc;
+      break;
     case COMPLETION_STAT:
-        c->c.stat_result = (stat_completion_t)dc;
-        break;
+      c->c.stat_result = (stat_completion_t)dc;
+      break;
     case COMPLETION_STRINGLIST:
-        c->c.strings_result = (strings_completion_t)dc;
-        break;
+      c->c.strings_result = (strings_completion_t)dc;
+      break;
     case COMPLETION_STRINGLIST_STAT:
-        c->c.strings_stat_result = (strings_stat_completion_t)dc;
-        break;
+      c->c.strings_stat_result = (strings_stat_completion_t)dc;
+      break;
     case COMPLETION_ACLLIST:
-        c->c.acl_result = (acl_completion_t)dc;
-        break;
+      c->c.acl_result = (acl_completion_t)dc;
+      break;
     case COMPLETION_MULTI:
-        assert(results);
-        c->c.multi_result = (multi_completion_t)dc;
-        c->c.results.reset(results);
-        break;
-    }
-    c->xid = xid;
-    c->watcher = wo;
-    
-    return c;
+      assert(results);
+      c->c.multi_result = (multi_completion_t)dc;
+      c->c.results.reset(results);
+      break;
+  }
+  c->xid = xid;
+  c->watcher = wo;
+  c->c.isSynchronous = isSynchronous;
+  return c;
 }
 
 static void destroy_completion_entry(completion_list_t* c){
@@ -1849,10 +1849,11 @@ static void queue_completion(completion_head_t *list, completion_list_t *c)
 
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
         const void *dc, const void *data,
-        watcher_registration_t* wo, boost::ptr_vector<OpResult>* results)
+        watcher_registration_t* wo, boost::ptr_vector<OpResult>* results,
+        bool isSynchronous)
 {
     completion_list_t *c =create_completion_entry(xid, completion_type, dc,
-            data, wo, results);
+            data, wo, results, isSynchronous);
     int rc = 0;
     if (!c)
         return ZSYSTEMERROR;
@@ -1860,9 +1861,6 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
         boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
         if (zh->close_requested != 1) {
             queue_completion_nolock(&zh->sent_requests, c);
-            if (dc == SYNCHRONOUS_MARKER) {
-                zh->outstanding_sync++;
-            }
             rc = ZOK;
         } else {
             free(c);
@@ -1874,50 +1872,44 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
 }
 
 static int add_data_completion(zhandle_t *zh, int xid, data_completion_t dc,
-        const void *data,watcher_registration_t* wo)
+        const void *data,watcher_registration_t* wo, bool isSynchronous)
 {
-    return add_completion(zh, xid, COMPLETION_DATA, (const void*)dc, data, wo, 0);
+    return add_completion(zh, xid, COMPLETION_DATA, (const void*)dc, data, wo, 0, isSynchronous);
 }
 
 static int add_stat_completion(zhandle_t *zh, int xid, stat_completion_t dc,
-        const void *data,watcher_registration_t* wo)
+        const void *data,watcher_registration_t* wo, bool isSynchronous)
 {
-    return add_completion(zh, xid, COMPLETION_STAT, (const void*)dc, data, wo, 0);
-}
-
-static int add_strings_completion(zhandle_t *zh, int xid,
-        strings_completion_t dc, const void *data,watcher_registration_t* wo)
-{
-    return add_completion(zh, xid, COMPLETION_STRINGLIST, (const void*)dc, data, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STAT, (const void*)dc, data, wo, 0, isSynchronous);
 }
 
 static int add_strings_stat_completion(zhandle_t *zh, int xid,
-        strings_stat_completion_t dc, const void *data,watcher_registration_t* wo)
+        strings_stat_completion_t dc, const void *data,watcher_registration_t* wo, bool isSynchronous)
 {
-    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, (const void*)dc, data, wo, 0);
+    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, (const void*)dc, data, wo, 0, isSynchronous);
 }
 
 static int add_acl_completion(zhandle_t *zh, int xid, acl_completion_t dc,
-        const void *data)
+        const void *data, bool isSynchronous)
 {
-    return add_completion(zh, xid, COMPLETION_ACLLIST, (const void*)dc, data, 0, 0);
+    return add_completion(zh, xid, COMPLETION_ACLLIST, (const void*)dc, data, 0, 0, isSynchronous);
 }
 
 static int add_void_completion(zhandle_t *zh, int xid, void_completion_t dc,
-        const void *data)
+        const void *data, bool isSynchronous)
 {
-    return add_completion(zh, xid, COMPLETION_VOID, (const void*)dc, data, 0, 0);
+    return add_completion(zh, xid, COMPLETION_VOID, (const void*)dc, data, 0, 0, isSynchronous);
 }
 
 static int add_string_completion(zhandle_t *zh, int xid,
-        string_completion_t dc, const void *data)
+        string_completion_t dc, const void *data, bool isSynchronous)
 {
-    return add_completion(zh, xid, COMPLETION_STRING, (const void*)dc, data, 0, 0);
+    return add_completion(zh, xid, COMPLETION_STRING, (const void*)dc, data, 0, 0, isSynchronous);
 }
 
 static int add_multi_completion(zhandle_t *zh, int xid, multi_completion_t dc,
-        const void *data, boost::ptr_vector<OpResult>* results) {
-    return add_completion(zh, xid, COMPLETION_MULTI, (const void*)dc, data, 0, results);
+        const void *data, boost::ptr_vector<OpResult>* results, bool isSynchronous) {
+    return add_completion(zh, xid, COMPLETION_MULTI, (const void*)dc, data, 0, results, isSynchronous);
 }
 
 int
@@ -1934,7 +1926,7 @@ zookeeper_close(zhandle_t *zh) {
 
     /* Signal any syncronous completions before joining the threads */
     enter_critical(zh);
-    free_completions(zh,1,ZCLOSING);
+    free_completions(zh, ZCLOSING);
     leave_critical(zh);
 
     adaptor_finish(zh);
@@ -2072,15 +2064,9 @@ static int getRealString(zhandle_t *zh, int flags, const char* path,
 /*---------------------------------------------------------------------------*
  * ASYNC API
  *---------------------------------------------------------------------------*/
-int zoo_aget(zhandle_t *zh, const char *path, int watch, data_completion_t dc,
-        const void *data)
-{
-    return zoo_awget(zh,path,watch?zh->watcher:0,zh->context,dc,data);
-}
-
 int zoo_awget(zhandle_t *zh, const char *path,
         watcher_fn watcher, void* watcherCtx,
-        data_completion_t dc, const void *data)
+        data_completion_t dc, const void *data, bool isSynchronous)
 {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
@@ -2109,7 +2095,8 @@ int zoo_awget(zhandle_t *zh, const char *path,
 
   enter_critical(zh);
   rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
-      create_watcher_registration(pathStr.c_str(),data_result_checker,watcher,watcherCtx));
+      create_watcher_registration(pathStr.c_str(),data_result_checker,watcher,watcherCtx),
+      isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer,
     serialized.size());
   leave_critical(zh);
@@ -2122,7 +2109,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
 }
 
 int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
-        int version, stat_completion_t dc, const void *data)
+        int version, stat_completion_t dc, const void *data, bool isSynchronous)
 {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
@@ -2155,7 +2142,8 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
-  rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0);
+  rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0,
+                                         isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer,
     serialized.size());
   leave_critical(zh);
@@ -2169,7 +2157,8 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
 
 int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
         int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl,
-        int flags, string_completion_t completion, const void *data) {
+        int flags, string_completion_t completion, const void *data,
+        bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, flags, path, pathStr);
   if (rc != ZOK) {
@@ -2203,7 +2192,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
 
   enter_critical(zh);
   rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
-                                           data);
+                                           data, isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer,
                                         serialized.size());
   leave_critical(zh);
@@ -2227,7 +2216,7 @@ int DeleteRequest_init(zhandle_t *zh, struct DeleteRequest *req,
 }
 
 int zoo_adelete(zhandle_t *zh, const char *path, int version,
-        void_completion_t completion, const void *data) {
+        void_completion_t completion, const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
   if (rc != ZOK) {
@@ -2254,7 +2243,8 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
-  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
+                                         isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
@@ -2265,15 +2255,9 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_aexists(zhandle_t *zh, const char *path, int watch,
-        stat_completion_t sc, const void *data)
-{
-    return zoo_awexists(zh,path,watch?zh->watcher:0,zh->context,sc,data);
-}
-
 int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
                  void* watcherCtx, stat_completion_t completion,
-                 const void *data) {
+                 const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
   if (rc != ZOK) {
@@ -2301,7 +2285,7 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   enter_critical(zh);
   rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
       create_watcher_registration(req.getpath().c_str(), exists_result_checker,
-        watcher,watcherCtx));
+        watcher,watcherCtx), isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
@@ -2310,72 +2294,11 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
-}
-
-static int zoo_awget_children_(zhandle_t *zh, const char *path, watcher_fn watcher,
-         void* watcherCtx, strings_completion_t sc, const void *data)
-{
-  std::string pathStr;
-  int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
-    return rc;
-  }
-
-  std::string serialized;
-  StringOutStream stream(serialized);
-  hadoop::OBinArchive oarchive(stream);
-
-  proto::RequestHeader header;
-  header.setxid(get_xid());
-  header.settype(ZOO_GETCHILDREN_OP);
-  header.serialize(oarchive, "header");
-
-  proto::GetChildrenRequest req;
-  req.getpath() = pathStr;
-  req.setwatch(watcher != NULL);
-  req.serialize(oarchive, "req");
-
-  // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
-  memmove(buffer, serialized.c_str(), serialized.size());
-
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_strings_completion(zh, header.getxid(), sc, data,
-      create_watcher_registration(req.getpath().c_str(),child_result_checker,watcher,watcherCtx));
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
-  leave_critical(zh);
-
-  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-      header.getxid() % path % format_current_endpoint_info(zh));
-  /* make a best (non-blocking) effort to send the requests asap */
-  adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
-
-  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-                          header.getxid() % path % format_current_endpoint_info(zh));
-
-  /* make a best (non-blocking) effort to send the requests asap */
-  adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
-}
-
-int zoo_aget_children(zhandle_t *zh, const char *path, int watch,
-        strings_completion_t dc, const void *data)
-{
-    return zoo_awget_children_(zh,path,watch?zh->watcher:0,zh->context,dc,data);
-}
-
-int zoo_awget_children(zhandle_t *zh, const char *path,
-         watcher_fn watcher, void* watcherCtx,
-         strings_completion_t dc,
-         const void *data)
-{
-    return zoo_awget_children_(zh,path,watcher,watcherCtx,dc,data);
 }
 
 static int zoo_awget_children2_(zhandle_t *zh, const char *path,
          watcher_fn watcher, void* watcherCtx,
-         strings_stat_completion_t ssc, const void *data) {
+         strings_stat_completion_t ssc, const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
   if (rc != ZOK) {
@@ -2402,7 +2325,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
 
   enter_critical(zh);
   rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
-      create_watcher_registration(req.getpath().c_str(),child_result_checker,watcher,watcherCtx));
+      create_watcher_registration(req.getpath().c_str(),child_result_checker,watcher,watcherCtx), false);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
@@ -2413,18 +2336,13 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_aget_children2(zhandle_t *zh, const char *path, int watch,
-        strings_stat_completion_t dc, const void *data)
-{
-    return zoo_awget_children2_(zh,path,watch?zh->watcher:0,zh->context,dc,data);
-}
-
 int zoo_awget_children2(zhandle_t *zh, const char *path,
          watcher_fn watcher, void* watcherCtx,
          strings_stat_completion_t dc,
-         const void *data)
+         const void *data, bool isSynchronous)
 {
-    return zoo_awget_children2_(zh,path,watcher,watcherCtx,dc,data);
+    return zoo_awget_children2_(zh,path,watcher,watcherCtx,dc,data,
+                                isSynchronous);
 }
 
 int zoo_async(zhandle_t *zh, const char *path,
@@ -2453,7 +2371,7 @@ int zoo_async(zhandle_t *zh, const char *path,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
-  rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data, false) ;
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
@@ -2466,7 +2384,7 @@ int zoo_async(zhandle_t *zh, const char *path,
 }
 
 int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
-        const void *data) {
+        const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
   if (rc != ZOK) {
@@ -2491,7 +2409,8 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
-  rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data,
+                                        isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
@@ -2503,7 +2422,8 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
 }
 
 int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
-        const std::vector<data::ACL>& acl, void_completion_t completion, const void *data) {
+        const std::vector<data::ACL>& acl, void_completion_t completion,
+        const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
   if (rc != ZOK) {
@@ -2530,7 +2450,8 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
-  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data);
+  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
+                                         isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
@@ -2543,7 +2464,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
 
 int zoo_amulti2(zhandle_t *zh,
     const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
-    multi_completion_t completion, const void *data) {
+    multi_completion_t completion, const void *data, bool isSynchronous) {
   std::string serialized;
   StringOutStream stream(serialized);
   hadoop::OBinArchive oarchive(stream);
@@ -2633,11 +2554,11 @@ int zoo_amulti2(zhandle_t *zh,
 
   /* BEGIN: CRTICIAL SECTION */
   enter_critical(zh);
-  add_multi_completion(zh, header.getxid(), completion, data, results);
+  add_multi_completion(zh, header.getxid(), completion, data, results, isSynchronous);
   queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
   leave_critical(zh);
 
-  LOG_DEBUG(boost::format("Sending multi request xid=%#x with %d subrequests to %s") %
+  LOG_DEBUG(boost::format("Sending multi request xid=%#08x with %d subrequests to %s") %
       header.getxid() % index % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
@@ -2760,8 +2681,10 @@ const char* zerror(int c)
     return "unknown error";
 }
 
+// TODO(michim) handle synchronous
 int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
-        int certLen,void_completion_t completion, const void *data)
+        int certLen,void_completion_t completion, const void *data,
+        bool isSynchronous)
 {
     struct buffer auth;
     auth_info *authinfo;

@@ -165,7 +165,6 @@ struct _zhandle {
     int connect_index; /* The index of the address to connect to */
     clientid_t client_id;
     long long last_zxid;
-    int outstanding_sync; /* Number of outstanding synchronous requests */
     boost::scoped_ptr<proto::ConnectResponse> connectResponse;
     buffer_t primer_buffer; /* The buffer used for the handshake at the start of a connection */
     volatile int state;

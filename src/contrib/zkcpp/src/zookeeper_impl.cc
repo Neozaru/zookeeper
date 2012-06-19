@@ -491,7 +491,8 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
 
 ReturnCode::type ZooKeeperImpl::
 addAuth(const std::string& scheme, const std::string& cert,
-        boost::shared_ptr<AddAuthCallback> callback) {
+        boost::shared_ptr<AddAuthCallback> callback,
+        bool isSynchronous) {
   void_completion_t completion = NULL;
   AuthCompletionContext* context = NULL;
   if (callback.get()) {
@@ -499,7 +500,8 @@ addAuth(const std::string& scheme, const std::string& cert,
     context = new AuthCompletionContext(callback, scheme, cert);
   }
   int rc = zoo_add_auth(handle_, scheme.c_str(), cert.c_str(),
-                        cert.size(), completion, (void*)context);
+                        cert.size(), completion, (void*)context,
+                        isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -507,7 +509,7 @@ ReturnCode::type ZooKeeperImpl::
 addAuth(const std::string& scheme, const std::string& cert) {
   boost::shared_ptr<MyAddAuthCallback> callback(
     new MyAddAuthCallback(scheme, cert));
-  ReturnCode::type rc = addAuth(scheme, cert, callback);
+  ReturnCode::type rc = addAuth(scheme, cert, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -519,7 +521,8 @@ addAuth(const std::string& scheme, const std::string& cert) {
 ReturnCode::type ZooKeeperImpl::
 create(const std::string& path, const std::string& data,
                   const std::vector<data::ACL>& acl, CreateMode::type mode,
-                  boost::shared_ptr<CreateCallback> callback) {
+                  boost::shared_ptr<CreateCallback> callback,
+                  bool isSynchronous) {
   if ((int)this->getState() < 0) {
     return ReturnCode::InvalidState;
   }
@@ -531,7 +534,7 @@ create(const std::string& path, const std::string& data,
     context = new CompletionContext(callback, path);
   }
   int rc = zoo_acreate(handle_, path.c_str(), data.c_str(), data.size(),
-                       acl, mode, completion, (void*)context);
+                       acl, mode, completion, (void*)context, isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -541,7 +544,7 @@ create(const std::string& path, const std::string& data,
        std::string& pathCreated) {
   boost::shared_ptr<MyCreateCallback> callback(
     new MyCreateCallback(path, pathCreated));
-  ReturnCode::type rc = create(path, data, acl, mode, callback);
+  ReturnCode::type rc = create(path, data, acl, mode, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -551,7 +554,8 @@ create(const std::string& path, const std::string& data,
 
 ReturnCode::type ZooKeeperImpl::
 remove(const std::string& path, int32_t version,
-       boost::shared_ptr<RemoveCallback> callback) {
+       boost::shared_ptr<RemoveCallback> callback,
+       bool isSynchronous) {
   void_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (callback.get()) {
@@ -559,14 +563,14 @@ remove(const std::string& path, int32_t version,
     context = new CompletionContext(callback, path);
   }
   int rc = zoo_adelete(handle_, path.c_str(), version,
-         completion, (void*)context);
+         completion, (void*)context, isSynchronous);
   return intToReturnCode(rc);
 }
 
 ReturnCode::type ZooKeeperImpl::
 remove(const std::string& path, int32_t version) {
   boost::shared_ptr<MyRemoveCallback> callback(new MyRemoveCallback());
-  ReturnCode::type rc = remove(path, version, callback);
+  ReturnCode::type rc = remove(path, version, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -576,7 +580,8 @@ remove(const std::string& path, int32_t version) {
 
 ReturnCode::type ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
-       boost::shared_ptr<ExistsCallback> cb) {
+       boost::shared_ptr<ExistsCallback> cb,
+       bool isSynchronous) {
   watcher_fn watcher = NULL;
   WatchContext* watchContext = NULL;
   stat_completion_t completion = NULL;
@@ -592,7 +597,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
   }
 
   int rc = zoo_awexists(handle_, path.c_str(), watcher, (void*)watchContext,
-                        completion,  (void*)completionContext);
+                        completion,  (void*)completionContext, isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -600,7 +605,7 @@ ReturnCode::type ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        data::Stat& stat) {
   boost::shared_ptr<MyExistsCallback> callback(new MyExistsCallback(stat));
-  ReturnCode::type rc = exists(path, watch, callback);
+  ReturnCode::type rc = exists(path, watch, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -610,7 +615,8 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeperImpl::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
-    boost::shared_ptr<GetCallback> cb) {
+    boost::shared_ptr<GetCallback> cb,
+    bool isSynchronous) {
   watcher_fn watcher = NULL;
   WatchContext* watchContext = NULL;
   data_completion_t completion = NULL;
@@ -626,7 +632,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
   }
 
   int rc = zoo_awget(handle_, path.c_str(), watcher, (void*)watchContext,
-                    completion, (void*)context);
+                    completion, (void*)context, isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -634,7 +640,7 @@ ReturnCode::type ZooKeeperImpl::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
     std::string& data, data::Stat& stat) {
   boost::shared_ptr<MyGetCallback> callback(new MyGetCallback(data, stat));
-  ReturnCode::type rc = get(path, watch, callback);
+  ReturnCode::type rc = get(path, watch, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -644,7 +650,8 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
 ReturnCode::type ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
-               int32_t version, boost::shared_ptr<SetCallback> cb) {
+               int32_t version, boost::shared_ptr<SetCallback> cb,
+               bool isSynchronous) {
   stat_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {
@@ -653,7 +660,7 @@ set(const std::string& path, const std::string& data,
   }
 
   int rc = zoo_aset(handle_, path.c_str(), data.c_str(), data.size(), version,
-                    completion, (void*)context);
+                    completion, (void*)context, isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -662,7 +669,7 @@ ReturnCode::type ZooKeeperImpl::
 set(const std::string& path, const std::string& data,
     int32_t version, data::Stat& stat) {
   boost::shared_ptr<MySetCallback> callback(new MySetCallback(stat));
-  ReturnCode::type rc = set(path, data, version, callback);
+  ReturnCode::type rc = set(path, data, version, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -673,7 +680,8 @@ set(const std::string& path, const std::string& data,
 
 ReturnCode::type ZooKeeperImpl::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
-            boost::shared_ptr<GetChildrenCallback> cb) {
+            boost::shared_ptr<GetChildrenCallback> cb,
+            bool isSynchronous) {
   watcher_fn watcher = NULL;
   WatchContext* watchContext = NULL;
   strings_stat_completion_t completion = NULL;
@@ -689,7 +697,8 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
   }
 
   int rc = zoo_awget_children2(handle_, path.c_str(), watcher,
-                               (void*)watchContext, completion, (void*)context);
+                               (void*)watchContext, completion, (void*)context,
+                               isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -698,7 +707,7 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
             std::vector<std::string>& children, data::Stat& stat) {
   boost::shared_ptr<MyGetChildrenCallback>
     callback(new MyGetChildrenCallback(children, stat));
-  ReturnCode::type rc = getChildren(path, watch, callback);
+  ReturnCode::type rc = getChildren(path, watch, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -708,14 +717,16 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 }
 
 ReturnCode::type ZooKeeperImpl::
-getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb) {
+getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb,
+       bool isSynchronous) {
   acl_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {
     completion = &aclCompletion;
     context = new CompletionContext(cb, path);
   }
-  int rc = zoo_aget_acl(handle_, path.c_str(), completion, (void*)context);
+  int rc = zoo_aget_acl(handle_, path.c_str(), completion, (void*)context,
+                        isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -724,7 +735,7 @@ ReturnCode::type ZooKeeperImpl::
 getAcl(const std::string& path,
        std::vector<data::ACL>& acl, data::Stat& stat) {
   boost::shared_ptr<MyGetAclCallback> callback(new MyGetAclCallback(acl, stat));
-  ReturnCode::type rc = getAcl(path, callback);
+  ReturnCode::type rc = getAcl(path, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -736,7 +747,8 @@ getAcl(const std::string& path,
 ReturnCode::type ZooKeeperImpl::
 setAcl(const std::string& path, int32_t version,
        const std::vector<data::ACL>& acl,
-       boost::shared_ptr<SetAclCallback> cb) {
+       boost::shared_ptr<SetAclCallback> cb,
+       bool isSynchronous) {
   void_completion_t completion = NULL;
   CompletionContext* context = NULL;
   if (cb.get()) {
@@ -745,7 +757,7 @@ setAcl(const std::string& path, int32_t version,
   }
 
   int rc = zoo_aset_acl(handle_, path.c_str(), version, acl, completion,
-                         (void*)context);
+                         (void*)context, isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -753,7 +765,7 @@ ReturnCode::type ZooKeeperImpl::
 setAcl(const std::string& path, int32_t version,
        const std::vector<data::ACL>& acl) {
   boost::shared_ptr<MySetAclCallback> callback(new MySetAclCallback());
-  ReturnCode::type rc = setAcl(path, version, acl, callback);
+  ReturnCode::type rc = setAcl(path, version, acl, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
@@ -776,14 +788,15 @@ sync(const std::string& path, boost::shared_ptr<SyncCallback> cb) {
 
 ReturnCode::type ZooKeeperImpl::
 multi(const boost::ptr_vector<Op>& ops,
-      boost::shared_ptr<MultiCallback> cb) {
+      boost::shared_ptr<MultiCallback> cb,
+      bool isSynchronous) {
   multi_completion_t completion = NULL;
   MultiCompletionContext* context = NULL;
   if (cb.get()) {
     completion = &multiCompletion;
     context = new MultiCompletionContext(cb);
   }
-  int rc = zoo_amulti2(handle_, ops, completion, context);
+  int rc = zoo_amulti2(handle_, ops, completion, context, isSynchronous);
   return intToReturnCode(rc);
 }
 
@@ -791,7 +804,7 @@ ReturnCode::type ZooKeeperImpl::
 multi(const boost::ptr_vector<Op>& ops,
       boost::ptr_vector<OpResult>& results) {
   boost::shared_ptr<MyMultiCallback> callback(new MyMultiCallback(results));
-  ReturnCode::type rc = multi(ops, callback);
+  ReturnCode::type rc = multi(ops, callback, true);
   if (rc != ReturnCode::Ok) {
     return rc;
   }
