@@ -29,7 +29,6 @@
 #include <boost/random/normal_distribution.hpp>
 #include <string>
 #include <zookeeper.h>
-#include <zookeeper.jute.h>
 #include <memory_in_stream.hh>
 #include <string_out_stream.hh>
 #include <zookeeper.jute.hh>
@@ -726,6 +725,7 @@ static void free_buffer(buffer_t *b)
     delete b;
 }
 
+
 static buffer_t *dequeue_buffer(buffer_list_t *list) {
   boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   if (list->bufferList_.empty()) {
@@ -744,14 +744,11 @@ static int remove_buffer(buffer_list_t *list)
     return 1;
 }
 
-static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len)
-{
-    buffer_t *b  = allocate_buffer(buff,len);
-    if (!b)
-        return ZSYSTEMERROR;
-    boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
-    list->bufferList_.push_back(b);
-    return ZOK;
+static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len) {
+  buffer_t *b  = allocate_buffer(buff,len);
+  boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
+  list->bufferList_.push_back(b);
+  return ZOK;
 }
 
 /* returns:
@@ -1379,42 +1376,34 @@ int api_epilog(zhandle_t *zh,int rc)
 }
 
 // IO thread queues session events to be processed by the completion thread
-static int queue_session_event(zhandle_t *zh, int state)
-{
-    int rc;
-    struct WatcherEvent evt = { ZOO_SESSION_EVENT, state, (char*)"" };
-    struct ReplyHeader hdr = { WATCHER_EVENT_XID, 0, 0 };
-    struct oarchive *oa;
-    completion_list_t *cptr;
+static int queue_session_event(zhandle_t *zh, int state) {
+  std::string serialized;
+  StringOutStream stream(serialized);
+  hadoop::OBinArchive oarchive(stream);
+  completion_list_t *cptr;
+  proto::ReplyHeader header;
+  header.setxid(WATCHER_EVENT_XID);
+  header.setzxid(0);
+  header.seterr(0);
+  proto::WatcherEvent event;
+  event.settype(ZOO_SESSION_EVENT);
+  event.setstate(state);
+  event.getpath() = "";
 
-    if ((oa=create_buffer_oarchive())==NULL) {
-        LOG_ERROR("out of memory");
-        goto error;
-    }
-    rc = serialize_ReplyHeader(oa, "hdr", &hdr);
-    rc = rc<0?rc: serialize_WatcherEvent(oa, "event", &evt);
-    if(rc<0){
-        close_buffer_oarchive(&oa, 1);
-        goto error;
-    }
-    cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
-    cptr->buffer = allocate_buffer(get_buffer(oa), get_buffer_len(oa));
-    cptr->buffer->curr_offset = get_buffer_len(oa);
-    if (!cptr->buffer) {
-        free(cptr);
-        close_buffer_oarchive(&oa, 1);
-        goto error;
-    }
-    /* We queued the buffer, so don't free it */
-    close_buffer_oarchive(&oa, 0);
-    cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, "");
-    queue_completion(&zh->completions_to_process, cptr);
-    return ZOK;
-error:
-    errno=ENOMEM;
-    return ZSYSTEMERROR;
+  header.serialize(oarchive, "header");
+  event.serialize(oarchive, "event");
+  cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
+
+  // TODO(michim) avoid copy
+  char* data  = (char*)malloc(serialized.size());
+  memmove(data, serialized.c_str(), serialized.size());
+
+  cptr->buffer = allocate_buffer(data, serialized.size());
+  cptr->buffer->curr_offset = serialized.size();
+  cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, "");
+  queue_completion(&zh->completions_to_process, cptr);
+  return ZOK;
 }
-//#endif
 
 completion_list_t *dequeue_completion(completion_head_t *list)
 {
