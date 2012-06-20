@@ -2148,17 +2148,6 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int DeleteRequest_init(zhandle_t *zh, struct DeleteRequest *req, 
-        const char *path, int version)
-{
-    int rc = Request_path_init(zh, 0, &req->path, path);
-    if (rc != ZOK) {
-        return rc;
-    }
-    req->version = version;
-    return ZOK;
-}
-
 int zoo_adelete(zhandle_t *zh, const char *path, int version,
         void_completion_t completion, const void *data, bool isSynchronous) {
   std::string pathStr;

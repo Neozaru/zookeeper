@@ -18,7 +18,6 @@
 
 #ifndef ZK_ADAPTOR_H_
 #define ZK_ADAPTOR_H_
-#include <zookeeper.jute.h>
 #include <zookeeper.jute.hh>
 #include <boost/scoped_ptr.hpp>
 #include <boost/thread.hpp>
