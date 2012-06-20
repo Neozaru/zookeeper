@@ -705,27 +705,6 @@ std::string stripChroot(const std::string& path, const std::string& chroot) {
   return path.substr(chroot.size());
 }
 
-static buffer_t *allocate_buffer(char *buff, int len)
-{
-    buffer_t* buffer = new buffer_t();
-    buffer->len = len==0?sizeof(*buffer):len;
-    buffer->curr_offset = 0;
-    buffer->buffer = buff;
-    return buffer;
-}
-
-static void free_buffer(buffer_t *b)
-{
-    if (!b) {
-        return;
-    }
-    if (b->buffer) {
-        free(b->buffer);
-    }
-    delete b;
-}
-
-
 static buffer_t *dequeue_buffer(buffer_list_t *list) {
   boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   if (list->bufferList_.empty()) {
@@ -740,12 +719,12 @@ static int remove_buffer(buffer_list_t *list)
     if (!b) {
         return 0;
     }
-    free_buffer(b);
+    delete b;
     return 1;
 }
 
 static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len) {
-  buffer_t *b  = allocate_buffer(buff,len);
+  buffer_t *b  = new buffer_t(buff,len);
   boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   list->bufferList_.push_back(b);
   return ZOK;
@@ -915,7 +894,7 @@ static void cleanup_bufs(zhandle_t *zh, int rc)
     free_completions(zh, rc);
     leave_critical(zh);
     if (zh->input_buffer && zh->input_buffer != &zh->primer_buffer) {
-        free_buffer(zh->input_buffer);
+        delete zh->input_buffer;
         zh->input_buffer = 0;
     }
 }
@@ -1304,7 +1283,7 @@ static int check_events(zhandle_t *zh, int events)
     if (events&ZOOKEEPER_READ) {
         int rc;
         if (zh->input_buffer == 0) {
-            zh->input_buffer = allocate_buffer(0,0);
+            zh->input_buffer = new buffer_t(0,0);
         }
 
         rc = recv_buffer(zh->fd, zh->input_buffer);
@@ -1398,7 +1377,7 @@ static int queue_session_event(zhandle_t *zh, int state) {
   char* data  = (char*)malloc(serialized.size());
   memmove(data, serialized.c_str(), serialized.size());
 
-  cptr->buffer = allocate_buffer(data, serialized.size());
+  cptr->buffer = new buffer_t(data, serialized.size());
   cptr->buffer->curr_offset = serialized.size();
   cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, "");
   queue_completion(&zh->completions_to_process, cptr);
@@ -1660,12 +1639,12 @@ zookeeper_process(zhandle_t *zh, int events) {
       queue_completion(&zh->completions_to_process, c);
     } else if (header.getxid() == SET_WATCHES_XID) {
       LOG_DEBUG("Processing SET_WATCHES");
-      free_buffer(bptr);
+      delete bptr;
     } else if (header.getxid() == AUTH_XID) {
       LOG_DEBUG("Processing AUTH_XID");
       // special handling for the AUTH response as it may come back out-of-band
       auth_completion_func(header.geterr(), zh);
-      free_buffer(bptr);
+      delete bptr;
       // auth completion may change the connection state to unrecoverable
       if(is_unrecoverable(zh)){
         handle_error(zh, ZAUTHFAILED);
@@ -1688,7 +1667,7 @@ zookeeper_process(zhandle_t *zh, int events) {
       if (cptr->xid != header.getxid()) {
         // received unexpected (or out-of-order) response
         LOG_DEBUG("Processing unexpected or out-of-order response!");
-        free_buffer(bptr);
+        delete bptr;
         // put the completion back on the queue (so it gets properly
         // signaled and deallocated) and disconnect from the server
         // TODO destroy completion
@@ -1704,7 +1683,7 @@ zookeeper_process(zhandle_t *zh, int events) {
         gettimeofday(&now, 0);
         elapsed = calculate_interval(&zh->last_ping, &now);
         LOG_DEBUG("Got ping response in " << elapsed << "ms");
-        free_buffer(bptr);
+        delete bptr;
         destroy_completion_entry(cptr);
       } else {
         if (cptr->c.isSynchronous) {
@@ -1790,13 +1769,13 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
   return c;
 }
 
-static void destroy_completion_entry(completion_list_t* c){
-    if(c!=0){
-        destroy_watcher_registration(c->watcher);
-        if(c->buffer!=0)
-            free_buffer(c->buffer);
-        free(c);
-    }
+static void destroy_completion_entry(completion_list_t* c) {
+  if(c != NULL) {
+    destroy_watcher_registration(c->watcher);
+    if(c->buffer != NULL)
+      delete c->buffer;
+    free(c);
+  }
 }
 
 static void queue_completion_nolock(completion_head_t *list, 

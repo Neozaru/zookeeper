@@ -64,6 +64,22 @@ class completion_list_t;
  */
 class buffer_t {
   public:
+    buffer_t() {
+      len = 0;
+      curr_offset = 0;
+      buffer = NULL;
+    }
+    buffer_t(char* buff, int length) {
+      len = length;
+      curr_offset = 0;
+      buffer = buff;
+    }
+    ~buffer_t() {
+      if (buffer) {
+        free(buffer);
+      }
+    }
+
     char *buffer;
     int len; /* This represents the length of sizeof(header) + length of buffer */
     int curr_offset; /* This is the offset into the header followed by offset into the buffer */
