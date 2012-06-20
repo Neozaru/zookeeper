@@ -486,7 +486,7 @@ public:
       std::vector<data::ACL> acl;
       CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zkChroot.getAcl("/", acl, statOut));
       CPPUNIT_ASSERT_EQUAL(1, (int)acl.size());
-      CPPUNIT_ASSERT_EQUAL((int)ZOO_PERM_ALL, (int)acl[0].getperms());
+      CPPUNIT_ASSERT_EQUAL((int)Permission::All, (int)acl[0].getperms());
 
       // set acl
       acl.clear();

@@ -125,21 +125,6 @@ static __attribute__ ((unused)) const char* watcherEvent2String(int ev){
     return "INVALID_EVENT";
 }
 
-const int ZOO_PERM_READ = 1 << 0;
-const int ZOO_PERM_WRITE = 1 << 1;
-const int ZOO_PERM_CREATE = 1 << 2;
-const int ZOO_PERM_DELETE = 1 << 3;
-const int ZOO_PERM_ADMIN = 1 << 4;
-const int ZOO_PERM_ALL = 0x1f;
-struct Id ZOO_ANYONE_ID_UNSAFE = {(char*)"world", (char*)"anyone"};
-struct Id ZOO_AUTH_IDS = {(char*)"auth", (char*)""};
-static struct ACL _OPEN_ACL_UNSAFE_ACL[] = {{0x1f, {(char*)"world", (char*)"anyone"}}};
-static struct ACL _READ_ACL_UNSAFE_ACL[] = {{0x01, {(char*)"world", (char*)"anyone"}}};
-static struct ACL _CREATOR_ALL_ACL_ACL[] = {{0x1f, {(char*)"auth", (char*)""}}};
-struct ACL_vector ZOO_OPEN_ACL_UNSAFE = { 1, _OPEN_ACL_UNSAFE_ACL};
-struct ACL_vector ZOO_READ_ACL_UNSAFE = { 1, _READ_ACL_UNSAFE_ACL};
-struct ACL_vector ZOO_CREATOR_ALL_ACL = { 1, _CREATOR_ALL_ACL_ACL};
-
 #define COMPLETION_WATCH -1
 #define COMPLETION_VOID 0
 #define COMPLETION_STAT 1
