@@ -999,14 +999,6 @@ ZOOAPI int zoo_amulti2(zhandle_t *zh,
         multi_completion_t, const void *data, bool isSynchronous);
 
 /**
- * \brief return an error string.
- * 
- * \param return code
- * \return string corresponding to the return code
- */
-ZOOAPI const char* zerror(int c);
-
-/**
  * \brief specify application credentials.
  * 
  * The application calls this function to specify its credentials for purposes

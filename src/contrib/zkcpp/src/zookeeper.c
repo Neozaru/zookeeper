@@ -2582,64 +2582,6 @@ int flush_send_queue(zhandle_t*zh, int timeout)
     return rc;
 }
 
-const char* zerror(int c)
-{
-    switch (c){
-    case ZOK:
-      return "ok";
-    case ZSYSTEMERROR:
-      return "system error";
-    case ZRUNTIMEINCONSISTENCY:
-      return "run time inconsistency";
-    case ZDATAINCONSISTENCY:
-      return "data inconsistency";
-    case ZCONNECTIONLOSS:
-      return "connection loss";
-    case ZMARSHALLINGERROR:
-      return "marshalling error";
-    case ZUNIMPLEMENTED:
-      return "unimplemented";
-    case ZOPERATIONTIMEOUT:
-      return "operation timeout";
-    case ZBADARGUMENTS:
-      return "bad arguments";
-    case ZINVALIDSTATE:
-      return "invalid zhandle state";
-    case ZAPIERROR:
-      return "api error";
-    case ZNONODE:
-      return "no node";
-    case ZNOAUTH:
-      return "not authenticated";
-    case ZBADVERSION:
-      return "bad version";
-    case  ZNOCHILDRENFOREPHEMERALS:
-      return "no children for ephemerals";
-    case ZNODEEXISTS:
-      return "node exists";
-    case ZNOTEMPTY:
-      return "not empty";
-    case ZSESSIONEXPIRED:
-      return "session expired";
-    case ZINVALIDCALLBACK:
-      return "invalid callback";
-    case ZINVALIDACL:
-      return "invalid acl";
-    case ZAUTHFAILED:
-      return "authentication failed";
-    case ZCLOSING:
-      return "zookeeper is closing";
-    case ZNOTHING:
-      return "(not error) no server responses to process";
-    case ZSESSIONMOVED:
-      return "session moved to another server, so operation is ignored";
-    }
-    if (c > 0) {
-      return strerror(c);
-    }
-    return "unknown error";
-}
-
 // TODO(michim) handle synchronous
 int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
         int certLen,void_completion_t completion, const void *data,
