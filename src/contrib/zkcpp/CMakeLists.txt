@@ -47,7 +47,7 @@ file(GLOB testsrc
   #${PROJECT_SOURCE_DIR}/tests/TestOperations.cc
   ${PROJECT_SOURCE_DIR}/tests/ZKMocks.cc
   ${PROJECT_SOURCE_DIR}/tests/TestCppClient.cc
-  #${PROJECT_SOURCE_DIR}/tests/TestClient.cc
+  ${PROJECT_SOURCE_DIR}/tests/TestClient.cc
   ${PROJECT_SOURCE_DIR}/tests/*.h
 )
 

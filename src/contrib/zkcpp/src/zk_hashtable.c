@@ -220,17 +220,16 @@ static void add_for_event(zk_hashtable *ht, const std::string& path,
     free(wl);
 }
 
-static void do_foreach_watcher(watcher_object_t* wo,zhandle_t* zh,
-        const char* path,int type,int state)
-{
-    // session event's don't have paths
-    const char *client_path =
-        (type != ZOO_SESSION_EVENT ? sub_string(zh, path) : path);
-    while(wo!=0){
-        wo->watcher(zh,type,state,client_path,wo->context);
-        wo=wo->next;
-    }    
-    free_duplicate_path(client_path, path);
+static void
+do_foreach_watcher(watcher_object_t* wo, zhandle_t* zh,
+                   const std::string& path, int type, int state) {
+  // session event's don't have paths
+  std::string client_path =
+    type == ZOO_SESSION_EVENT ? path : stripChroot(path, *(zh->chroot));
+  while(wo != NULL) {
+    wo->watcher(zh, type, state, client_path.c_str(), wo->context);
+    wo=wo->next;
+  }
 }
 
 watcher_object_list_t *collectWatchers(zhandle_t *zh,int type,

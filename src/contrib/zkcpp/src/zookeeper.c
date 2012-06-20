@@ -20,6 +20,7 @@
 #  define USE_STATIC_LIB
 #endif
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/foreach.hpp>
@@ -185,7 +186,8 @@ static const char* format_current_endpoint_info(zhandle_t* zh);
 
 /* deserialize forward declarations */
 static void deserialize_response(int type, int xid, int failed, int rc,
-    completion_list_t *cptr, hadoop::IBinArchive& iarchive);
+    completion_list_t *cptr, hadoop::IBinArchive& iarchive,
+     const std::string& chroot);
 static int deserialize_multi(int xid, completion_list_t *cptr,
                              hadoop::IBinArchive& iarchive,
                              boost::ptr_vector<OpResult>& results);
@@ -282,11 +284,6 @@ static void destroy(zhandle_t *zh)
     if (zh->addrs != 0) {
         free(zh->addrs);
         zh->addrs = NULL;
-    }
-
-    if (zh->chroot != 0) {
-        free(zh->chroot);
-        zh->chroot = NULL;
     }
 
     zh->auth_h.get()->authList_.clear();
@@ -607,16 +604,13 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     }
     //parse the host to get the chroot if
     //available
+    zh->chroot.reset(new std::string(""));
     index_chroot = (char*)strchr(host, '/');
     if (index_chroot) {
-        zh->chroot = strdup(index_chroot);
-        if (zh->chroot == NULL) {
-            goto abort;
-        }
+        zh->chroot.reset(new std::string(index_chroot));
         // if chroot is just / set it to null
-        if (strlen(zh->chroot) == 1) {
-            free(zh->chroot);
-            zh->chroot = NULL;
+        if (*(zh->chroot) == "/") {
+          zh->chroot.reset(new std::string(""));
         }
         // cannot use strndup so allocate and strcpy
         zh->hostname = (char *) malloc(index_chroot - host + 1);
@@ -625,10 +619,9 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
         *(zh->hostname + (index_chroot - host)) = '\0';
 
     } else {
-        zh->chroot = NULL;
         zh->hostname = strdup(host);
     }
-    if (zh->chroot && !isValidPath(zh->chroot, 0)) {
+    if (!zh->chroot->empty() && !isValidPath(zh->chroot->c_str(), 0)) {
         errno = EINVAL;
         goto abort;
     }
@@ -684,14 +677,15 @@ void free_duplicate_path(const char *free_path, const char* path) {
 */
 static char* prepend_string(zhandle_t *zh, const char* client_path) {
     char *ret_str;
-    if (zh == NULL || zh->chroot == NULL)
+    if (zh == NULL || zh->chroot->empty()) {
         return (char *) client_path;
+    }
     // handle the chroot itself, client_path = "/"
     if (strlen(client_path) == 1) {
-        return strdup(zh->chroot);
+        return strdup(zh->chroot->c_str());
     }
-    ret_str = (char *) malloc(strlen(zh->chroot) + strlen(client_path) + 1);
-    strcpy(ret_str, zh->chroot);
+    ret_str = (char *) malloc(zh->chroot->size() + strlen(client_path) + 1);
+    strcpy(ret_str, zh->chroot->c_str());
     return strcat(ret_str, client_path);
 }
 
@@ -699,24 +693,17 @@ static char* prepend_string(zhandle_t *zh, const char* client_path) {
    strip off the chroot string from the server path
    if there is one else return the exact path
  */
-char* sub_string(zhandle_t *zh, const char* server_path) {
-    char *ret_str;
-    if (zh->chroot == NULL)
-        return (char *) server_path;
-    //ZOOKEEPER-1027
-    if (strncmp(server_path, zh->chroot, strlen(zh->chroot)) != 0) {
-        LOG_ERROR(
-          boost::format("server path %s does not include chroot path %s") %
-                        server_path % zh->chroot);
-        return (char *) server_path;
-    }
-    if (strlen(server_path) == strlen(zh->chroot)) {
-        //return "/"
-        ret_str = strdup("/");
-        return ret_str;
-    }
-    ret_str = strdup(server_path + strlen(zh->chroot));
-    return ret_str;
+std::string stripChroot(const std::string& path, const std::string& chroot) {
+  //ZOOKEEPER-1027
+  if (!boost::starts_with(path, chroot)) {
+    LOG_ERROR(boost::format("server path %s does not include chroot path %s") %
+              path % chroot);
+    return path;
+  }
+  if (path == chroot) {
+    return "/";
+  }
+  return path.substr(chroot.size());
 }
 
 static buffer_t *allocate_buffer(char *buff, int len)
@@ -888,7 +875,7 @@ void free_completions(zhandle_t *zh, int reason) {
       MemoryInStream stream(bptr->buffer, bptr->len);
       hadoop::IBinArchive iarchive(stream);
       deserialize_response(cptr->c.type, cptr->xid, true,
-          reason, cptr, iarchive);
+          reason, cptr, iarchive, *(zh->chroot));
     } else {
       // Fake the response
       std::string serialized;
@@ -1519,7 +1506,8 @@ deserialize_multi(int xid, completion_list_t *cptr,
 }
 
 static void deserialize_response(int type, int xid, int failed, int rc,
-    completion_list_t *cptr, hadoop::IBinArchive& iarchive) {
+    completion_list_t *cptr, hadoop::IBinArchive& iarchive,
+    const std::string& chroot) {
   switch (type) {
     case COMPLETION_DATA:
       LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#08x failed=%d rc=%d") %
@@ -1578,7 +1566,9 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       } else {
         proto::CreateResponse res;
         res.deserialize(iarchive, "reply");
-        cptr->c.string_result(rc, res.getpath(), cptr->data);
+
+        //ZOOKEEPER-1027
+        cptr->c.string_result(rc, stripChroot(res.getpath(), chroot), cptr->data);
       }
       break;
     case COMPLETION_ACLLIST:
@@ -1640,7 +1630,7 @@ void process_completions(zhandle_t *zh) {
       deliverWatchers(zh,type,state,event.getpath().c_str(), &cptr->c.watcher_result);
     } else {
       deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
-                           header.geterr(), cptr, iarchive);
+                           header.geterr(), cptr, iarchive, *(zh->chroot));
     }
     destroy_completion_entry(cptr);
   }
@@ -1732,7 +1722,7 @@ zookeeper_process(zhandle_t *zh, int events) {
           LOG_DEBUG(boost::format("Processing synchronous request "
                 "from the IO thread: xid=%#08x") % header.getxid());
           deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
-                               header.geterr(), cptr, iarchive);
+                               header.geterr(), cptr, iarchive, *(zh->chroot));
           destroy_completion_entry(cptr);
         } else {
           cptr->buffer = bptr;

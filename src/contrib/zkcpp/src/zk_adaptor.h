@@ -180,12 +180,11 @@ struct _zhandle {
      * call returned while there was at least one unprocessed server response 
      * available in the socket recv buffer */
     struct timeval socket_readable;
-    
-    zk_hashtable* active_node_watchers;   
+    zk_hashtable* active_node_watchers;
     zk_hashtable* active_exist_watchers;
     zk_hashtable* active_child_watchers;
     /** used for chroot path at the client side **/
-    char *chroot;
+    boost::scoped_ptr<std::string> chroot;
 };
 
 
@@ -200,7 +199,7 @@ int adaptor_send_queue(zhandle_t *zh, int timeout);
 int process_async(int outstanding_sync);
 void process_completions(zhandle_t *zh);
 int flush_send_queue(zhandle_t*zh, int timeout);
-char* sub_string(zhandle_t *zh, const char* server_path);
+std::string stripChroot(const std::string& path, const std::string& chroot);
 void free_duplicate_path(const char* free_path, const char* path);
 
 // critical section guards
