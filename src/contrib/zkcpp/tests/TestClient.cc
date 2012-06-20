@@ -42,6 +42,7 @@ using namespace std;
 #include <recordio.h>
 #include "Util.h"
 
+using boost::shared_ptr;
 using namespace org::apache::zookeeper;
 
 struct buff_struct_2 {
@@ -410,12 +411,15 @@ public:
     class ChrootWatch : public Watch {
     public:
       ChrootWatch(const std::string& pathExpected) :
-          pathExpected_(pathExpected) {
+          pathExpected_(pathExpected), watchTriggered_(false) {
       }
       void process(WatchEvent::type event, SessionState::type state,
                    const std::string& path) {
+        CPPUNIT_ASSERT_EQUAL(pathExpected_, path);
+        watchTriggered_ = true;
       }
       std::string pathExpected_;
+      bool watchTriggered_;
     };
 
     void testChroot() {
@@ -425,10 +429,7 @@ public:
       zkChroot.init("127.0.0.1:22181/test/chroot", 10000,
                     boost::shared_ptr<Watch>());
       data::Stat statOut;
-
       std::string data = "hello";
-      const char* retStr = "/chroot";
-      const char* root= "/";
 
       CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
         zk.create("/test", "", openAcl, CreateMode::Persistent, pathOut));
@@ -443,48 +444,47 @@ public:
 
       //check for watches
       path = "/hello";
-      zkChroot.exists(path, boost::shared_ptr<Watch>(new ChrootWatch(path)), statOut);
+      zkChroot.exists(path, boost::shared_ptr<Watch>(new ChrootWatch(path)),
+                      statOut);
 
       //check create
       CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
         zkChroot.create(path, "", openAcl, CreateMode::Persistent, pathOut));
       CPPUNIT_ASSERT_EQUAL(path, pathOut);
 
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zkChroot.create("/hello/child", "", openAcl, CreateMode::Persistent,
+                        pathOut));
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+          zkChroot.exists("/hello/child", boost::shared_ptr<Watch>(), statOut));
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+          zk.exists("/test/chroot/hello/child", boost::shared_ptr<Watch>(),
+                    statOut));
 
-      #if 0
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zkChroot.remove("/hello/child", -1));
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+          zkChroot.exists("/hello/child", boost::shared_ptr<Watch>(), statOut));
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
+          zk.exists("/test/chroot/hello/child", boost::shared_ptr<Watch>(),
+                    statOut));
 
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zkChroot.get("/hello", shared_ptr<Watch>(new ChrootWatch("/hello")),
+                     dataOut, statOut));
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+          zkChroot.set("/hello", "new data", -1, statOut));
 
-
-      CPPUNIT_ASSERT(count == 0);
-      rc = zoo_create(zk_ch, "/chroot/child", "", 0, openAcl, 0, 0, 0);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-      rc = zoo_exists(zk, "/testch1/mahadev/chroot/child", 0, &stat);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-
-      rc = zoo_delete(zk_ch, "/chroot/child", -1);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-      rc = zoo_exists(zk, "/testch1/mahadev/chroot/child", 0, &stat);
-      CPPUNIT_ASSERT_EQUAL((int) ZNONODE, rc);
-      rc = zoo_wget(zk_ch, "/chroot", watcher_chroot_fn, (char*) retStr,
-          buf, &len, &stat);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-      rc = zoo_set(zk_ch, "/chroot",buf, 3, -1);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-      waitForChrootWatch(3);
-      CPPUNIT_ASSERT(count == 0);
       // check for getchildren
-      struct String_vector children;
-      rc = zoo_get_children(zk_ch, "/", 0, &children);
-      CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-      CPPUNIT_ASSERT_EQUAL((int)1, (int)children.count);
-      //check if te child if chroot
-      CPPUNIT_ASSERT(strcmp((retStr+1), children.data[0]) == 0);
-      // check for get/set acl
-      using namespace org::apache::zookeeper;
-      std::vector<data::ACL> acl;
+      std::vector<std::string> children;
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zkChroot.getChildren("/", boost::shared_ptr<Watch>(), children,
+                             statOut));
+      CPPUNIT_ASSERT_EQUAL(1, (int)children.size());
+      CPPUNIT_ASSERT_EQUAL(std::string("hello"), children[0]);
 
-      rc = zoo_get_acl(zk_ch, "/", acl, &stat);
-      CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+      // check for get/set acl
+      std::vector<data::ACL> acl;
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zkChroot.getAcl("/", acl, statOut));
       CPPUNIT_ASSERT_EQUAL(1, (int)acl.size());
       CPPUNIT_ASSERT_EQUAL((int)ZOO_PERM_ALL, (int)acl[0].getperms());
 
@@ -495,35 +495,31 @@ public:
       readPerm.getid().getid() = "anyone";
       readPerm.setperms(Permission::Read);
       acl.push_back(readPerm);
-      rc = zoo_set_acl(zk_ch, "/chroot", -1,acl);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zkChroot.setAcl("/hello", -1, acl));
       // see if you add children
-      rc = zoo_create(zk_ch, "/chroot/child1", "",0, openAcl, 0, 0, 0);
-      CPPUNIT_ASSERT_EQUAL((int)ZNOAUTH, rc);
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::NoAuth,
+          zkChroot.create("/hello/child1", "", openAcl, CreateMode::Persistent,
+                          pathOut));
+
       //add wget children test
-      rc = zoo_wget_children(zk_ch, "/", watcher_chroot_fn, (char*) root, &children);
-      CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zkChroot.getChildren("/", shared_ptr<Watch>(new ChrootWatch("/")),
+                             children, statOut));
+      CPPUNIT_ASSERT_EQUAL(1, (int)children.size());
+      CPPUNIT_ASSERT_EQUAL(std::string("hello"), children[0]);
 
       //now create a node
-      rc = zoo_create(zk_ch, "/child2", "",0, openAcl, 0, 0, 0);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-      waitForChrootWatch(3);
-      CPPUNIT_ASSERT(count == 0);
-      //check for one async call just to make sure
-      rc = zoo_acreate(zk_ch, "/child3", "", 0, openAcl, 0,
-          create_completion_fn, 0);
-      waitForCreateCompletion(3);
-      CPPUNIT_ASSERT(count == 0);
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+          zkChroot.create("/child2", "", openAcl, CreateMode::Persistent,
+                          pathOut));
 
       //ZOOKEEPER-1027 correctly return path_buffer without prefixed chroot
-      const char* path = "/zookeeper1027";
-      char path_buffer[1024];
-      int path_buffer_len=sizeof(path_buffer);
-      rc = zoo_create(zk_ch, path, "", 0, openAcl, 0, path_buffer, path_buffer_len);
-      CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-      CPPUNIT_ASSERT_EQUAL(string(path), string(path_buffer));
-#endif
+      path = "/zookeeper1027";
+      CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
+        zkChroot.create(path, "", openAcl, CreateMode::Persistent, pathOut));
+      CPPUNIT_ASSERT_EQUAL(path, pathOut);
     }
+
 #if 0
     void testAuth() {
         int rc;
