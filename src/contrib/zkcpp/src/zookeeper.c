@@ -28,7 +28,7 @@
 #include <boost/random/mersenne_twister.hpp> // mt19937
 #include <boost/random/normal_distribution.hpp>
 #include <string>
-#include <zookeeper/zookeeper.h>
+#include <zookeeper.h>
 #include <memory_in_stream.hh>
 #include <string_out_stream.hh>
 #include <recordio.hh>

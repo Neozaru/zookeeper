@@ -24,7 +24,9 @@
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/condition.hpp>
 #include <boost/ptr_container/ptr_list.hpp>
-#include "zookeeper/zookeeper.h"
+#include "zookeeper.h"
+#include "zookeeper.jute.h"
+#include "recordio.h"
 #include "zk_hashtable.h"
 
 using namespace org::apache::zookeeper;

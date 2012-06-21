@@ -30,9 +30,7 @@
 #include <ctype.h>
 
 #include <boost/ptr_container/ptr_vector.hpp>
-#include "zookeeper.jute.h"
-#include "zookeeper.jute.hh"
-#include "zookeeper_multi.hh"
+#include "zookeeper/zookeeper.hh"
 using namespace org::apache::zookeeper;
 
 /**
