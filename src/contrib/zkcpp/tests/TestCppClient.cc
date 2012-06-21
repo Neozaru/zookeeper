@@ -20,7 +20,7 @@
 #include <boost/thread/condition.hpp>
 #include <cppunit/extensions/HelperMacros.h>
 #include "CppAssertHelper.h"
-#include "logging.hh"
+#include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 
 #include <stdlib.h>
@@ -37,8 +37,8 @@ using namespace std;
 #include <cstring>
 #include <list>
 
-#include <zookeeper.h>
-#include <zookeeper.hh>
+#include <zookeeper/zookeeper.h>
+#include <zookeeper/zookeeper.hh>
 #include <errno.h>
 #include <recordio.h>
 #include "Util.h"

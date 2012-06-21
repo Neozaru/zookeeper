@@ -19,7 +19,7 @@
 #ifndef ZKMOCKS_H_
 #define ZKMOCKS_H_
 
-#include <zookeeper.h>
+#include <zookeeper/zookeeper.h>
 #include <boost/thread/mutex.hpp>
 #include "src/zk_adaptor.h"
 

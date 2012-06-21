@@ -18,14 +18,13 @@
 
 #ifndef ZK_ADAPTOR_H_
 #define ZK_ADAPTOR_H_
-#include <zookeeper.jute.hh>
 #include <boost/scoped_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/condition.hpp>
 #include <boost/ptr_container/ptr_list.hpp>
-#include "zookeeper.h"
+#include "zookeeper/zookeeper.h"
 #include "zk_hashtable.h"
 
 using namespace org::apache::zookeeper;

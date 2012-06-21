@@ -20,7 +20,7 @@
 #include <boost/thread/condition.hpp>
 #include <cerrno>
 #include <cstring>
-#include "logging.hh"
+#include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 
 namespace org { namespace apache { namespace zookeeper {

@@ -15,10 +15,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "zookeeper.hh"
+#include "zookeeper/zookeeper.hh"
 #include <boost/algorithm/string/join.hpp>
 #include <algorithm>
-#include "logging.hh"
+#include "zookeeper/logging.hh"
 #include "zookeeper_impl.hh"
 ENABLE_LOGGING;
 

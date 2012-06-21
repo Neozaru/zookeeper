@@ -30,9 +30,6 @@
 #include <ctype.h>
 
 #include <boost/ptr_container/ptr_vector.hpp>
-#include "proto.h"
-#include "zookeeper_version.h"
-#include "recordio.h"
 #include "zookeeper.jute.h"
 #include "zookeeper.jute.hh"
 #include "zookeeper_multi.hh"

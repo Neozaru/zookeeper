@@ -19,7 +19,6 @@
 #include <arpa/inet.h>  // for htonl
 #include <memory>
 
-#include <zookeeper.h>
 #include <proto.h>
 
 #include "ZKMocks.h"

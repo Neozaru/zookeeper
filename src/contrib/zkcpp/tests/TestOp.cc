@@ -18,7 +18,7 @@
 #include <string>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <cppunit/extensions/HelperMacros.h>
-#include <zookeeper_multi.hh>
+#include <zookeeper/zookeeper_multi.hh>
 
 using namespace org::apache::zookeeper;
 

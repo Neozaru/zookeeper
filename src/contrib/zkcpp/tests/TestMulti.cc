@@ -19,11 +19,11 @@
 #include <algorithm>
 #include <boost/thread/condition.hpp>
 #include <cppunit/extensions/HelperMacros.h>
-#include "logging.hh"
+#include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 
-#include <zookeeper.h>
-#include <zookeeper.hh>
+#include <zookeeper/zookeeper.h>
+#include <zookeeper/zookeeper.hh>
 using namespace boost;
 using namespace org::apache::zookeeper;
 

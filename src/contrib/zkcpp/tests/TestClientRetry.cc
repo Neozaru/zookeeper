@@ -36,7 +36,7 @@ using namespace std;
 #include <cstring>
 #include <list>
 
-#include <zookeeper.h>
+#include <zookeeper/zookeeper.h>
 
 #include "Util.h"
 

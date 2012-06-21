@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 #include <cppunit/extensions/HelperMacros.h>
-#include "logging.hh"
+#include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 
 #include <memory_in_stream.hh>

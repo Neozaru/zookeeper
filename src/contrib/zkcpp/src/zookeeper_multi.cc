@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "zookeeper_multi.hh"
+#include "zookeeper/zookeeper_multi.hh"
 
 namespace org {
 namespace apache {

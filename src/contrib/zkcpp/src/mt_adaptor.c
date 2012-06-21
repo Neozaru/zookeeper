@@ -25,7 +25,7 @@
 #endif
 
 #include "zk_adaptor.h"
-#include "logging.hh"
+#include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 
 #include <boost/interprocess/detail/atomic.hpp>

@@ -19,7 +19,7 @@
 #ifndef ZK_HASHTABLE_H_
 #define ZK_HASHTABLE_H_
 
-#include <zookeeper.h>
+#include <zookeeper/zookeeper.h>
 
 #ifdef __cplusplus
 extern "C" {

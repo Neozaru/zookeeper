@@ -28,15 +28,14 @@
 #include <boost/random/mersenne_twister.hpp> // mt19937
 #include <boost/random/normal_distribution.hpp>
 #include <string>
-#include <zookeeper.h>
+#include <zookeeper/zookeeper.h>
 #include <memory_in_stream.hh>
 #include <string_out_stream.hh>
-#include <zookeeper.jute.hh>
 #include <recordio.hh>
 #include <binarchive.hh>
 #include <proto.h>
 #include "zk_adaptor.h"
-#include "logging.hh"
+#include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 #include "zk_hashtable.h"
 
