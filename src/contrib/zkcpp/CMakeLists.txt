@@ -117,6 +117,8 @@ add_definitions(
 add_library(zkcpp SHARED ${header} ${source})
 target_link_libraries (zkcpp
   ${LOG4CXX_LIBRARY}
+  ${Boost_THREAD_LIBRARY}
+  ${Boost_SYSTEM_LIBRARY}
 )
 
 set(CMAKE_EXE_LINKER_FLAGS
@@ -134,3 +136,15 @@ target_link_libraries(zktest
 # Add "make lint" target
 add_custom_target(lint ${PROJECT_SOURCE_DIR}/cpplint.py ${testsrc} ${header})
 file(COPY ${PROJECT_SOURCE_DIR}/tests/log4cxx.properties DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
+# For "make install" target
+FILE(GLOB headers "${CMAKE_CURRENT_SOURCE_DIR}/include/zookeeper/*")
+INSTALL(FILES ${headers} DESTINATION include/zookeeper)
+INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/generated/zookeeper.jute.hh
+              ${CMAKE_CURRENT_SOURCE_DIR}/generated/recordio.hh
+              ${CMAKE_CURRENT_SOURCE_DIR}/generated/archive.hh
+              ${CMAKE_CURRENT_SOURCE_DIR}/generated/exception.hh
+              DESTINATION include/zookeeper)
+INSTALL(TARGETS zkcpp
+  LIBRARY DESTINATION lib
+)
