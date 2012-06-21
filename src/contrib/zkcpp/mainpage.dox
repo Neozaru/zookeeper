@@ -2,6 +2,48 @@
 
 @mainpage
 
+\section quick Quickstart
+
+\subsection dep Dependencies
+
+Install all the dependencies:
+
+- git
+- ant
+- cmake
+- log4cxx
+- boost-thread
+- boost-system
+
+Clone the git repository:
+
+\verbatim
+git://github.com/m1ch1/zookeeper.git
+\endverbatim
+
+This will create a local repository under zookeeper/ directory. 
+
+\verbatim
+cd zookeeper/
+ZKHOME=`pwd`
+ant
+\endverbatim
+
+Now, compile the C++ client and install:
+
+\verbatim
+cd $ZKHOME/src/contrib/zkcpp
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+\endverbatim
+
+This will install a shared library \p libzkcpp.so under \p /usr/local/lib and include
+headers under \p /usr/local/include/zookeeper.
+
+
 \section model Data Model
 \section async Asynchronous and Synchronous APIs
 \section watch Watches
