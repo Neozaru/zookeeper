@@ -201,7 +201,7 @@ class zhandle_t {
     zk_hashtable* active_exist_watchers;
     zk_hashtable* active_child_watchers;
     /** used for chroot path at the client side **/
-    boost::scoped_ptr<std::string> chroot;
+    std::string chroot;
 };
 
 

@@ -225,7 +225,7 @@ do_foreach_watcher(watcher_object_t* wo, zhandle_t* zh,
                    const std::string& path, int type, int state) {
   // session event's don't have paths
   std::string client_path =
-    type == ZOO_SESSION_EVENT ? path : stripChroot(path, *(zh->chroot));
+    type == ZOO_SESSION_EVENT ? path : stripChroot(path, zh->chroot);
   while(wo != NULL) {
     wo->watcher(zh, type, state, client_path.c_str(), wo->context);
     wo=wo->next;
