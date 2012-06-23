@@ -22,7 +22,7 @@
 #include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 
-#include <zookeeper/zookeeper.h>
+#include "zookeeper.h"
 #include <zookeeper/zookeeper.hh>
 using namespace boost;
 using namespace org::apache::zookeeper;

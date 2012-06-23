@@ -37,7 +37,7 @@ using namespace std;
 #include <cstring>
 #include <list>
 
-#include <zookeeper/zookeeper.h>
+#include "zookeeper.h"
 #include <zookeeper/zookeeper.hh>
 #include <errno.h>
 #include <recordio.h>

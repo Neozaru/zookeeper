@@ -30,6 +30,7 @@
 #include <ctype.h>
 
 #include <boost/ptr_container/ptr_vector.hpp>
+#include "zookeeper.jute.h"
 #include "zookeeper/zookeeper.hh"
 using namespace org::apache::zookeeper;
 
@@ -237,12 +238,12 @@ extern ZOOAPI const int ZOO_NOTWATCHING_EVENT;
 
 /**
  * \brief ZooKeeper handle.
- * 
+ *
  * This is the handle that represents a connection to the ZooKeeper service.
  * It is needed to invoke any ZooKeeper function. A handle is obtained using
  * \ref zookeeper_init.
  */
-typedef struct _zhandle zhandle_t;
+class zhandle_t;
 
 /**
  * \brief client id structure.

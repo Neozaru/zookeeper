@@ -40,7 +40,6 @@ class Zookeeper_init : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testInvalidAddressString1);
     CPPUNIT_TEST(testInvalidAddressString2);
     CPPUNIT_TEST(testNonexistentHost);
-    CPPUNIT_TEST(testOutOfMemory_init);
     CPPUNIT_TEST(testOutOfMemory_getaddrs1);
 #if !defined(__CYGWIN__) // not valid for cygwin
     CPPUNIT_TEST(testOutOfMemory_getaddrs2);
@@ -206,16 +205,6 @@ public:
         //these global variables
         //CPPUNIT_ASSERT_EQUAL(EINVAL,errno);
         //CPPUNIT_ASSERT_EQUAL(HOST_NOT_FOUND,h_errno);
-    }
-    void testOutOfMemory_init()
-    {
-        Mock_calloc mock;
-        mock.callsBeforeFailure=0; // fail first calloc in init()
-
-        zh=zookeeper_init("ahost:123",watcher,10000,0,0,0);
-
-        CPPUNIT_ASSERT(zh==0);
-        CPPUNIT_ASSERT_EQUAL(ENOMEM,errno);
     }
     void testOutOfMemory_getaddrs1()
     {

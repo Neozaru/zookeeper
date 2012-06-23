@@ -161,7 +161,8 @@ class auth_list_head_t {
  * This structure represents the connection to zookeeper.
  */
 
-struct _zhandle {
+class zhandle_t {
+  public:
     int fd; /* the descriptor used to talk to zookeeper */
     char *hostname; /* the hostname of zookeeper */
     struct sockaddr_storage *addrs; /* the addresses that correspond to the hostname */
@@ -181,7 +182,7 @@ struct _zhandle {
     int connect_index; /* The index of the address to connect to */
     clientid_t client_id;
     long long last_zxid;
-    boost::scoped_ptr<proto::ConnectResponse> connectResponse;
+    proto::ConnectResponse connectResponse;
     buffer_t primer_buffer; /* The buffer used for the handshake at the start of a connection */
     volatile int state;
     void *context;
