@@ -108,7 +108,7 @@ void destroy_zk_hashtable(zk_hashtable* ht)
 {
     if(ht!=0){
         do_clean_hashtable(ht);
-        free(ht);
+        delete ht;
     }
 }
 

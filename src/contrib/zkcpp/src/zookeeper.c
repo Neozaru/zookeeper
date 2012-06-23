@@ -1753,7 +1753,7 @@ static void destroy_completion_entry(completion_list_t* c) {
     destroy_watcher_registration(c->watcher);
     if(c->buffer != NULL)
       delete c->buffer;
-    free(c);
+    delete c;
   }
 }
 
