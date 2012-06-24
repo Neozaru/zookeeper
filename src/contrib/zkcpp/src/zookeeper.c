@@ -796,7 +796,8 @@ void free_completions(zhandle_t *zh, int reason) {
       destroy_completion_entry(cptr);
     } else if (cptr->c.isSynchronous) {
       buffer_t *bptr = cptr->buffer;
-      MemoryInStream stream(bptr->buffer, bptr->len);
+      assert(bptr);
+      MemoryInStream stream(NULL, 0);
       hadoop::IBinArchive iarchive(stream);
       deserialize_response(cptr->c.type, cptr->xid, true,
           reason, cptr, iarchive, zh->chroot);
@@ -862,7 +863,7 @@ static void handle_error(zhandle_t *zh,int rc)
     zh->connect_index++;
     if (!is_unrecoverable(zh)) {
       // TODO introduce closed state?
-      zh->state = (SessionState::type)0;
+      zh->state = SessionState::Connecting;
     }
 }
 
@@ -1645,11 +1646,12 @@ zookeeper_process(zhandle_t *zh, int events) {
   return api_epilog(zh,ZOK);
 }
 
-int zoo_state(zhandle_t *zh)
+SessionState::type zoo_state(zhandle_t *zh)
 {
-    if(zh!=0)
-        return zh->state;
-    return 0;
+  if (!zh) {
+    return (SessionState::type)0;
+  }
+  return zh->state;
 }
 
 static watcher_registration_t* create_watcher_registration(

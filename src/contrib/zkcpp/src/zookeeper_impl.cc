@@ -830,7 +830,10 @@ close() {
 
 SessionState::type ZooKeeperImpl::
 getState() {
-  return state_;
+  if (!inited_) {
+    return SessionState::Expired;
+  }
+  return zoo_state(handle_);
 }
 
 void ZooKeeperImpl::

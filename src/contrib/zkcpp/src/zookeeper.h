@@ -674,7 +674,7 @@ typedef void (*acl_completion_t)(int rc, const std::vector<data::ACL>& acl,
  * 
  * The return value will be one of the \ref State Consts.
  */
-ZOOAPI int zoo_state(zhandle_t *zh);
+ZOOAPI SessionState::type zoo_state(zhandle_t *zh);
 
 /**
  * \brief create a node.
