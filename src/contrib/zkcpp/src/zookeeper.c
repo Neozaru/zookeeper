@@ -1042,13 +1042,6 @@ static int sendConnectRequest(zhandle_t *zh) {
     return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
   }
   zh->state = ZOO_ASSOCIATING_STATE;
-  zh->input_buffer = new buffer_t();
-  zh->input_buffer->buffer = (char*)malloc(40);
-  zh->input_buffer->len = 40;
-  /* This seems a bit weird to to set the offset to 4, but we already have a
-   * length, so we skip reading the length (and allocating the buffer) by
-   * saying that we are already at offset 4 */
-  zh->input_buffer->curr_offset = 4;
   return ZOK;
 }
 
@@ -1273,9 +1266,9 @@ static int check_events(zhandle_t *zh, int events)
                 boost::lock_guard<boost::recursive_mutex> lock(zh->to_process.get()->mutex_);
                 zh->to_process.get()->bufferList_.push_back(zh->input_buffer);
             } else  {
+                // Process connect response.
                 int64_t oldid,newid;
-                // Deserialize. Skipping the first 4 bytes (length field).
-                MemoryInStream istream((zh->input_buffer->buffer) + 4, zh->input_buffer->len + 4);
+                MemoryInStream istream((zh->input_buffer->buffer), zh->input_buffer->len);
                 hadoop::IBinArchive iarchive(istream);
                 zh->connectResponse.deserialize(iarchive,"connect");
 
