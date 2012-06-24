@@ -123,16 +123,6 @@ struct connect_req {
     char passwd[16];
 };
 
-/* the connect response */
-struct prime_struct {
-    int32_t len;
-    int32_t protocolVersion;
-    int32_t timeOut;
-    int64_t sessionId;
-    int32_t passwd_len;
-    char passwd[16];
-}; 
-
 /* this is used by mt_adaptor internally for thread management */
 struct adaptor_threads {
      boost::thread io;
