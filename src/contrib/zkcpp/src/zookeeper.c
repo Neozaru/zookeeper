@@ -392,6 +392,7 @@ int getaddrs(zhandle_t *zh) {
               LOG_ERROR("out of memory");
               errno=ENOMEM;
               rc=ZSYSTEMERROR;
+              freeaddrinfo(res0);
               goto fail;
             }
             zh->addrs=(sockaddr_storage*)tmpaddr;
@@ -772,7 +773,7 @@ static int recv_buffer(int fd, buffer_t *buff) {
         off = buff->curr_offset;
         if (buff->curr_offset == sizeof(buff->len)) {
             buff->len = ntohl(buff->len);
-            buff->buffer = (char*)calloc(1, buff->len);
+            buff->buffer = new char[buff->len];
         }
     }
     if (buff->buffer) {
@@ -833,12 +834,11 @@ void free_completions(zhandle_t *zh, int reason) {
       header.setzxid(-1);
       header.seterr(reason);
       header.serialize(oarchive, "header");
-      char* data  = (char*)malloc(serialized.size());
+      char* data = new char[serialized.size()];
       memmove(data, serialized.c_str(), serialized.size());
 
       buffer_t *bptr;
-      bptr = (buffer_t*)calloc(sizeof(*bptr), 1);
-      assert(bptr);
+      bptr = new buffer_t();
       bptr->buffer = data;
       bptr->len = serialized.size();
       cptr->buffer = bptr;
@@ -943,7 +943,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
 
   /* add this buffer to the head of the send queue */
   // TODO(michim) avoid copy
-  char* data  = (char*)malloc(serialized.size());
+  char* data = new char[serialized.size()];
   memmove(data, serialized.c_str(), serialized.size());
   rc = queue_buffer_bytes(&zh->to_send,
         data, serialized.size());
@@ -1005,7 +1005,7 @@ static int send_set_watches(zhandle_t *zh) {
 
   /* add this buffer to the head of the send queue */
   // TODO(michim) avoid copy
-  char* data  = (char*)malloc(serialized.size());
+  char* data = new char[serialized.size()];
   memmove(data, serialized.c_str(), serialized.size());
   rc = queue_buffer_bytes(&zh->to_send,
         data, serialized.size());
@@ -1083,7 +1083,7 @@ static struct timeval get_timeval(int interval)
 
   /* add this buffer to the head of the send queue */
   // TODO(michim) avoid copy
-  char* data  = (char*)malloc(serialized.size());
+  char* data = new char[serialized.size()];
   memmove(data, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -1254,6 +1254,8 @@ static int check_events(zhandle_t *zh, int events)
 
         rc = recv_buffer(zh->fd, zh->input_buffer);
         if (rc < 0) {
+            delete zh->input_buffer;
+            zh->input_buffer = NULL;
             return handle_socket_error_msg(zh, __LINE__,ZCONNECTIONLOSS,
                 "failed while receiving a server response");
         }
@@ -1273,6 +1275,8 @@ static int check_events(zhandle_t *zh, int events)
                  * the connection handshake */
                 oldid = zh->client_id.client_id;
                 newid = zh->connectResponse.getsessionId();
+                delete zh->input_buffer;
+                zh->input_buffer = NULL;
                 if (oldid != 0 && oldid != newid) {
                     zh->state = ZOO_EXPIRED_SESSION_STATE;
                     errno = ESTALE;
@@ -1294,7 +1298,6 @@ static int check_events(zhandle_t *zh, int events)
                     /* send the authentication packet now */
                     send_auth_info(zh);
                     LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=ZOO_CONNECTED_STATE");
-                    zh->input_buffer = 0; // just in case the watcher calls zookeeper_process() again
                     PROCESS_SESSION_EVENT(zh, ZOO_CONNECTED_STATE);
                 }
             }
@@ -1340,7 +1343,7 @@ static int queue_session_event(zhandle_t *zh, int state) {
   cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
 
   // TODO(michim) avoid copy
-  char* data  = (char*)malloc(serialized.size());
+  char* data = new char[serialized.size()];
   memmove(data, serialized.c_str(), serialized.size());
 
   cptr->buffer = new buffer_t(data, serialized.size());
@@ -1621,11 +1624,7 @@ zookeeper_process(zhandle_t *zh, int events) {
       completion_list_t *cptr = dequeue_completion(&zh->sent_requests);
 
       /* [ZOOKEEPER-804] Don't assert if zookeeper_close has been called. */
-      if (zh->close_requested == 1) {
-        if (cptr) {
-          destroy_completion_entry(cptr);
-          cptr = NULL;
-        }
+      if (zh->close_requested == 1 && !cptr) {
         return api_epilog(zh,ZINVALIDSTATE);
       }
       assert(cptr);
@@ -1876,7 +1875,7 @@ zookeeper_close(zhandle_t *zh) {
 
     /* add this buffer to the head of the send queue */
     // TODO(michim) avoid copy
-    char* data  = (char*)malloc(serialized.size());
+    char* data  = new char[serialized.size()];
     memmove(data, serialized.c_str(), serialized.size());
 
     enter_critical(zh);
@@ -2014,7 +2013,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
 
   /* add this buffer to the head of the send queue */
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2062,7 +2061,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
 
   /* add this buffer to the head of the send queue */
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2112,7 +2111,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
 
   /* add this buffer to the head of the send queue */
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2153,7 +2152,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
 
   /* add this buffer to the head of the send queue */
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2193,7 +2192,7 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   req.serialize(oarchive, "req");
 
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2234,7 +2233,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
   req.serialize(oarchive, "req");
 
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2281,7 +2280,7 @@ int zoo_async(zhandle_t *zh, const char *path,
   req.serialize(oarchive, "req");
 
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2319,7 +2318,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   req.serialize(oarchive, "req");
 
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2360,7 +2359,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
   req.serialize(oarchive, "req");
 
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   enter_critical(zh);
@@ -2463,7 +2462,7 @@ int zoo_amulti2(zhandle_t *zh,
   mheader.seterr(-1);
   mheader.serialize(oarchive, "req");
   // TODO(michim) avoid copy
-  char* buffer = (char*)malloc(serialized.size());
+  char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
   /* BEGIN: CRTICIAL SECTION */

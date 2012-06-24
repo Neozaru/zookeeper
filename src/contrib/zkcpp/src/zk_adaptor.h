@@ -75,7 +75,7 @@ class buffer_t {
     }
     ~buffer_t() {
       if (buffer) {
-        free(buffer);
+        delete[] buffer;
       }
     }
 

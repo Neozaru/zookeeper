@@ -153,7 +153,7 @@ static int do_insert_watcher_object(zk_hashtable *ht, const char *path, watcher_
     if (itr == ht->map.end()) {
         ht->map[path] = create_watcher_object_list(wo);
     } else {
-        res = add_to_list(&(itr->second), wo, 1);
+        res = add_to_list(&(itr->second), wo, 0);
     }
     return res;
 }

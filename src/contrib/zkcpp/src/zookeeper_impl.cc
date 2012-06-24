@@ -531,6 +531,9 @@ create(const std::string& path, const std::string& data,
   }
   int rc = zoo_acreate(handle_, path.c_str(), data.c_str(), data.size(),
                        acl, mode, completion, (void*)context, isSynchronous);
+  if (rc != ZOK) {
+    delete context;
+  }
   return intToReturnCode(rc);
 }
 
