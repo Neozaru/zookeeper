@@ -248,10 +248,8 @@ class MyMultiCallback : public MultiCallback, public Waitable {
 
 class WatchContext {
   public:
-    WatchContext(ZooKeeperImpl* zk, boost::shared_ptr<Watch> watch,
-                 bool deleteAfterCallback) :
-        zk_(zk), watch_(watch), deleteAfterCallback_(deleteAfterCallback) {}
-    ZooKeeperImpl* zk_;
+    WatchContext(boost::shared_ptr<Watch> watch, bool deleteAfterCallback) :
+        watch_(watch), deleteAfterCallback_(deleteAfterCallback) {}
     boost::shared_ptr<Watch> watch_;
     bool deleteAfterCallback_;
 };
@@ -263,32 +261,12 @@ watchCallback(zhandle_t *zh, int type, int state, const char *path,
   WatchContext* context = (WatchContext*)watcherCtx;
   WatchEvent::type eventType = (WatchEvent::type)type;
   SessionState::type stateType = (SessionState::type)state;
-
   LOG_DEBUG(boost::format("Got a watch event: type=%s, state=%s, path='%s'") %
             WatchEvent::toString(eventType) %
             SessionState::toString(stateType) % path);
-  if (eventType == WatchEvent::SessionStateChanged) {
-    bool validState = false;
-    switch ((SessionState::type) state) {
-      case SessionState::Expired:
-      case SessionState::AuthFailed:
-      case SessionState::Connecting:
-      case SessionState::Connected:
-        context->zk_->setState((SessionState::type)state);
-        validState = true;
-        break;
-    }
-    if (!validState) {
-      fprintf(stderr, "Got unknown state: %d\n", state);
-      LOG_ERROR("Got unknown state: " << state);
-      assert(!"Got unknown state");
-    }
-  }
-
   Watch* watch = context->watch_.get();
-  if (watch) {
-    watch->process((WatchEvent::type)type, (SessionState::type)state, path);
-  }
+  assert(watch);
+  watch->process((WatchEvent::type)type, (SessionState::type)state, path);
   if (context->deleteAfterCallback_) {
     delete context;
   }
@@ -478,8 +456,10 @@ init(const std::string& hosts, int32_t sessionTimeoutMs,
   watcher_fn watcher = NULL;
   WatchContext* context = NULL;
 
-  watcher = &watchCallback;
-  context = new WatchContext(this, watch, false);
+  if (watch.get()) {
+    watcher = &watchCallback;
+    context = new WatchContext(watch, false);
+  }
   handle_ = zookeeper_init(hosts.c_str(), watcher, sessionTimeoutMs,
                            NULL, (void*)context, 0);
   if (handle_ == NULL) {
@@ -594,7 +574,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
   }
   if (watch.get()) {
     watcher = &watchCallback;
-    watchContext = new WatchContext(this, watch, true);
+    watchContext = new WatchContext(watch, true);
   }
 
   int rc = zoo_awexists(handle_, path.c_str(), watcher, (void*)watchContext,
@@ -625,7 +605,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
   if (watch.get()) {
     watcher = &watchCallback;
-    watchContext = new WatchContext(this, watch, true);
+    watchContext = new WatchContext(watch, true);
   }
   if (cb.get()) {
     completion = &dataCompletion;
@@ -690,7 +670,7 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
 
   if (watch.get()) {
     watcher = &watchCallback;
-    watchContext = new WatchContext(this, watch, true);
+    watchContext = new WatchContext(watch, true);
   }
   if (cb.get()) {
     completion = &childrenCompletion;
@@ -820,8 +800,9 @@ close() {
   }
   inited_ = false;
   WatchContext* context = (WatchContext*)zoo_get_context(handle_);
-  assert(context);
-  delete context;
+  if (context) {
+    delete context;
+  }
   // XXX handle return codes.
   zookeeper_close(handle_);
   handle_ = NULL;
