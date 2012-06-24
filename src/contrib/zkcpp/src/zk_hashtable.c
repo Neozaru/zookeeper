@@ -16,6 +16,8 @@
  * limitations under the License.
  */
 
+#include <zookeeper/logging.hh>
+ENABLE_LOGGING;
 #include "zk_hashtable.h"
 #include "zk_adaptor.h"
 #include <boost/unordered_map.hpp>
@@ -99,6 +101,7 @@ static void do_clean_hashtable(zk_hashtable* ht)
 {
     boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
     for (itr = ht->map.begin(); itr != ht->map.end(); itr++) {
+        LOG_DEBUG("Deleting a watch for path: " << itr->first);
         destroy_watcher_object_list(itr->second);
     }
     ht->map.clear();

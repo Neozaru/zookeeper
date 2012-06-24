@@ -1656,6 +1656,7 @@ zookeeper_process(zhandle_t *zh, int events) {
                 "from the IO thread: xid=%#08x") % header.getxid());
           deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
                                header.geterr(), cptr, iarchive, zh->chroot);
+          delete bptr;
           destroy_completion_entry(cptr);
         } else {
           cptr->buffer = bptr;
