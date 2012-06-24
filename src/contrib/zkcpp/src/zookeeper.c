@@ -269,7 +269,6 @@ static void destroy(zhandle_t *zh)
         zh->addrs = NULL;
     }
 
-    zh->auth_h.get()->authList_.clear();
     destroy_zk_hashtable(zh->active_node_watchers);
     destroy_zk_hashtable(zh->active_exist_watchers);
     destroy_zk_hashtable(zh->active_child_watchers);
@@ -946,7 +945,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
   proto::AuthPacket req;
   req.settype(0); // ignored by the server
   req.getscheme() = auth->scheme;
-  req.getauth() = std::string(auth->auth.buff, auth->auth.len);
+  req.getauth() = auth->auth;
   req.serialize(oarchive, "req");
 
   /* add this buffer to the head of the send queue */
@@ -2555,7 +2554,6 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
         int certLen,void_completion_t completion, const void *data,
         bool isSynchronous)
 {
-    struct buffer auth;
     auth_info *authinfo;
     if(scheme==NULL || zh==NULL)
         return ZBADARGUMENTS;
@@ -2569,23 +2567,13 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
         return ZINVALIDSTATE;
     }
 
-    if(cert!=NULL && certLen!=0){
-        auth.buff=(char*)calloc(1,certLen);
-        if(auth.buff==0) {
-            return ZSYSTEMERROR;
-        }
-        memcpy(auth.buff,cert,certLen);
-        auth.len=certLen;
-    } else {
-        auth.buff = 0;
-        auth.len = 0;
-    }
-
+    assert(cert != NULL);
+    assert(certLen >= 0);
     {
         boost::lock_guard<boost::mutex> lock(zh->auth_h.get()->mutex_);
         authinfo = new auth_info();
         authinfo->scheme = scheme;
-        authinfo->auth = auth;
+        authinfo->auth = std::string(cert, certLen);
         authinfo->completion=completion;
         authinfo->data=(const char*)data;
         zh->auth_h.get()->authList_.push_back(authinfo);

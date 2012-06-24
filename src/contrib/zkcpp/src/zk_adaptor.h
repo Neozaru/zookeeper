@@ -104,13 +104,9 @@ void unlock_completion_list(completion_head_t *l);
 
 class auth_info {
   public:
-    auth_info() : scheme("") {}
-    ~auth_info() {
-      deallocate_Buffer(&auth);
-    }
     int state; /* 0=>inactive, >0 => active */
     std::string scheme;
-    struct buffer auth;
+    std::string auth;
     void_completion_t completion;
     const char* data;
 };
@@ -151,8 +147,6 @@ struct adaptor_threads {
 /** the auth list for adding auth */
 class auth_list_head_t {
   public:
-    auth_list_head_t() : authList_(boost::ptr_list<auth_info>()) {
-    }
     boost::ptr_list<auth_info> authList_;
     boost::mutex mutex_;
 };

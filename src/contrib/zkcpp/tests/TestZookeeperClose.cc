@@ -220,7 +220,6 @@ public:
             freeMock.disable();
             
             // memory
-            CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.hostname));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.addrs));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
