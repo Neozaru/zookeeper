@@ -169,7 +169,7 @@ class zhandle_t {
     proto::ConnectResponse connectResponse;
     volatile int state;
     void *context;
-    boost::scoped_ptr<auth_list_head_t> auth_h; /* authentication data list */
+    auth_list_head_t auth_h; /* authentication data list */
     /* zookeeper_close is not reentrant because it de-allocates the zhandler. 
      * This guard variable is used to defer the destruction of zhandle till 
      * right before top-level API call returns to the caller */

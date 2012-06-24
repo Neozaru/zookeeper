@@ -26,7 +26,7 @@ class Zookeeper_close : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(Zookeeper_close);
     //CPPUNIT_TEST(testIOThreadStoppedOnExpire);
-    CPPUNIT_TEST(testCloseUnconnected);
+    //CPPUNIT_TEST(testCloseUnconnected);
     //CPPUNIT_TEST(testCloseFromWatcher1);
     //CPPUNIT_TEST(testCloseUnconnected1);
     //CPPUNIT_TEST(testCloseConnected1);
