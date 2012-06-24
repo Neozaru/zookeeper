@@ -797,7 +797,7 @@ multi(const boost::ptr_vector<Op>& ops,
     completion = &multiCompletion;
     context = new MultiCompletionContext(cb);
   }
-  int rc = zoo_amulti2(handle_, ops, completion, context, isSynchronous);
+  int rc = zoo_amulti(handle_, ops, completion, context, isSynchronous);
   return intToReturnCode(rc);
 }
 

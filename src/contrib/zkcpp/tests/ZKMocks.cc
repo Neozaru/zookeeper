@@ -67,11 +67,11 @@ void activeWatcher(zhandle_t *zh, int type, int state, const char *path,void* ct
     WatcherAction* action=(WatcherAction*)ctx;
     
     if(type==ZOO_SESSION_EVENT){
-        if(state==ZOO_EXPIRED_SESSION_STATE)
+        if(state==SessionState::Expired)
             action->onSessionExpired(zh);
-        else if(state==ZOO_CONNECTING_STATE)
+        else if(state==SessionState::Connecting)
             action->onConnectionLost(zh);
-        else if(state==ZOO_CONNECTED_STATE)
+        else if(state==SessionState::Connected)
             action->onConnectionEstablished(zh);
     }else if(type==ZOO_CHANGED_EVENT)
         action->onNodeValueChanged(zh,path);
@@ -490,7 +490,7 @@ void ZookeeperServer::notifyBufferSent(const std::string& buffer){
 
 void forceConnected(zhandle_t* zh){
     // simulate connected state
-    zh->state=ZOO_CONNECTED_STATE;
+    zh->state = SessionState::Connected;
     zh->fd=ZookeeperServer::FD;
     zh->input_buffer=0;
     gettimeofday(&zh->last_recv,0);    

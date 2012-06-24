@@ -23,6 +23,7 @@
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/condition.hpp>
 #include <boost/ptr_container/ptr_list.hpp>
+#include <zookeeper/zookeeper_const.hh>
 #include "zookeeper.h"
 #include "zookeeper.jute.h"
 #include "recordio.h"
@@ -35,14 +36,6 @@ using namespace org::apache::zookeeper;
 #define PING_XID -2
 #define AUTH_XID -4
 #define SET_WATCHES_XID -8
-
-/* zookeeper state constants */
-#define EXPIRED_SESSION_STATE_DEF -112
-#define AUTH_FAILED_STATE_DEF -113
-#define CONNECTING_STATE_DEF 1
-#define ASSOCIATING_STATE_DEF 2
-#define CONNECTED_STATE_DEF 3
-#define NOTCONNECTED_STATE_DEF 999
 
 /* zookeeper event type constants */
 #define CREATED_EVENT_DEF 1
@@ -166,7 +159,7 @@ class zhandle_t {
     clientid_t client_id;
     long long last_zxid;
     proto::ConnectResponse connectResponse;
-    volatile int state;
+    SessionState::type state;
     void *context;
     auth_list_head_t auth_h; /* authentication data list */
     /* zookeeper_close is not reentrant because it de-allocates the zhandler. 

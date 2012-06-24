@@ -215,7 +215,6 @@ public:
             // do not actually free the memory while in zookeeper_close()
             Mock_free_noop freeMock;
             zookeeper_close(zh);
-            zhandle_t* lzh=zh; zh=0;
             // we're done, disable mock's fake free(), use libc's free() instead
             freeMock.disable();
             

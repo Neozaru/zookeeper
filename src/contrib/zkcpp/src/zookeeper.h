@@ -174,19 +174,6 @@ extern ZOOAPI const int ZOO_SEQUENCE;
 // @}
 
 /**
- * @name State Consts
- * These constants represent the states of a zookeeper connection. They are
- * possible parameters of the watcher callback.
- */
-// @{
-extern ZOOAPI const int ZOO_EXPIRED_SESSION_STATE;
-extern ZOOAPI const int ZOO_AUTH_FAILED_STATE;
-extern ZOOAPI const int ZOO_CONNECTING_STATE;
-extern ZOOAPI const int ZOO_ASSOCIATING_STATE;
-extern ZOOAPI const int ZOO_CONNECTED_STATE;
-// @}
-
-/**
  * @name Watch Types
  * These constants indicate the event that caused the watch event. They are
  * possible values of the first parameter of the watcher callback.
@@ -988,9 +975,7 @@ ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
  * values that can be returned by the ops supported by a multi op (see
  * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
  */
-ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops, 
-        zoo_op_result_t *results, void_completion_t, const void *data);
-ZOOAPI int zoo_amulti2(zhandle_t *zh,
+ZOOAPI int zoo_amulti(zhandle_t *zh,
         const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
         multi_completion_t, const void *data, bool isSynchronous);
 

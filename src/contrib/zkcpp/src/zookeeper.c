@@ -75,29 +75,6 @@ const int ZOOKEEPER_READ = 1 << 1;
 const int ZOO_EPHEMERAL = 1 << 0;
 const int ZOO_SEQUENCE = 1 << 1;
 
-const int ZOO_EXPIRED_SESSION_STATE = EXPIRED_SESSION_STATE_DEF;
-const int ZOO_AUTH_FAILED_STATE = AUTH_FAILED_STATE_DEF;
-const int ZOO_CONNECTING_STATE = CONNECTING_STATE_DEF;
-const int ZOO_ASSOCIATING_STATE = ASSOCIATING_STATE_DEF;
-const int ZOO_CONNECTED_STATE = CONNECTED_STATE_DEF;
-static __attribute__ ((unused)) const char* state2String(int state){
-    switch(state){
-    case 0:
-        return "ZOO_CLOSED_STATE";
-    case CONNECTING_STATE_DEF:
-        return "ZOO_CONNECTING_STATE";
-    case ASSOCIATING_STATE_DEF:
-        return "ZOO_ASSOCIATING_STATE";
-    case CONNECTED_STATE_DEF:
-        return "ZOO_CONNECTED_STATE";
-    case EXPIRED_SESSION_STATE_DEF:
-        return "ZOO_EXPIRED_SESSION_STATE";
-    case AUTH_FAILED_STATE_DEF:
-        return "ZOO_AUTH_FAILED_STATE";
-    }
-    return "INVALID_STATE";
-}
-
 const int ZOO_CREATED_EVENT = CREATED_EVENT_DEF;
 const int ZOO_DELETED_EVENT = DELETED_EVENT_DEF;
 const int ZOO_CHANGED_EVENT = CHANGED_EVENT_DEF;
@@ -262,7 +239,8 @@ static void destroy(zhandle_t *zh)
     if (zh->fd != -1) {
         close(zh->fd);
         zh->fd = -1;
-        zh->state = 0;
+        // TODO introduce closed state?
+        zh->state = (SessionState::type)0;
     }
     if (zh->addrs != 0) {
         free(zh->addrs);
@@ -469,7 +447,7 @@ watcher_fn zoo_set_watcher(zhandle_t *zh,watcher_fn newFn)
 struct sockaddr* zookeeper_get_connected_host(zhandle_t *zh,
                  struct sockaddr *addr, socklen_t *addr_len)
 {
-    if (zh->state!=ZOO_CONNECTED_STATE) {
+    if (zh->state!=SessionState::Connected) {
         return NULL;
     }
     if (getpeername(zh->fd, addr, addr_len)==-1) {
@@ -566,7 +544,7 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
 
     zh->ref_counter = 0;
     zh->fd = -1;
-    zh->state = NOTCONNECTED_STATE_DEF;
+    zh->state = SessionState::Connecting;
     zh->context = context;
     zh->recv_timeout = recv_timeout;
     if (watcher) {
@@ -620,7 +598,8 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
         goto abort;
     }
 
-    LOG_DEBUG("Init completed. ZooKeeper state="<< state2String(zh->state));
+    LOG_DEBUG("Init completed. ZooKeeper state=" <<
+              SessionState::toString(zh->state));
     return zh;
 abort:
     errnosave=errno;
@@ -872,17 +851,18 @@ static void handle_error(zhandle_t *zh,int rc)
     close(zh->fd);
     if (is_unrecoverable(zh)) {
         LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=" <<
-                  state2String(zh->state));
+                  SessionState::toString(zh->state));
         PROCESS_SESSION_EVENT(zh, zh->state);
-    } else if (zh->state == ZOO_CONNECTED_STATE) {
+    } else if (zh->state == SessionState::Connected) {
         LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=CONNECTING_STATE");
-        PROCESS_SESSION_EVENT(zh, ZOO_CONNECTING_STATE);
+        PROCESS_SESSION_EVENT(zh, SessionState::Connecting);
     }
     cleanup_bufs(zh, rc);
     zh->fd = -1;
     zh->connect_index++;
     if (!is_unrecoverable(zh)) {
-        zh->state = 0;
+      // TODO introduce closed state?
+      zh->state = (SessionState::type)0;
     }
 }
 
@@ -905,7 +885,7 @@ static void auth_completion_func(int rc, zhandle_t* zh) {
   if (rc != 0) {
     LOG_ERROR("Authentication scheme " << zh->auth_h.authList_.front().scheme <<
         " failed. Connection closed.");
-    zh->state=ZOO_AUTH_FAILED_STATE;
+    zh->state = SessionState::AuthFailed;
   }else{
     LOG_INFO("Authentication scheme " << zh->auth_h.authList_.front().scheme <<
         " succeeded.");
@@ -1035,7 +1015,7 @@ static int sendConnectRequest(zhandle_t *zh) {
   if (rc<0) {
     return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
   }
-  zh->state = ZOO_ASSOCIATING_STATE;
+  zh->state = SessionState::Connecting;
   return ZOK;
 }
 
@@ -1145,7 +1125,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
                  * the description in section 16.3 "Non-blocking connect"
                  * in UNIX Network Programming vol 1, 3rd edition */
                 if (errno == EWOULDBLOCK || errno == EINPROGRESS)
-                    zh->state = ZOO_CONNECTING_STATE;
+                    zh->state = SessionState::Connecting;
                 else
                     return api_epilog(zh,handle_socket_error_msg(zh,__LINE__,
                             ZCONNECTIONLOSS,"connect() call failed"));
@@ -1180,7 +1160,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         }
         // We only allow 1/3 of our timeout time to expire before sending
         // a PING
-        if (zh->state==ZOO_CONNECTED_STATE) {
+        if (zh->state==SessionState::Connected) {
             send_to = zh->recv_timeout/3 - idle_send;
             if (send_to <= 0 && zh->sent_requests.head==0) {
 //                LOG_DEBUG(("Sending PING to %s (exceeded idle by %dms)",
@@ -1205,8 +1185,8 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         /* we are interested in a write if we are connected and have something
          * to send, or we are waiting for a connect to finish. */
         if ((!zh->to_send.bufferList_.empty() &&
-            zh->state == ZOO_CONNECTED_STATE) ||
-            zh->state == ZOO_CONNECTING_STATE) {
+            zh->state == SessionState::Connected) ||
+            zh->state == SessionState::Connecting) {
             *interest |= ZOOKEEPER_WRITE;
         }
     }
@@ -1217,7 +1197,7 @@ static int check_events(zhandle_t *zh, int events)
 {
     if (zh->fd == -1)
         return ZINVALIDSTATE;
-    if ((events&ZOOKEEPER_WRITE)&&(zh->state == ZOO_CONNECTING_STATE)) {
+    if ((events&ZOOKEEPER_WRITE)&&(zh->state == SessionState::Connecting)) {
         int rc, error;
         socklen_t len = sizeof(error);
         rc = getsockopt(zh->fd, SOL_SOCKET, SO_ERROR, &error, &len);
@@ -1258,7 +1238,7 @@ static int check_events(zhandle_t *zh, int events)
         }
         if (rc > 0) {
             gettimeofday(&zh->last_recv, 0);
-            if (zh->state != ZOO_ASSOCIATING_STATE) {
+            if (zh->state != SessionState::Connecting) {
                 boost::lock_guard<boost::recursive_mutex> lock(zh->to_process.mutex_);
                 zh->to_process.bufferList_.push_back(zh->input_buffer);
             } else  {
@@ -1275,7 +1255,7 @@ static int check_events(zhandle_t *zh, int events)
                 delete zh->input_buffer;
                 zh->input_buffer = NULL;
                 if (oldid != 0 && oldid != newid) {
-                    zh->state = ZOO_EXPIRED_SESSION_STATE;
+                    zh->state = SessionState::Expired;
                     errno = ESTALE;
                     return handle_socket_error_msg(zh,__LINE__,ZSESSIONEXPIRED,
                     "");
@@ -1285,7 +1265,7 @@ static int check_events(zhandle_t *zh, int events)
 
                     memcpy(zh->client_id.passwd, zh->connectResponse.getpasswd().c_str(),
                            sizeof(zh->client_id.passwd));
-                    zh->state = ZOO_CONNECTED_STATE;
+                    zh->state = SessionState::Connected;
                     LOG_INFO(
                       boost::format("session establishment complete on server [%s], sessionId=%#llx, negotiated timeout=%d") %
                               format_endpoint_info(&zh->addrs[zh->connect_index]) % newid % zh->recv_timeout);
@@ -1294,8 +1274,8 @@ static int check_events(zhandle_t *zh, int events)
                     send_set_watches(zh);
                     /* send the authentication packet now */
                     send_auth_info(zh);
-                    LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=ZOO_CONNECTED_STATE");
-                    PROCESS_SESSION_EVENT(zh, ZOO_CONNECTED_STATE);
+                    LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=SessionState::Connected");
+                    PROCESS_SESSION_EVENT(zh, SessionState::Connected);
                 }
             }
             zh->input_buffer = 0;
@@ -1859,7 +1839,7 @@ zookeeper_close(zhandle_t *zh) {
   }
   /* No need to decrement the counter since we're just going to
    * destroy the handle later. */
-  if(zh->state==ZOO_CONNECTED_STATE){
+  if(zh->state==SessionState::Connected){
     int rc = 0;
     std::string serialized;
     StringOutStream stream(serialized);
@@ -2374,7 +2354,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_amulti2(zhandle_t *zh,
+int zoo_amulti(zhandle_t *zh,
     const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
     multi_completion_t completion, const void *data, bool isSynchronous) {
   std::string serialized;
@@ -2492,7 +2472,7 @@ int flush_send_queue(zhandle_t*zh, int timeout)
         boost::lock_guard<boost::recursive_mutex>
           lock(zh->to_send.mutex_);
         while (!(zh->to_send.bufferList_.empty()) &&
-               zh->state == ZOO_CONNECTED_STATE) {
+               zh->state == SessionState::Connected) {
             if(timeout!=0){
                 int elapsed;
                 struct timeval now;
@@ -2565,7 +2545,8 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
         zh->auth_h.authList_.push_back(authinfo);
     }
 
-    if(zh->state == ZOO_CONNECTED_STATE || zh->state == ZOO_ASSOCIATING_STATE)
+    if(zh->state == SessionState::Connected ||
+       zh->state == SessionState::Connecting)
         return send_last_auth_info(zh);
 
     return ZOK;

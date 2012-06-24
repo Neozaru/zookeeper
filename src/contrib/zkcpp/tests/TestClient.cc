@@ -161,7 +161,7 @@ class TestClient : public CPPUNIT_NS::TestFixture
     static void watcher(zhandle_t *, int type, int state, const char *path,void*v){
         watchctx_t *ctx = (watchctx_t*)v;
 
-        if (state == ZOO_CONNECTED_STATE) {
+        if (state == SessionState::Connected) {
             ctx->connected = true;
         } else {
             ctx->connected = false;
