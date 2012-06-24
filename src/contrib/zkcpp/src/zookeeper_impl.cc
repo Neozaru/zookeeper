@@ -816,6 +816,9 @@ close() {
     return ReturnCode::Error;
   }
   inited_ = false;
+  WatchContext* context = (WatchContext*)zoo_get_context(handle_);
+  assert(context);
+  delete context;
   // XXX handle return codes.
   zookeeper_close(handle_);
   handle_ = NULL;
