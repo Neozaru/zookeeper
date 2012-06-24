@@ -167,7 +167,6 @@ class zhandle_t {
     clientid_t client_id;
     long long last_zxid;
     proto::ConnectResponse connectResponse;
-    buffer_t primer_buffer; /* The buffer used for the handshake at the start of a connection */
     volatile int state;
     void *context;
     boost::scoped_ptr<auth_list_head_t> auth_h; /* authentication data list */

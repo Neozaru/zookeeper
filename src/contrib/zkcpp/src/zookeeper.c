@@ -614,10 +614,6 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     } else {
         memset(&zh->client_id, 0, sizeof(zh->client_id));
     }
-    // TODO(michim) use vector<char> as buffer. don't hardcode buffer size.
-    zh->primer_buffer.buffer = (char*)malloc(40);
-    zh->primer_buffer.curr_offset = 0;
-    zh->primer_buffer.len = 40;
     zh->last_zxid = 0;
     zh->next_deadline.tv_sec=zh->next_deadline.tv_usec=0;
     zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
@@ -871,7 +867,7 @@ static void cleanup_bufs(zhandle_t *zh, int rc)
     free_buffers(zh->to_process.get());
     free_completions(zh, rc);
     leave_critical(zh);
-    if (zh->input_buffer && zh->input_buffer != &zh->primer_buffer) {
+    if (zh->input_buffer != NULL) {
         delete zh->input_buffer;
         zh->input_buffer = 0;
     }
@@ -1046,7 +1042,9 @@ static int sendConnectRequest(zhandle_t *zh) {
     return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
   }
   zh->state = ZOO_ASSOCIATING_STATE;
-  zh->input_buffer = &zh->primer_buffer;
+  zh->input_buffer = new buffer_t();
+  zh->input_buffer->buffer = (char*)malloc(40);
+  zh->input_buffer->len = 40;
   /* This seems a bit weird to to set the offset to 4, but we already have a
    * length, so we skip reading the length (and allocating the buffer) by
    * saying that we are already at offset 4 */
@@ -1271,17 +1269,17 @@ static int check_events(zhandle_t *zh, int events)
         }
         if (rc > 0) {
             gettimeofday(&zh->last_recv, 0);
-            if (zh->input_buffer != &zh->primer_buffer) {
+            if (zh->state != ZOO_ASSOCIATING_STATE) {
                 boost::lock_guard<boost::recursive_mutex> lock(zh->to_process.get()->mutex_);
                 zh->to_process.get()->bufferList_.push_back(zh->input_buffer);
             } else  {
                 int64_t oldid,newid;
                 // Deserialize. Skipping the first 4 bytes (length field).
-                MemoryInStream istream((zh->primer_buffer.buffer) + 4, zh->primer_buffer.len - 4);
+                MemoryInStream istream((zh->input_buffer->buffer) + 4, zh->input_buffer->len + 4);
                 hadoop::IBinArchive iarchive(istream);
                 zh->connectResponse.deserialize(iarchive,"connect");
 
-                /* We are processing the primer_buffer, so we need to finish
+                /* We are processing the connect response , so we need to finish
                  * the connection handshake */
                 oldid = zh->client_id.client_id;
                 newid = zh->connectResponse.getsessionId();
