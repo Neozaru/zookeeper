@@ -1686,10 +1686,11 @@ static watcher_registration_t* create_watcher_registration(
   return wo;
 }
 
-static void destroy_watcher_registration(watcher_registration_t* wo){
-    if(wo!=0){
-        free(wo);
-    }
+static void
+destroy_watcher_registration(watcher_registration_t* wo) {
+  if (wo != NULL) {
+    delete wo;
+  }
 }
 
 static completion_list_t* create_completion_entry(int xid, int completion_type,
