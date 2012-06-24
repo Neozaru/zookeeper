@@ -24,12 +24,14 @@ ENABLE_LOGGING;
 #include <stdlib.h>
 #include <assert.h>
 
-typedef struct _watcher_object {
-    watcher_fn watcher;
-    void* context;
-    struct _watcher_object* next;
-} watcher_object_t;
-
+class watcher_object_t {
+  public:
+    watcher_object_t(watcher_fn watcher, void* context) :
+      watcher_(watcher), context_(context), next_(NULL) {}
+    watcher_fn watcher_;
+    void* context_;
+    watcher_object_t* next_;
+};
 
 struct watcher_object_list {
     watcher_object_t* head;
@@ -48,20 +50,12 @@ watcher_object_t* getFirstWatcher(zk_hashtable* ht,const char* path)
 
 watcher_object_t* clone_watcher_object(watcher_object_t* wo)
 {
-    watcher_object_t* res=(watcher_object_t*)calloc(1,sizeof(watcher_object_t));
-    assert(res);
-    res->watcher=wo->watcher;
-    res->context=wo->context;
-    return res;
+    return new watcher_object_t(wo->watcher_, wo->context_);
 }
 
 static watcher_object_t* create_watcher_object(watcher_fn watcher,void* ctx)
 {
-    watcher_object_t* wo=(watcher_object_t*)calloc(1,sizeof(watcher_object_t));
-    assert(wo);
-    wo->watcher=watcher;
-    wo->context=ctx;
-    return wo;
+    return new watcher_object_t(watcher, ctx);
 }
 
 static watcher_object_list_t* create_watcher_object_list(watcher_object_t* head) 
@@ -81,8 +75,8 @@ static void destroy_watcher_object_list(watcher_object_list_t* list)
     e=list->head;
     while(e!=0){
         watcher_object_t* temp=e;
-        e=e->next;
-        free(temp);
+        e=e->next_;
+        delete temp;
     }
     free(list);
 }
@@ -111,30 +105,19 @@ static watcher_object_t* search_watcher(watcher_object_list_t** wl,watcher_objec
 {
     watcher_object_t* wobj=(*wl)->head;
     while(wobj!=0){
-        if(wobj->watcher==wo->watcher && wobj->context==wo->context)
+        if(wobj->watcher_==wo->watcher_ && wobj->context_==wo->context_)
             return wobj;
-        wobj=wobj->next;
+        wobj=wobj->next_;
     }
     return 0;
 }
 
-static int add_to_list(watcher_object_list_t **wl, watcher_object_t *wo,
-                       int clone)
-{
-    if (search_watcher(wl, wo)==0) {
-        watcher_object_t* cloned=wo;
-        if (clone) {
-            cloned = clone_watcher_object(wo);
-            assert(cloned);
-        }
-        cloned->next = (*wl)->head;
-        (*wl)->head = cloned;
-        return 1;
-    } else if (!clone) {
-        // If it's here and we aren't supposed to clone, we must destroy
-        free(wo);
-    }
-    return 0;
+static int
+add_to_list(watcher_object_list_t **wl, watcher_object_t *wo) {
+  assert(search_watcher(wl, wo) == 0);
+  wo->next_ = (*wl)->head;
+  (*wl)->head = wo;
+  return 1;
 }
 
 static int do_insert_watcher_object(zk_hashtable *ht, const std::string& path, watcher_object_t* wo)
@@ -145,7 +128,7 @@ static int do_insert_watcher_object(zk_hashtable *ht, const std::string& path, w
     if (itr == ht->map.end()) {
         ht->map[path] = create_watcher_object_list(wo);
     } else {
-        res = add_to_list(&(itr->second), wo, 0);
+        res = add_to_list(&(itr->second), wo);
     }
     return res;
 }
@@ -172,8 +155,8 @@ static void copy_watchers(watcher_object_list_t *from, watcher_object_list_t *to
 {
     watcher_object_t* wo=from->head;
     while(wo){
-        watcher_object_t *next = wo->next;
-        add_to_list(&to, wo, clone);
+        watcher_object_t *next = wo->next_;
+        add_to_list(&to, wo);
         wo=next;
     }
 }
@@ -219,8 +202,8 @@ do_foreach_watcher(watcher_object_t* wo, zhandle_t* zh,
   std::string client_path =
     type == ZOO_SESSION_EVENT ? path : stripChroot(path, zh->chroot);
   while(wo != NULL) {
-    wo->watcher(zh, type, state, client_path.c_str(), wo->context);
-    wo=wo->next;
+    wo->watcher_(zh, type, state, client_path.c_str(), wo->context_);
+    wo=wo->next_;
   }
 }
 
@@ -229,10 +212,8 @@ watcher_object_list_t *collectWatchers(zhandle_t *zh,int type,
     struct watcher_object_list *list = create_watcher_object_list(0); 
 
     if(type==ZOO_SESSION_EVENT){
-        watcher_object_t defWatcher;
-        defWatcher.watcher=zh->watcher;
-        defWatcher.context=zh->context;
-        add_to_list(&list, &defWatcher, 1);
+        watcher_object_t* defWatcher = new watcher_object_t(zh->watcher, zh->context);
+        add_to_list(&list, defWatcher);
         collect_session_watchers(zh, &list);
         return list;
     }

@@ -161,6 +161,10 @@ namespace SessionState {
      * The session is connected to a ZooKeeper server.
      */
     Connected = 3,
+    /*
+     * TODO REMOVE
+     */
+    Associating,
   };
 
   /**

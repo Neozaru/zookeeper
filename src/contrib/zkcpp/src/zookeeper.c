@@ -796,7 +796,6 @@ void free_completions(zhandle_t *zh, int reason) {
       destroy_completion_entry(cptr);
     } else if (cptr->c.isSynchronous) {
       buffer_t *bptr = cptr->buffer;
-      assert(bptr);
       MemoryInStream stream(NULL, 0);
       hadoop::IBinArchive iarchive(stream);
       deserialize_response(cptr->c.type, cptr->xid, true,
@@ -1016,7 +1015,7 @@ static int sendConnectRequest(zhandle_t *zh) {
   if (rc<0) {
     return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
   }
-  zh->state = SessionState::Connecting;
+  zh->state = SessionState::Associating;
   return ZOK;
 }
 
@@ -1239,7 +1238,7 @@ static int check_events(zhandle_t *zh, int events)
         }
         if (rc > 0) {
             gettimeofday(&zh->last_recv, 0);
-            if (zh->state != SessionState::Connecting) {
+            if (zh->state != SessionState::Associating) {
                 boost::lock_guard<boost::recursive_mutex> lock(zh->to_process.mutex_);
                 zh->to_process.bufferList_.push_back(zh->input_buffer);
             } else  {
@@ -1510,10 +1509,15 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       assert(cptr);
       LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#08x failed=%d rc=%d") %
           cptr->xid % failed % rc);
-      boost::ptr_vector<OpResult> results;
-      rc = deserialize_multi(xid, cptr, iarchive, results);
-      if (cptr->c.multi_result) {
+      if (failed) {
+        boost::ptr_vector<OpResult> results;
         cptr->c.multi_result(rc, results, cptr->data);
+      } else {
+        boost::ptr_vector<OpResult> results;
+        rc = deserialize_multi(xid, cptr, iarchive, results);
+        if (cptr->c.multi_result) {
+          cptr->c.multi_result(rc, results, cptr->data);
+        }
       }
       break;
     }
@@ -2547,9 +2551,9 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
         zh->auth_h.authList_.push_back(authinfo);
     }
 
-    if(zh->state == SessionState::Connected ||
-       zh->state == SessionState::Connecting)
+    if(zh->state == SessionState::Connected) {
         return send_last_auth_info(zh);
+    }
 
     return ZOK;
 }
