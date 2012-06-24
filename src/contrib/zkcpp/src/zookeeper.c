@@ -558,8 +558,6 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
                      "<null>" : "<hidden>") % context % flags);
 
     zh = new zhandle_t();
-    zh->to_process.reset(new buffer_list_t());
-    zh->to_send.reset(new buffer_list_t());
     zh->sent_requests.lock.reset(new boost::mutex());
     zh->sent_requests.cond.reset(new boost::condition_variable());
     zh->completions_to_process.lock.reset(new boost::mutex());
@@ -862,8 +860,8 @@ void free_completions(zhandle_t *zh, int reason) {
 static void cleanup_bufs(zhandle_t *zh, int rc)
 {
     enter_critical(zh);
-    free_buffers(zh->to_send.get());
-    free_buffers(zh->to_process.get());
+    free_buffers(&zh->to_send);
+    free_buffers(&zh->to_process);
     free_completions(zh, rc);
     leave_critical(zh);
     if (zh->input_buffer != NULL) {
@@ -947,7 +945,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
   // TODO(michim) avoid copy
   char* data  = (char*)malloc(serialized.size());
   memmove(data, serialized.c_str(), serialized.size());
-  rc = queue_buffer_bytes(zh->to_send.get(),
+  rc = queue_buffer_bytes(&zh->to_send,
         data, serialized.size());
   adaptor_send_queue(zh, 0);
   return rc;
@@ -1009,7 +1007,7 @@ static int send_set_watches(zhandle_t *zh) {
   // TODO(michim) avoid copy
   char* data  = (char*)malloc(serialized.size());
   memmove(data, serialized.c_str(), serialized.size());
-  rc = queue_buffer_bytes(zh->to_send.get(),
+  rc = queue_buffer_bytes(&zh->to_send,
         data, serialized.size());
 
   enter_critical(zh);
@@ -1091,7 +1089,7 @@ static struct timeval get_timeval(int interval)
   enter_critical(zh);
   gettimeofday(&zh->last_ping, 0);
   rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0, false);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), data, serialized.size());
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, data, serialized.size());
   leave_critical(zh);
   return rc<0 ? rc : adaptor_send_queue(zh, 0);
  }
@@ -1209,7 +1207,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         *interest = ZOOKEEPER_READ;
         /* we are interested in a write if we are connected and have something
          * to send, or we are waiting for a connect to finish. */
-        if ((!zh->to_send.get()->bufferList_.empty() &&
+        if ((!zh->to_send.bufferList_.empty() &&
             zh->state == ZOO_CONNECTED_STATE) ||
             zh->state == ZOO_CONNECTING_STATE) {
             *interest |= ZOOKEEPER_WRITE;
@@ -1241,7 +1239,7 @@ static int check_events(zhandle_t *zh, int events)
                 format_endpoint_info(&zh->addrs[zh->connect_index]));
         return ZOK;
     }
-    if (!(zh->to_send.get()->bufferList_.empty()) && (events&ZOOKEEPER_WRITE)) {
+    if (!(zh->to_send.bufferList_.empty()) && (events&ZOOKEEPER_WRITE)) {
         /* make the flush call non-blocking by specifying a 0 timeout */
         int rc=flush_send_queue(zh,0);
         if (rc < 0)
@@ -1262,8 +1260,8 @@ static int check_events(zhandle_t *zh, int events)
         if (rc > 0) {
             gettimeofday(&zh->last_recv, 0);
             if (zh->state != ZOO_ASSOCIATING_STATE) {
-                boost::lock_guard<boost::recursive_mutex> lock(zh->to_process.get()->mutex_);
-                zh->to_process.get()->bufferList_.push_back(zh->input_buffer);
+                boost::lock_guard<boost::recursive_mutex> lock(zh->to_process.mutex_);
+                zh->to_process.bufferList_.push_back(zh->input_buffer);
             } else  {
                 // Process connect response.
                 int64_t oldid,newid;
@@ -1585,7 +1583,7 @@ zookeeper_process(zhandle_t *zh, int events) {
   rc = check_events(zh, events);
   if (rc!=ZOK)
     return api_epilog(zh, rc);
-  while (rc >= 0 && (bptr=dequeue_buffer(zh->to_process.get()))) {
+  while (rc >= 0 && (bptr=dequeue_buffer(&zh->to_process))) {
     MemoryInStream stream(bptr->buffer, bptr->curr_offset);
     hadoop::IBinArchive iarchive(stream);
     proto::ReplyHeader header;
@@ -1882,7 +1880,7 @@ zookeeper_close(zhandle_t *zh) {
     memmove(data, serialized.c_str(), serialized.size());
 
     enter_critical(zh);
-    rc = queue_buffer_bytes(zh->to_send.get(), data, serialized.size());
+    rc = queue_buffer_bytes(&zh->to_send, data, serialized.size());
     leave_critical(zh);
 
     if (rc < 0) {
@@ -1900,7 +1898,7 @@ zookeeper_close(zhandle_t *zh) {
 finish:
   destroy(zh);
   adaptor_destroy(zh);
-  free(zh);
+  delete zh;
   return rc;
 }
 
@@ -2023,7 +2021,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
   rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
       create_watcher_registration(pathStr.c_str(),data_result_checker,watcher,watcherCtx),
       isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer,
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
     serialized.size());
   leave_critical(zh);
 
@@ -2070,7 +2068,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
   enter_critical(zh);
   rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0,
                                          isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer,
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
     serialized.size());
   leave_critical(zh);
 
@@ -2120,7 +2118,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
   enter_critical(zh);
   rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
                                            data, isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer,
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
                                         serialized.size());
   leave_critical(zh);
 
@@ -2161,7 +2159,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   enter_critical(zh);
   rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
                                          isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2202,7 +2200,7 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
       create_watcher_registration(req.getpath().c_str(), exists_result_checker,
         watcher,watcherCtx), isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2242,7 +2240,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
   enter_critical(zh);
   rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
       create_watcher_registration(req.getpath().c_str(),child_result_checker,watcher,watcherCtx), false);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2288,7 +2286,7 @@ int zoo_async(zhandle_t *zh, const char *path,
 
   enter_critical(zh);
   rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data, false) ;
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2327,7 +2325,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   enter_critical(zh);
   rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data,
                                         isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2368,7 +2366,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
   enter_critical(zh);
   rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
                                          isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2471,7 +2469,7 @@ int zoo_amulti2(zhandle_t *zh,
   /* BEGIN: CRTICIAL SECTION */
   enter_critical(zh);
   add_multi_completion(zh, header.getxid(), completion, data, results, isSynchronous);
-  queue_buffer_bytes(zh->to_send.get(), buffer, serialized.size());
+  queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 
   LOG_DEBUG(boost::format("Sending multi request xid=%#08x with %d subrequests to %s") %
@@ -2494,8 +2492,8 @@ int flush_send_queue(zhandle_t*zh, int timeout)
     // successful
     {
         boost::lock_guard<boost::recursive_mutex>
-          lock(zh->to_send.get()->mutex_);
-        while (!(zh->to_send.get()->bufferList_.empty()) &&
+          lock(zh->to_send.mutex_);
+        while (!(zh->to_send.bufferList_.empty()) &&
                zh->state == ZOO_CONNECTED_STATE) {
             if(timeout!=0){
                 int elapsed;
@@ -2519,7 +2517,7 @@ int flush_send_queue(zhandle_t*zh, int timeout)
                 }
             }
 
-            rc = send_buffer(zh->fd, &(zh->to_send.get()->bufferList_.front()));
+            rc = send_buffer(zh->fd, &(zh->to_send.bufferList_.front()));
             if(rc==0 && timeout==0){
                 /* send_buffer would block while sending this buffer */
                 rc = ZOK;
@@ -2531,7 +2529,7 @@ int flush_send_queue(zhandle_t*zh, int timeout)
             }
             // if the buffer has been sent successfully, remove it from the queue
             if (rc > 0)
-                remove_buffer(zh->to_send.get());
+                remove_buffer(&zh->to_send);
             gettimeofday(&zh->last_send, 0);
             rc = ZOK;
         }

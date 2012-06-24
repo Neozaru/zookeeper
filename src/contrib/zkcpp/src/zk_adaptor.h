@@ -18,7 +18,6 @@
 
 #ifndef ZK_ADAPTOR_H_
 #define ZK_ADAPTOR_H_
-#include <boost/scoped_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
@@ -159,8 +158,8 @@ class zhandle_t {
     int recv_timeout; /* The maximum amount of time that can go by without 
      receiving anything from the zookeeper server */
     buffer_t* input_buffer; /* the current buffer being read in */
-    boost::scoped_ptr<buffer_list_t> to_process; /* The buffers that have been read and are ready to be processed. */
-    boost::scoped_ptr<buffer_list_t> to_send; /* The packets queued to send */
+    buffer_list_t to_process; /* The buffers that have been read and are ready to be processed. */
+    buffer_list_t to_send; /* The packets queued to send */
     completion_head_t sent_requests; /* The outstanding requests */
     completion_head_t completions_to_process; /* completions that are ready to run */
     int connect_index; /* The index of the address to connect to */
