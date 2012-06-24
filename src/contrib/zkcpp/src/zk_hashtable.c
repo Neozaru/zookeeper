@@ -20,7 +20,6 @@
 ENABLE_LOGGING;
 #include "zk_hashtable.h"
 #include "zk_adaptor.h"
-#include <boost/unordered_map.hpp>
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -31,10 +30,6 @@ typedef struct _watcher_object {
     struct _watcher_object* next;
 } watcher_object_t;
 
-
-struct _zk_hashtable {
-    boost::unordered_map<std::string, watcher_object_list_t*> map;
-};
 
 struct watcher_object_list {
     watcher_object_t* head;
@@ -92,11 +87,6 @@ static void destroy_watcher_object_list(watcher_object_list_t* list)
     free(list);
 }
 
-zk_hashtable* create_zk_hashtable() {
-  _zk_hashtable* ht = new _zk_hashtable();
-  return ht;
-}
-
 static void do_clean_hashtable(zk_hashtable* ht)
 {
     boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
@@ -111,7 +101,6 @@ void destroy_zk_hashtable(zk_hashtable* ht)
 {
     if(ht!=0){
         do_clean_hashtable(ht);
-        delete ht;
     }
 }
 
@@ -201,9 +190,9 @@ static void copy_table(zk_hashtable *from, watcher_object_list_t *to) {
 static void collect_session_watchers(zhandle_t *zh,
                                      watcher_object_list_t **list)
 {
-    copy_table(zh->active_node_watchers, *list);
-    copy_table(zh->active_exist_watchers, *list);
-    copy_table(zh->active_child_watchers, *list);
+    copy_table(&zh->active_node_watchers, *list);
+    copy_table(&zh->active_exist_watchers, *list);
+    copy_table(&zh->active_child_watchers, *list);
 }
 
 static void add_for_event(zk_hashtable *ht, const std::string& path,
@@ -251,18 +240,18 @@ watcher_object_list_t *collectWatchers(zhandle_t *zh,int type,
     case CREATED_EVENT_DEF:
     case CHANGED_EVENT_DEF:
         // look up the watchers for the path and move them to a delivery list
-        add_for_event(zh->active_node_watchers,path.c_str(),&list);
-        add_for_event(zh->active_exist_watchers,path.c_str(),&list);
+        add_for_event(&zh->active_node_watchers,path.c_str(),&list);
+        add_for_event(&zh->active_exist_watchers,path.c_str(),&list);
         break;
     case CHILD_EVENT_DEF:
         // look up the watchers for the path and move them to a delivery list
-        add_for_event(zh->active_child_watchers,path.c_str(),&list);
+        add_for_event(&zh->active_child_watchers,path.c_str(),&list);
         break;
     case DELETED_EVENT_DEF:
         // look up the watchers for the path and move them to a delivery list
-        add_for_event(zh->active_node_watchers,path.c_str(),&list);
-        add_for_event(zh->active_exist_watchers,path.c_str(),&list);
-        add_for_event(zh->active_child_watchers,path.c_str(),&list);
+        add_for_event(&zh->active_node_watchers,path.c_str(),&list);
+        add_for_event(&zh->active_exist_watchers,path.c_str(),&list);
+        add_for_event(&zh->active_child_watchers,path.c_str(),&list);
         break;
     }
     return list;

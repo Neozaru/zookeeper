@@ -227,21 +227,21 @@ int is_unrecoverable(zhandle_t *zh)
 zk_hashtable *exists_result_checker(zhandle_t *zh, int rc)
 {
     if (rc == ZOK) {
-        return zh->active_node_watchers;
+        return &zh->active_node_watchers;
     } else if (rc == ZNONODE) {
-        return zh->active_exist_watchers;
+        return &zh->active_exist_watchers;
     }
     return 0;
 }
 
 zk_hashtable *data_result_checker(zhandle_t *zh, int rc)
 {
-    return rc==ZOK ? zh->active_node_watchers : 0;
+    return rc==ZOK ? &zh->active_node_watchers : 0;
 }
 
 zk_hashtable *child_result_checker(zhandle_t *zh, int rc)
 {
-    return rc==ZOK ? zh->active_child_watchers : 0;
+    return rc==ZOK ? &zh->active_child_watchers : 0;
 }
 
 /**
@@ -269,9 +269,9 @@ static void destroy(zhandle_t *zh)
         zh->addrs = NULL;
     }
 
-    destroy_zk_hashtable(zh->active_node_watchers);
-    destroy_zk_hashtable(zh->active_exist_watchers);
-    destroy_zk_hashtable(zh->active_child_watchers);
+    destroy_zk_hashtable(&zh->active_node_watchers);
+    destroy_zk_hashtable(&zh->active_exist_watchers);
+    destroy_zk_hashtable(&zh->active_child_watchers);
 }
 
 /**
@@ -615,9 +615,6 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->last_zxid = 0;
     zh->next_deadline.tv_sec=zh->next_deadline.tv_usec=0;
     zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
-    zh->active_node_watchers=create_zk_hashtable();
-    zh->active_exist_watchers=create_zk_hashtable();
-    zh->active_child_watchers=create_zk_hashtable();
 
     if (adaptor_init(zh) == -1) {
         goto abort;
@@ -990,9 +987,9 @@ static int send_set_watches(zhandle_t *zh) {
   proto::SetWatches req;
   std::vector<std::string> paths;
   req.setrelativeZxid(zh->last_zxid);
-  collectKeys(zh->active_node_watchers, req.getdataWatches());
-  collectKeys(zh->active_exist_watchers, req.getexistWatches());
-  collectKeys(zh->active_child_watchers, req.getchildWatches());
+  collectKeys(&zh->active_node_watchers, req.getdataWatches());
+  collectKeys(&zh->active_exist_watchers, req.getexistWatches());
+  collectKeys(&zh->active_child_watchers, req.getchildWatches());
 
   // return if there are no pending watches
   if (req.getdataWatches().empty() && req.getexistWatches().empty() &&

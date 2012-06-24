@@ -20,13 +20,18 @@
 #define ZK_HASHTABLE_H_
 
 #include <zookeeper.h>
+#include <boost/unordered_map.hpp>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct watcher_object_list watcher_object_list_t;
-typedef struct _zk_hashtable zk_hashtable;
+
+class zk_hashtable {
+  public:
+    boost::unordered_map<std::string, watcher_object_list_t*> map;
+};
 
 /**
  * The function must return a non-zero value if the watcher object can be activated
