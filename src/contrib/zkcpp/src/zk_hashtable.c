@@ -148,7 +148,7 @@ static int add_to_list(watcher_object_list_t **wl, watcher_object_t *wo,
     return 0;
 }
 
-static int do_insert_watcher_object(zk_hashtable *ht, const char *path, watcher_object_t* wo)
+static int do_insert_watcher_object(zk_hashtable *ht, const std::string& path, watcher_object_t* wo)
 {
     int res=1;
     boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
@@ -171,7 +171,7 @@ collectKeys(zk_hashtable *ht, std::vector<std::string>& keys) {
   }
 }
 
-static int insert_watcher_object(zk_hashtable *ht, const char *path,
+static int insert_watcher_object(zk_hashtable *ht, const std::string& path,
                                  watcher_object_t* wo)
 {
     int res;

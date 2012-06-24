@@ -1675,22 +1675,22 @@ int zoo_state(zhandle_t *zh)
     return 0;
 }
 
-static watcher_registration_t* create_watcher_registration(const char* path,
-        result_checker_fn checker,watcher_fn watcher,void* ctx){
-    watcher_registration_t* wo;
-    if(watcher==0)
-        return 0;
-    wo=(watcher_registration_t*)calloc(1,sizeof(watcher_registration_t));
-    wo->path=strdup(path);
-    wo->watcher=watcher;
-    wo->context=ctx;
-    wo->checker=checker;
-    return wo;
+static watcher_registration_t* create_watcher_registration(
+    const std::string& path, result_checker_fn checker,
+    watcher_fn watcher, void* ctx) {
+  watcher_registration_t* wo;
+  if(watcher==0)
+    return 0;
+  wo= new watcher_registration_t();
+  wo->path = path;
+  wo->watcher=watcher;
+  wo->context=ctx;
+  wo->checker=checker;
+  return wo;
 }
 
 static void destroy_watcher_registration(watcher_registration_t* wo){
     if(wo!=0){
-        free((void*)wo->path);
         free(wo);
     }
 }
@@ -2019,7 +2019,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
 
   enter_critical(zh);
   rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
-      create_watcher_registration(pathStr.c_str(),data_result_checker,watcher,watcherCtx),
+      create_watcher_registration(pathStr,data_result_checker,watcher,watcherCtx),
       isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
     serialized.size());
@@ -2198,7 +2198,7 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
 
   enter_critical(zh);
   rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
-      create_watcher_registration(req.getpath().c_str(), exists_result_checker,
+      create_watcher_registration(req.getpath(), exists_result_checker,
         watcher,watcherCtx), isSynchronous);
   rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
@@ -2239,7 +2239,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
 
   enter_critical(zh);
   rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
-      create_watcher_registration(req.getpath().c_str(),child_result_checker,watcher,watcherCtx), false);
+      create_watcher_registration(req.getpath(),child_result_checker,watcher,watcherCtx), false);
   rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   leave_critical(zh);
 

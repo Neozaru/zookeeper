@@ -41,12 +41,13 @@ typedef zk_hashtable *(*result_checker_fn)(zhandle_t *, int rc);
  * the server response comes back at which moment the watcher object is moved
  * to the active watchers map.
  */
-typedef struct _watcher_registration {
+class watcher_registration_t {
+  public:
     watcher_fn watcher;
     void* context;
     result_checker_fn checker;
-    const char* path;
-} watcher_registration_t;
+    std::string path;
+};
 
 zk_hashtable* create_zk_hashtable();
 void destroy_zk_hashtable(zk_hashtable* ht);
