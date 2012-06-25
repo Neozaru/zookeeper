@@ -21,7 +21,7 @@
 
 #include <zookeeper.h>
 #include <boost/unordered_map.hpp>
-#include <boost/ptr_container/ptr_list.hpp>
+#include <list>
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,9 +79,9 @@ void collectKeys(zk_hashtable *ht, std::vector<std::string>& keys);
  */
 void activateWatcher(zhandle_t *zh, watcher_registration_t* reg, int rc);
 void collectWatchers(zhandle_t *zh, int type, const std::string& path,
-                     boost::ptr_list<watcher_object_t>& watches);
+                     std::list<watcher_object_t*>& watches);
 void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
-                     boost::ptr_list<watcher_object_t>& watches);
+                     std::list<watcher_object_t*>& watches);
 
 #ifdef __cplusplus
 }

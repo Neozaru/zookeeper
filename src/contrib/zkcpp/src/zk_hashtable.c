@@ -125,7 +125,7 @@ insert_watcher_object(zk_hashtable *ht, const std::string& path,
 
 static void
 copy_watchers(watcher_object_list_t *from,
-    boost::ptr_list<watcher_object_t>& to) {
+    std::list<watcher_object_t*>& to) {
   watcher_object_t* wo = from->head;
   while (wo != NULL) {
     watcher_object_t *next = wo->next_;
@@ -135,7 +135,7 @@ copy_watchers(watcher_object_list_t *from,
 }
 
 static void copy_table(zk_hashtable *from,
-    boost::ptr_list<watcher_object_t>& watches) {
+    std::list<watcher_object_t*>& watches) {
   boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
   for (itr = from->map.begin(); itr != from->map.end(); itr++) {
     assert(itr->second);
@@ -144,14 +144,14 @@ static void copy_table(zk_hashtable *from,
 }
 
 static void collect_session_watchers(zhandle_t *zh,
-    boost::ptr_list<watcher_object_t>& watches) {
+    std::list<watcher_object_t*>& watches) {
   copy_table(&zh->active_node_watchers, watches);
   copy_table(&zh->active_exist_watchers, watches);
   copy_table(&zh->active_child_watchers, watches);
 }
 
 static void add_for_event(zk_hashtable *ht, const std::string& path,
-    boost::ptr_list<watcher_object_t>& watches) {
+    std::list<watcher_object_t*>& watches) {
   boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
   itr = ht->map.find(path);
   if (itr == ht->map.end()) {
@@ -164,7 +164,7 @@ static void add_for_event(zk_hashtable *ht, const std::string& path,
 
 
 void collectWatchers(zhandle_t *zh, int type, const std::string& path,
-    boost::ptr_list<watcher_object_t>& watches) {
+    std::list<watcher_object_t*>& watches) {
   if(type==ZOO_SESSION_EVENT){
     if (zh->watcher != NULL) {
       watcher_object_t* defWatcher = new watcher_object_t(zh->watcher, zh->context);
@@ -194,12 +194,15 @@ void collectWatchers(zhandle_t *zh, int type, const std::string& path,
 }
 
 void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
-                     boost::ptr_list<watcher_object_t>& watches) {
+                     std::list<watcher_object_t*>& watches) {
   // session event's don't have paths
   std::string client_path =
     type == ZOO_SESSION_EVENT ? path : stripChroot(path, zh->chroot);
-  BOOST_FOREACH(watcher_object_t& watch, watches) {
-    watch.watcher_(zh, type, state, client_path.c_str(), watch.context_);
+  BOOST_FOREACH(watcher_object_t* watch, watches) {
+    watch->watcher_(zh, type, state, client_path.c_str(), watch->context_);
+    if (type == ZOO_SESSION_EVENT) {
+      //delete watch;
+    }
   }
 }
 

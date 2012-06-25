@@ -125,7 +125,7 @@ class completion_t {
         string_completion_t string_result;
         multi_completion_t multi_result;
     };
-    boost::ptr_list<watcher_object_t> watcher_result;
+    std::list<watcher_object_t*> watcher_result;
     boost::scoped_ptr<boost::ptr_vector<OpResult> > results; /* For multi-op */
     bool isSynchronous;
 };
