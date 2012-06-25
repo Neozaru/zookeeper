@@ -761,39 +761,39 @@ void free_buffers(buffer_list_t *list)
 }
 
 void free_completions(zhandle_t *zh, int reason) {
-  completion_head_t tmp_list;
   {
     boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
-    tmp_list = zh->sent_requests;
+    while (zh->sent_requests.head) {
+      completion_list_t *cptr = zh->sent_requests.head;
+
+      zh->sent_requests.head = cptr->next;
+      if(cptr->xid == PING_XID){
+        // Nothing to do with a ping response
+        destroy_completion_entry(cptr);
+      } else if (cptr->c.isSynchronous) {
+        MemoryInStream stream(NULL, 0);
+        hadoop::IBinArchive iarchive(stream);
+        deserialize_response(cptr->c.type, cptr->xid, true,
+            reason, cptr, iarchive, zh->chroot);
+      } else {
+        // Fake the response
+        LOG_DEBUG(boost::format("Enqueueing a fake response: xid=%#08x") %
+            cptr->xid);
+        buffer_t *bptr = new buffer_t();
+        StringOutStream stream(bptr->buffer);
+        hadoop::OBinArchive oarchive(stream);
+        proto::ReplyHeader header;
+        header.setxid(cptr->xid);
+        header.setzxid(-1);
+        header.seterr(reason);
+        header.serialize(oarchive, "header");
+        cptr->buffer = bptr;
+        queue_completion(&zh->completions_to_process, cptr);
+      }
+    }
     zh->sent_requests.head = 0;
     zh->sent_requests.last = 0;
     (*(zh->sent_requests.cond)).notify_all();
-  }
-  while (tmp_list.head) {
-    completion_list_t *cptr = tmp_list.head;
-
-    tmp_list.head = cptr->next;
-    if(cptr->xid == PING_XID){
-      // Nothing to do with a ping response
-      destroy_completion_entry(cptr);
-    } else if (cptr->c.isSynchronous) {
-      MemoryInStream stream(NULL, 0);
-      hadoop::IBinArchive iarchive(stream);
-      deserialize_response(cptr->c.type, cptr->xid, true,
-          reason, cptr, iarchive, zh->chroot);
-    } else {
-      // Fake the response
-      buffer_t *bptr = new buffer_t();
-      StringOutStream stream(bptr->buffer);
-      hadoop::OBinArchive oarchive(stream);
-      proto::ReplyHeader header;
-      header.setxid(cptr->xid);
-      header.setzxid(-1);
-      header.seterr(reason);
-      header.serialize(oarchive, "header");
-      cptr->buffer = bptr;
-      queue_completion(&zh->completions_to_process, cptr);
-    }
   }
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
@@ -1785,9 +1785,6 @@ zookeeper_close(zhandle_t *zh) {
     /* We have incremented the ref counter to prevent the
      * completions from calling zookeeper_close before we have
      * completed the adaptor_finish call below. */
-
-    /* Signal any syncronous completions before joining the threads */
-    free_completions(zh, ZCLOSING);
 
     adaptor_finish(zh);
     /* Now we can allow the handle to be cleaned up, if the completion

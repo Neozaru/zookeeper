@@ -213,6 +213,8 @@ void *do_completion(void *v)
         lock.unlock();
         process_completions(zh);
     }
+    zh->threads.io.join();
+    process_completions(zh);
     api_epilog(zh, 0);    
     LOG_DEBUG("completion thread terminated");
     return 0;
