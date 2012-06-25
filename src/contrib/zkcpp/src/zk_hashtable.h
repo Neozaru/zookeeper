@@ -21,10 +21,20 @@
 
 #include <zookeeper.h>
 #include <boost/unordered_map.hpp>
+#include <boost/ptr_container/ptr_list.hpp>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+class watcher_object_t {
+  public:
+    watcher_object_t(watcher_fn watcher, void* context) :
+      watcher_(watcher), context_(context), next_(NULL) { assert(watcher);}
+    watcher_fn watcher_;
+    void* context_;
+    watcher_object_t* next_;
+};
 
 typedef struct watcher_object_list watcher_object_list_t;
 
@@ -65,10 +75,10 @@ void collectKeys(zk_hashtable *ht, std::vector<std::string>& keys);
  * active watchers (only if the checker allows to do so)
  */
 void activateWatcher(zhandle_t *zh, watcher_registration_t* reg, int rc);
-watcher_object_list_t *collectWatchers(zhandle_t *zh, int type,
-                                       const std::string& path);
+void collectWatchers(zhandle_t *zh, int type, const std::string& path,
+                     boost::ptr_list<watcher_object_t>& watches);
 void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
-    struct watcher_object_list **list);
+                     boost::ptr_list<watcher_object_t>& watches);
 
 #ifdef __cplusplus
 }

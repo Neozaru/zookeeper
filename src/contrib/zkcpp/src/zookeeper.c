@@ -22,6 +22,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
+#include <boost/ptr_container/ptr_list.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/foreach.hpp>
 #include <boost/random.hpp>
@@ -122,9 +123,9 @@ class completion_t {
         strings_stat_completion_t strings_stat_result;
         acl_completion_t acl_result;
         string_completion_t string_result;
-        struct watcher_object_list *watcher_result;
         multi_completion_t multi_result;
     };
+    boost::ptr_list<watcher_object_t> watcher_result;
     boost::scoped_ptr<boost::ptr_vector<OpResult> > results; /* For multi-op */
     bool isSynchronous;
 };
@@ -1325,7 +1326,7 @@ static int queue_session_event(zhandle_t *zh, int state) {
 
   cptr->buffer = new buffer_t(data, serialized.size());
   cptr->buffer->curr_offset = serialized.size();
-  cptr->c.watcher_result = collectWatchers(zh, ZOO_SESSION_EVENT, "");
+  collectWatchers(zh, ZOO_SESSION_EVENT, "", cptr->c.watcher_result);
   queue_completion(&zh->completions_to_process, cptr);
   return ZOK;
 }
@@ -1546,7 +1547,7 @@ void process_completions(zhandle_t *zh) {
       state = event.getstate();
       LOG_DEBUG(boost::format("Calling a watcher for node [%s], type = %d event=%s") %
           event.getpath() % cptr->c.type % watcherEvent2String(type));
-      deliverWatchers(zh,type,state,event.getpath().c_str(), &cptr->c.watcher_result);
+      deliverWatchers(zh,type,state,event.getpath().c_str(), cptr->c.watcher_result);
     } else {
       deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
                            header.geterr(), cptr, iarchive, zh->chroot);
@@ -1585,8 +1586,7 @@ zookeeper_process(zhandle_t *zh, int events) {
       completion_list_t* c =
         create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
       c->buffer = bptr;
-      c->c.watcher_result = collectWatchers(zh, event.gettype(),
-                                            event.getpath());
+      collectWatchers(zh, event.gettype(), event.getpath(), c->c.watcher_result);
       queue_completion(&zh->completions_to_process, c);
     } else if (header.getxid() == SET_WATCHES_XID) {
       LOG_DEBUG("Processing SET_WATCHES");

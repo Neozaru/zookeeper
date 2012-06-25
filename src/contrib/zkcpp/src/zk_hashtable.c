@@ -23,15 +23,7 @@ ENABLE_LOGGING;
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
-
-class watcher_object_t {
-  public:
-    watcher_object_t(watcher_fn watcher, void* context) :
-      watcher_(watcher), context_(context), next_(NULL) {}
-    watcher_fn watcher_;
-    void* context_;
-    watcher_object_t* next_;
-};
+#include <boost/foreach.hpp>
 
 struct watcher_object_list {
     watcher_object_t* head;
@@ -51,11 +43,6 @@ watcher_object_t* getFirstWatcher(zk_hashtable* ht,const char* path)
 watcher_object_t* clone_watcher_object(watcher_object_t* wo)
 {
     return new watcher_object_t(wo->watcher_, wo->context_);
-}
-
-static watcher_object_t* create_watcher_object(watcher_fn watcher,void* ctx)
-{
-    return new watcher_object_t(watcher, ctx);
 }
 
 static watcher_object_list_t* create_watcher_object_list(watcher_object_t* head) 
@@ -112,27 +99,12 @@ static watcher_object_t* search_watcher(watcher_object_list_t** wl,watcher_objec
     return 0;
 }
 
-static int
+static void
 add_to_list(watcher_object_list_t **wl, watcher_object_t *wo) {
   assert(search_watcher(wl, wo) == 0);
   wo->next_ = (*wl)->head;
   (*wl)->head = wo;
-  return 1;
 }
-
-static int do_insert_watcher_object(zk_hashtable *ht, const std::string& path, watcher_object_t* wo)
-{
-    int res=1;
-    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
-    itr = ht->map.find(path);
-    if (itr == ht->map.end()) {
-        ht->map[path] = create_watcher_object_list(wo);
-    } else {
-        res = add_to_list(&(itr->second), wo);
-    }
-    return res;
-}
-
 
 void
 collectKeys(zk_hashtable *ht, std::vector<std::string>& keys) {
@@ -143,119 +115,105 @@ collectKeys(zk_hashtable *ht, std::vector<std::string>& keys) {
   }
 }
 
-static int insert_watcher_object(zk_hashtable *ht, const std::string& path,
-                                 watcher_object_t* wo)
-{
-    int res;
-    res=do_insert_watcher_object(ht,path,wo);
-    return res;
-}
-
-static void copy_watchers(watcher_object_list_t *from, watcher_object_list_t *to, int clone)
-{
-    watcher_object_t* wo=from->head;
-    while(wo){
-        watcher_object_t *next = wo->next_;
-        add_to_list(&to, wo);
-        wo=next;
-    }
-}
-
-static void copy_table(zk_hashtable *from, watcher_object_list_t *to) {
-    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
-    for (itr = from->map.begin(); itr != from->map.end(); itr++) {
-        assert(itr->second);
-        assert(to);
-        copy_watchers(itr->second, to, 1);
-    }
-}
-
-static void collect_session_watchers(zhandle_t *zh,
-                                     watcher_object_list_t **list)
-{
-    copy_table(&zh->active_node_watchers, *list);
-    copy_table(&zh->active_exist_watchers, *list);
-    copy_table(&zh->active_child_watchers, *list);
-}
-
-static void add_for_event(zk_hashtable *ht, const std::string& path,
-                          watcher_object_list_t **list)
-{
-
-    watcher_object_list_t* wl;
-
-    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
-    itr = ht->map.find(path);
-    if (itr == ht->map.end()) {
-        return;
-    }
-    wl = itr->second;
-    ht->map.erase(itr);
-    copy_watchers(wl, *list, 0);
-    free(wl);
-}
-
 static void
-do_foreach_watcher(watcher_object_t* wo, zhandle_t* zh,
-                   const std::string& path, int type, int state) {
-  // session event's don't have paths
-  std::string client_path =
-    type == ZOO_SESSION_EVENT ? path : stripChroot(path, zh->chroot);
-  while(wo != NULL) {
-    wo->watcher_(zh, type, state, client_path.c_str(), wo->context_);
-    wo=wo->next_;
+insert_watcher_object(zk_hashtable *ht, const std::string& path,
+    watcher_object_t* wo) {
+  boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+  itr = ht->map.find(path);
+  if (itr == ht->map.end()) {
+    ht->map[path] = create_watcher_object_list(wo);
+  } else {
+    add_to_list(&(itr->second), wo);
   }
 }
 
-watcher_object_list_t *collectWatchers(zhandle_t *zh,int type,
-                                       const std::string& path) {
-    struct watcher_object_list *list = create_watcher_object_list(0); 
+static void
+copy_watchers(watcher_object_list_t *from,
+    boost::ptr_list<watcher_object_t>& to) {
+  watcher_object_t* wo = from->head;
+  while (wo != NULL) {
+    watcher_object_t *next = wo->next_;
+    to.push_back(wo);
+    wo=next;
+  }
+}
 
-    if(type==ZOO_SESSION_EVENT){
-        watcher_object_t* defWatcher = new watcher_object_t(zh->watcher, zh->context);
-        add_to_list(&list, defWatcher);
-        collect_session_watchers(zh, &list);
-        return list;
+static void copy_table(zk_hashtable *from,
+    boost::ptr_list<watcher_object_t>& watches) {
+  boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+  for (itr = from->map.begin(); itr != from->map.end(); itr++) {
+    assert(itr->second);
+    copy_watchers(itr->second, watches);
+  }
+}
+
+static void collect_session_watchers(zhandle_t *zh,
+    boost::ptr_list<watcher_object_t>& watches) {
+  copy_table(&zh->active_node_watchers, watches);
+  copy_table(&zh->active_exist_watchers, watches);
+  copy_table(&zh->active_child_watchers, watches);
+}
+
+static void add_for_event(zk_hashtable *ht, const std::string& path,
+    boost::ptr_list<watcher_object_t>& watches) {
+  boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+  itr = ht->map.find(path);
+  if (itr == ht->map.end()) {
+    return;
+  }
+  copy_watchers(itr->second, watches);
+  free(itr->second);
+  ht->map.erase(itr);
+}
+
+
+void collectWatchers(zhandle_t *zh, int type, const std::string& path,
+    boost::ptr_list<watcher_object_t>& watches) {
+  if(type==ZOO_SESSION_EVENT){
+    if (zh->watcher != NULL) {
+      watcher_object_t* defWatcher = new watcher_object_t(zh->watcher, zh->context);
+      watches.push_back(defWatcher);
     }
-    switch(type){
+    collect_session_watchers(zh, watches);
+    return;
+  }
+  switch(type){
     case CREATED_EVENT_DEF:
     case CHANGED_EVENT_DEF:
-        // look up the watchers for the path and move them to a delivery list
-        add_for_event(&zh->active_node_watchers,path.c_str(),&list);
-        add_for_event(&zh->active_exist_watchers,path.c_str(),&list);
-        break;
+      // look up the watchers for the path and move them to a delivery list
+      add_for_event(&zh->active_node_watchers, path, watches);
+      add_for_event(&zh->active_exist_watchers, path, watches);
+      break;
     case CHILD_EVENT_DEF:
-        // look up the watchers for the path and move them to a delivery list
-        add_for_event(&zh->active_child_watchers,path.c_str(),&list);
-        break;
+      // look up the watchers for the path and move them to a delivery list
+      add_for_event(&zh->active_child_watchers, path, watches);
+      break;
     case DELETED_EVENT_DEF:
-        // look up the watchers for the path and move them to a delivery list
-        add_for_event(&zh->active_node_watchers,path.c_str(),&list);
-        add_for_event(&zh->active_exist_watchers,path.c_str(),&list);
-        add_for_event(&zh->active_child_watchers,path.c_str(),&list);
-        break;
+      // look up the watchers for the path and move them to a delivery list
+      add_for_event(&zh->active_node_watchers, path, watches);
+      add_for_event(&zh->active_exist_watchers, path, watches);
+      add_for_event(&zh->active_child_watchers, path, watches);
+      break;
+  }
+}
+
+void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
+                     boost::ptr_list<watcher_object_t>& watches) {
+  // session event's don't have paths
+  std::string client_path =
+    type == ZOO_SESSION_EVENT ? path : stripChroot(path, zh->chroot);
+  BOOST_FOREACH(watcher_object_t& watch, watches) {
+    watch.watcher_(zh, type, state, client_path.c_str(), watch.context_);
+  }
+}
+
+void activateWatcher(zhandle_t* zh, watcher_registration_t* reg, int rc) {
+  if (reg != NULL) {
+    // This code is executed by the IO thread
+    zk_hashtable *ht = reg->checker(zh, rc);
+    if (ht != NULL) {
+      insert_watcher_object(ht,reg->path,
+          new watcher_object_t(reg->watcher, reg->context));
     }
-    return list;
-}
-
-void deliverWatchers(zhandle_t *zh, int type,int state, const char* path,
-                     watcher_object_list_t **list)
-{
-    if (!list || !(*list)) return;
-    do_foreach_watcher((*list)->head, zh, path, type, state);
-    destroy_watcher_object_list(*list);
-    *list = 0;
-}
-
-void activateWatcher(zhandle_t *zh, watcher_registration_t* reg, int rc)
-{
-    if(reg){
-        /* in multithreaded lib, this code is executed 
-         * by the IO thread */
-        zk_hashtable *ht = reg->checker(zh, rc);
-        if(ht){
-            insert_watcher_object(ht,reg->path,
-                    create_watcher_object(reg->watcher, reg->context));
-        }
-    }    
+  }
 }
