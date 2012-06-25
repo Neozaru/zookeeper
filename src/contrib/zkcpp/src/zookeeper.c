@@ -141,7 +141,7 @@ class completion_list_t {
 };
 
 const char*err2string(int err);
-static int queue_session_event(zhandle_t *zh, int state);
+static int queue_session_event(zhandle_t *zh, SessionState::type state);
 static const char* format_endpoint_info(const struct sockaddr_storage* ep);
 static const char* format_current_endpoint_info(zhandle_t* zh);
 
@@ -851,12 +851,9 @@ static void handle_error(zhandle_t *zh,int rc)
 {
     close(zh->fd);
     if (is_unrecoverable(zh)) {
-        LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=" <<
-                  SessionState::toString(zh->state));
-        PROCESS_SESSION_EVENT(zh, zh->state);
+        queue_session_event(zh, zh->state);
     } else if (zh->state == SessionState::Connected) {
-        LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=CONNECTING_STATE");
-        PROCESS_SESSION_EVENT(zh, SessionState::Connecting);
+        queue_session_event(zh, SessionState::Connecting);
     }
     cleanup_bufs(zh, rc);
     zh->fd = -1;
@@ -1275,8 +1272,7 @@ static int check_events(zhandle_t *zh, int events)
                     send_set_watches(zh);
                     /* send the authentication packet now */
                     send_auth_info(zh);
-                    LOG_DEBUG("Calling a watcher for a ZOO_SESSION_EVENT and the state=SessionState::Connected");
-                    PROCESS_SESSION_EVENT(zh, SessionState::Connected);
+                    queue_session_event(zh, SessionState::Connected);
                 }
             }
             zh->input_buffer = 0;
@@ -1302,7 +1298,9 @@ int api_epilog(zhandle_t *zh,int rc)
 }
 
 // IO thread queues session events to be processed by the completion thread
-static int queue_session_event(zhandle_t *zh, int state) {
+static int queue_session_event(zhandle_t *zh, SessionState::type state) {
+  LOG_DEBUG("Notifying watches of a session event: new state=" <<
+            SessionState::toString(state));
   std::string serialized;
   StringOutStream stream(serialized);
   hadoop::OBinArchive oarchive(stream);

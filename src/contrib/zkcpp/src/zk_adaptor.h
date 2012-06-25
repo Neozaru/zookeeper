@@ -206,9 +206,6 @@ uint32_t inc_ref_counter(zhandle_t* zh);
 uint32_t dec_ref_counter(zhandle_t* zh);
 uint32_t get_ref_counter(zhandle_t* zh);
 
-// in mt mode process session event asynchronously by the completion thread
-#define PROCESS_SESSION_EVENT(zh,newstate) queue_session_event(zh,newstate)
-
 #ifdef __cplusplus
 }
 #endif
