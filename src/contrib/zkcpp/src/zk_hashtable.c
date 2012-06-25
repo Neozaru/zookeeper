@@ -25,10 +25,6 @@ ENABLE_LOGGING;
 #include <assert.h>
 #include <boost/foreach.hpp>
 
-struct watcher_object_list {
-    watcher_object_t* head;
-};
-
 watcher_object_t* getFirstWatcher(zk_hashtable* ht,const char* path)
 {
     boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;

@@ -36,7 +36,10 @@ class watcher_object_t {
     watcher_object_t* next_;
 };
 
-typedef struct watcher_object_list watcher_object_list_t;
+class watcher_object_list_t {
+  public:
+    watcher_object_t* head;
+};
 
 class zk_hashtable {
   public:

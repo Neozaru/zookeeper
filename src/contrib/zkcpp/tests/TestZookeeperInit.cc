@@ -22,8 +22,7 @@
 #include <errno.h>
 
 #include "Util.h"
-#include "LibCMocks.h"
-#include "ZKMocks.h"
+#include "zk_adaptor.h"
 
 using namespace std;
 
@@ -40,11 +39,6 @@ class Zookeeper_init : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testInvalidAddressString1);
     CPPUNIT_TEST(testInvalidAddressString2);
     CPPUNIT_TEST(testNonexistentHost);
-    CPPUNIT_TEST(testOutOfMemory_getaddrs1);
-#if !defined(__CYGWIN__) // not valid for cygwin
-    CPPUNIT_TEST(testOutOfMemory_getaddrs2);
-#endif
-    CPPUNIT_TEST(testPermuteAddrsList);
     CPPUNIT_TEST_SUITE_END();
     zhandle_t *zh;
     static void watcher(zhandle_t *, int , int , const char *,void*){}
@@ -200,48 +194,6 @@ public:
         //these global variables
         //CPPUNIT_ASSERT_EQUAL(EINVAL,errno);
         //CPPUNIT_ASSERT_EQUAL(HOST_NOT_FOUND,h_errno);
-    }
-    void testOutOfMemory_getaddrs1()
-    {
-        Mock_realloc reallocMock;
-        reallocMock.callsBeforeFailure=0; // fail on first call to realloc
-
-        zh=zookeeper_init("127.0.0.1:123",0,0,0,0,0);
-
-        CPPUNIT_ASSERT(zh==0);
-        CPPUNIT_ASSERT_EQUAL(ENOMEM,errno);
-    }
-    void testOutOfMemory_getaddrs2()
-    {
-        Mock_realloc reallocMock;
-        reallocMock.callsBeforeFailure=1; // fail on the second call to realloc
-
-        zh=zookeeper_init("127.0.0.1:123,127.0.0.2:123,127.0.0.3:123,127.0.0.4:123,127.0.0.5:123,127.0.0.6:123,127.0.0.7:123,127.0.0.8:123,127.0.0.9:123,127.0.0.10:123,127.0.0.11:123,127.0.0.12:123,127.0.0.13:123,127.0.0.14:123,127.0.0.15:123,127.0.0.16:123,127.0.0.17:123",0,0,0,0,0);
-
-        CPPUNIT_ASSERT(zh==0);
-        CPPUNIT_ASSERT_EQUAL(ENOMEM,errno);
-    }
-    void testPermuteAddrsList()
-    {
-        const char EXPECTED[][5]={"\0\0\0\0","\1\1\1\1","\2\2\2\2","\3\3\3\3"};
-        const int EXPECTED_ADDR_COUNT=COUNTOF(EXPECTED);
-
-        const int RAND_SEQ[]={0,1,1,-1};
-        const int RAND_SIZE=COUNTOF(RAND_SEQ);
-        Mock_random randomMock;
-        randomMock.randomReturns.assign(RAND_SEQ,RAND_SEQ+RAND_SIZE-1);
-        zh=zookeeper_init("0.0.0.0:123,1.1.1.1:123,2.2.2.2:123,3.3.3.3:123",0,1000,0,0,0);
-
-        CPPUNIT_ASSERT(zh!=0);
-        CPPUNIT_ASSERT_EQUAL(EXPECTED_ADDR_COUNT,zh->addrs_count);
-        const string EXPECTED_SEQ("3210");
-        char ACTUAL_SEQ[EXPECTED_ADDR_COUNT+1]; ACTUAL_SEQ[EXPECTED_ADDR_COUNT]=0;
-        for(int i=0;i<zh->addrs_count;i++){
-            sockaddr_in* addr=(struct sockaddr_in*)&zh->addrs[i];
-            // match the first byte of the EXPECTED and of the actual address
-            ACTUAL_SEQ[i]=((char*)&addr->sin_addr)[0]+'0';
-        }
-        CPPUNIT_ASSERT_EQUAL(EXPECTED_SEQ,string(ACTUAL_SEQ));
     }
 };
 
