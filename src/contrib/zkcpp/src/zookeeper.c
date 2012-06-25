@@ -672,8 +672,7 @@ static int remove_buffer(buffer_list_t *list)
     return 1;
 }
 
-static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len) {
-  buffer_t *b  = new buffer_t(buff,len);
+static int queue_buffer(buffer_list_t *list, buffer_t* b) {
   boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   list->bufferList_.push_back(b);
   return ZOK;
@@ -684,41 +683,41 @@ static int queue_buffer_bytes(buffer_list_t *list, char *buff, int len) {
  * 0 if send would block while sending the buffer (or a send was incomplete),
  * 1 if success
  */
-static int send_buffer(int fd, buffer_t *buff)
-{
-    int len = buff->len;
-    int off = buff->curr_offset;
-    int rc = -1;
+static int
+send_buffer(int fd, buffer_t* buff) {
+  int32_t len = buff->buffer.size();
+  int32_t off = buff->offset;
+  int rc = -1;
 
-    if (off < 4) {
-        /* we need to send the length at the beginning */
-        int nlen = htonl(len);
-        char *b = (char*)&nlen;
-        rc = zookeeper_send(fd, b + off, sizeof(nlen) - off);
-        if (rc == -1) {
-            if (errno != EAGAIN) {
-                return -1;
-            } else {
-                return 0;
-            }
-        } else {
-            buff->curr_offset  += rc;
-        }
-        off = buff->curr_offset;
+  if (off < (int32_t)sizeof(int32_t)) {
+    /* we need to send the length at the beginning */
+    int32_t nlen = htonl(len);
+    char *b = (char*)&nlen;
+    rc = zookeeper_send(fd, b + off, sizeof(nlen) - off);
+    if (rc == -1) {
+      if (errno != EAGAIN) {
+        return -1;
+      } else {
+        return 0;
+      }
+    } else {
+      buff->offset  += rc;
     }
-    if (off >= 4) {
-        /* want off to now represent the offset into the buffer */
-        off -= sizeof(buff->len);
-        rc = zookeeper_send(fd, buff->buffer + off, len - off);
-        if (rc == -1) {
-            if (errno != EAGAIN) {
-                return -1;
-            }
-        } else {
-            buff->curr_offset += rc;
-        }
+    off = buff->offset;
+  }
+  if (off >= 4) {
+    /* want off to now represent the offset into the buffer */
+    off -= sizeof(len);
+    rc = zookeeper_send(fd, buff->buffer.data() + off, len - off);
+    if (rc == -1) {
+      if (errno != EAGAIN) {
+        return -1;
+      }
+    } else {
+      buff->offset += rc;
     }
-    return buff->curr_offset == len + (int)sizeof(buff->len);
+  }
+  return buff->offset == len + (int)sizeof(uint32_t);
 }
 
 /* returns:
@@ -726,51 +725,50 @@ static int send_buffer(int fd, buffer_t *buff)
  * 0 if recv would block,
  * 1 if success
  */
-static int recv_buffer(int fd, buffer_t *buff) {
-    int off = buff->curr_offset;
-    int rc = 0;
-    //fprintf(LOGSTREAM, "rc = %d, off = %d, line %d\n", rc, off, __LINE__);
+static int
+recv_buffer(int fd, buffer_t *buff) {
+  int off = buff->offset;
+  int rc = 0;
 
-    /* if buffer is less than 4, we are reading in the length */
-    if (off < 4) {
-        char *buffer = (char*)&(buff->len);
-        rc = recv(fd, buffer+off, sizeof(int)-off, 0);
-        //fprintf(LOGSTREAM, "rc = %d, off = %d, line %d\n", rc, off, __LINE__);
-        switch(rc) {
-        case 0:
-            errno = EHOSTDOWN;
-        case -1:
-            if (errno == EAGAIN) {
-                return 0;
-            }
-            return -1;
-        default:
-            buff->curr_offset += rc;
+  /* if buffer is less than 4, we are reading in the length */
+  if (off < (int32_t)sizeof(int32_t)) {
+    char *buffer = (char*)&(buff->length);
+    rc = recv(fd, buffer+off, sizeof(int32_t) - off, 0);
+    switch(rc) {
+      case 0:
+        errno = EHOSTDOWN;
+      case -1:
+        if (errno == EAGAIN) {
+          return 0;
         }
-        off = buff->curr_offset;
-        if (buff->curr_offset == sizeof(buff->len)) {
-            buff->len = ntohl(buff->len);
-            buff->buffer = new char[buff->len];
-        }
+        return -1;
+      default:
+        buff->offset += rc;
     }
-    if (buff->buffer) {
-        /* want off to now represent the offset into the buffer */
-        off -= sizeof(buff->len);
+    off = buff->offset;
+    if (buff->offset == sizeof(uint32_t)) {
+      buff->length = ntohl(buff->length);
+      buff->buffer.resize(buff->length);
+    }
+  }
+  if (buff->offset >= (int32_t) sizeof(int32_t)) {
+    /* want off to now represent the offset into the buffer */
+    off -= sizeof(int32_t);
 
-        rc = recv(fd, buff->buffer+off, buff->len-off, 0);
-        switch(rc) {
-        case 0:
-            errno = EHOSTDOWN;
-        case -1:
-            if (errno == EAGAIN) {
-                break;
-            }
-            return -1;
-        default:
-            buff->curr_offset += rc;
+    rc = recv(fd, (char*)buff->buffer.data() + off, buff->length - off, 0);
+    switch(rc) {
+      case 0:
+        errno = EHOSTDOWN;
+      case -1:
+        if (errno == EAGAIN) {
+          break;
         }
+        return -1;
+      default:
+        buff->offset += rc;
     }
-    return buff->curr_offset == buff->len + (int)sizeof(buff->len);
+  }
+  return buff->offset == buff->length + (int32_t) sizeof(int32_t);
 }
 
 void free_buffers(buffer_list_t *list)
@@ -802,21 +800,14 @@ void free_completions(zhandle_t *zh, int reason) {
           reason, cptr, iarchive, zh->chroot);
     } else {
       // Fake the response
-      std::string serialized;
-      StringOutStream stream(serialized);
+      buffer_t *bptr = new buffer_t();
+      StringOutStream stream(bptr->buffer);
       hadoop::OBinArchive oarchive(stream);
       proto::ReplyHeader header;
       header.setxid(cptr->xid);
       header.setzxid(-1);
       header.seterr(reason);
       header.serialize(oarchive, "header");
-      char* data = new char[serialized.size()];
-      memmove(data, serialized.c_str(), serialized.size());
-
-      buffer_t *bptr;
-      bptr = new buffer_t();
-      bptr->buffer = data;
-      bptr->len = serialized.size();
       cptr->buffer = bptr;
       queue_completion(&zh->completions_to_process, cptr);
     }
@@ -900,8 +891,8 @@ static void auth_completion_func(int rc, zhandle_t* zh) {
 
 static int send_info_packet(zhandle_t *zh, auth_info* auth) {
   int rc = 0;
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -916,11 +907,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
   req.serialize(oarchive, "req");
 
   /* add this buffer to the head of the send queue */
-  // TODO(michim) avoid copy
-  char* data = new char[serialized.size()];
-  memmove(data, serialized.c_str(), serialized.size());
-  rc = queue_buffer_bytes(&zh->to_send,
-        data, serialized.size());
+  rc = queue_buffer(&zh->to_send, buffer);
   adaptor_send_queue(zh, 0);
   return rc;
 }
@@ -953,17 +940,7 @@ static int send_last_auth_info(zhandle_t *zh) {
 
 static int send_set_watches(zhandle_t *zh) {
   int rc = 0;
-  std::string serialized;
-  StringOutStream stream(serialized);
-  hadoop::OBinArchive oarchive(stream);
-
-  proto::RequestHeader header;
-  header.setxid(SET_WATCHES_XID);
-  header.settype(ZOO_SETWATCHES_OP);
-
   proto::SetWatches req;
-  std::vector<std::string> paths;
-  req.setrelativeZxid(zh->last_zxid);
   collectKeys(&zh->active_node_watchers, req.getdataWatches());
   collectKeys(&zh->active_exist_watchers, req.getexistWatches());
   collectKeys(&zh->active_child_watchers, req.getchildWatches());
@@ -974,15 +951,22 @@ static int send_set_watches(zhandle_t *zh) {
     return ZOK;
   }
 
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
+  hadoop::OBinArchive oarchive(stream);
+
+  proto::RequestHeader header;
+  header.setxid(SET_WATCHES_XID);
+  header.settype(ZOO_SETWATCHES_OP);
+
+  std::vector<std::string> paths;
+  req.setrelativeZxid(zh->last_zxid);
+
   header.serialize(oarchive, "header");
   req.serialize(oarchive, "req");
 
   /* add this buffer to the head of the send queue */
-  // TODO(michim) avoid copy
-  char* data = new char[serialized.size()];
-  memmove(data, serialized.c_str(), serialized.size());
-  rc = queue_buffer_bytes(&zh->to_send,
-        data, serialized.size());
+  rc = queue_buffer(&zh->to_send, buffer);
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     adaptor_send_queue(zh, 0);
@@ -1047,24 +1031,19 @@ static struct timeval get_timeval(int interval)
  send_ping(zhandle_t* zh) {
   int rc = 0;
   std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
   header.setxid(PING_XID);
   header.settype(ZOO_PING_OP);
   header.serialize(oarchive, "header");
-
-  /* add this buffer to the head of the send queue */
-  // TODO(michim) avoid copy
-  char* data = new char[serialized.size()];
-  memmove(data, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     gettimeofday(&zh->last_ping, 0);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0, false);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, data, serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
   return rc<0 ? rc : adaptor_send_queue(zh, 0);
  }
@@ -1224,10 +1203,11 @@ static int check_events(zhandle_t *zh, int events)
     if (events&ZOOKEEPER_READ) {
         int rc;
         if (zh->input_buffer == 0) {
-            zh->input_buffer = new buffer_t(0,0);
+            zh->input_buffer = new buffer_t();
         }
 
         rc = recv_buffer(zh->fd, zh->input_buffer);
+        LOG_DEBUG("buffer size: " << zh->input_buffer->buffer.size());
         if (rc < 0) {
             delete zh->input_buffer;
             zh->input_buffer = NULL;
@@ -1242,7 +1222,8 @@ static int check_events(zhandle_t *zh, int events)
             } else  {
                 // Process connect response.
                 int64_t oldid,newid;
-                MemoryInStream istream((zh->input_buffer->buffer), zh->input_buffer->len);
+                MemoryInStream istream(zh->input_buffer->buffer.data(),
+                                       zh->input_buffer->length);
                 hadoop::IBinArchive iarchive(istream);
                 zh->connectResponse.deserialize(iarchive,"connect");
 
@@ -1276,10 +1257,6 @@ static int check_events(zhandle_t *zh, int events)
                 }
             }
             zh->input_buffer = 0;
-        } else {
-            // zookeeper_process was called but there was nothing to read
-            // from the socket
-            return ZNOTHING;
         }
     }
     return ZOK;
@@ -1301,8 +1278,8 @@ int api_epilog(zhandle_t *zh,int rc)
 static int queue_session_event(zhandle_t *zh, SessionState::type state) {
   LOG_DEBUG("Notifying watches of a session event: new state=" <<
             SessionState::toString(state));
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
   completion_list_t *cptr;
   proto::ReplyHeader header;
@@ -1318,12 +1295,8 @@ static int queue_session_event(zhandle_t *zh, SessionState::type state) {
   event.serialize(oarchive, "event");
   cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
 
-  // TODO(michim) avoid copy
-  char* data = new char[serialized.size()];
-  memmove(data, serialized.c_str(), serialized.size());
-
-  cptr->buffer = new buffer_t(data, serialized.size());
-  cptr->buffer->curr_offset = serialized.size();
+  cptr->buffer = buffer;
+  cptr->buffer->offset = buffer->buffer.size();
   collectWatchers(zh, ZOO_SESSION_EVENT, "", cptr->c.watcher_result);
   queue_completion(&zh->completions_to_process, cptr);
   return ZOK;
@@ -1531,7 +1504,7 @@ void process_completions(zhandle_t *zh) {
   completion_list_t *cptr;
   while ((cptr = dequeue_completion(&zh->completions_to_process)) != 0) {
     buffer_t *bptr = cptr->buffer;
-    MemoryInStream stream(bptr->buffer, bptr->len);
+    MemoryInStream stream(bptr->buffer.data(), bptr->buffer.size());
     hadoop::IBinArchive iarchive(stream);
     proto::ReplyHeader header;
     header.deserialize(iarchive, "header");
@@ -1568,7 +1541,7 @@ zookeeper_process(zhandle_t *zh, int events) {
   if (rc!=ZOK)
     return api_epilog(zh, rc);
   while (rc >= 0 && (bptr=dequeue_buffer(&zh->to_process))) {
-    MemoryInStream stream(bptr->buffer, bptr->curr_offset);
+    MemoryInStream stream(bptr->buffer.data(), bptr->length);
     hadoop::IBinArchive iarchive(stream);
     proto::ReplyHeader header;
     header.deserialize(iarchive, "header");
@@ -1843,8 +1816,8 @@ zookeeper_close(zhandle_t *zh) {
    * destroy the handle later. */
   if(zh->state==SessionState::Connected){
     int rc = 0;
-    std::string serialized;
-    StringOutStream stream(serialized);
+    buffer_t* buffer = new buffer_t();
+    StringOutStream stream(buffer->buffer);
     hadoop::OBinArchive oarchive(stream);
 
     proto::RequestHeader header;
@@ -1853,15 +1826,9 @@ zookeeper_close(zhandle_t *zh) {
     header.serialize(oarchive, "header");
     LOG_INFO(boost::format("Closing zookeeper sessionId=%#llx to [%s]\n") %
         zh->client_id.client_id % format_current_endpoint_info(zh));
-
-    /* add this buffer to the head of the send queue */
-    // TODO(michim) avoid copy
-    char* data  = new char[serialized.size()];
-    memmove(data, serialized.c_str(), serialized.size());
-
     {
       boost::lock_guard<boost::mutex> lock(zh->mutex);
-      rc = queue_buffer_bytes(&zh->to_send, data, serialized.size());
+      rc = queue_buffer(&zh->to_send, buffer);
     }
 
     if (rc < 0) {
@@ -1979,8 +1946,8 @@ int zoo_awget(zhandle_t *zh, const char *path,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -1993,18 +1960,12 @@ int zoo_awget(zhandle_t *zh, const char *path,
   req.setwatch(watcher != NULL);
   req.serialize(oarchive, "req");
 
-  /* add this buffer to the head of the send queue */
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
         create_watcher_registration(pathStr,data_result_checker,watcher,watcherCtx),
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
-        serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2023,8 +1984,8 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2042,17 +2003,11 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
   req.setversion(version);
   req.serialize(oarchive, "req");
 
-  /* add this buffer to the head of the send queue */
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
-        serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending set request xid=%#08x for path [%s] to %s") %
@@ -2073,8 +2028,8 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2093,17 +2048,11 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
   req.setflags(flags);
   req.serialize(oarchive, "req");
 
-  /* add this buffer to the head of the send queue */
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
         data, isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
-        serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2121,8 +2070,8 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2135,16 +2084,11 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   req.setversion(version);
   req.serialize(oarchive, "req");
 
-  /* add this buffer to the head of the send queue */
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2163,8 +2107,8 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2177,16 +2121,12 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   req.setwatch(watcher != NULL);
   req.serialize(oarchive, "req");
 
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
         create_watcher_registration(req.getpath(), exists_result_checker,
           watcher,watcherCtx), isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2205,8 +2145,8 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2219,15 +2159,11 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
   req.setwatch(watcher != NULL);
   req.serialize(oarchive, "req");
 
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
         create_watcher_registration(req.getpath(),child_result_checker,watcher,watcherCtx), false);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2254,8 +2190,8 @@ int zoo_async(zhandle_t *zh, const char *path,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2267,14 +2203,10 @@ int zoo_async(zhandle_t *zh, const char *path,
   req.getpath() = pathStr;
   req.serialize(oarchive, "req");
 
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data, false) ;
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2293,8 +2225,8 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2306,15 +2238,11 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   req.getpath() = pathStr;
   req.serialize(oarchive, "req");
 
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2333,8 +2261,8 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     return rc;
   }
 
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2348,15 +2276,11 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
   req.getacl() = acl;
   req.serialize(oarchive, "req");
 
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2369,8 +2293,8 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
 int zoo_amulti(zhandle_t *zh,
     const boost::ptr_vector<org::apache::zookeeper::Op>& ops,
     multi_completion_t completion, const void *data, bool isSynchronous) {
-  std::string serialized;
-  StringOutStream stream(serialized);
+  buffer_t* buffer = new buffer_t();
+  StringOutStream stream(buffer->buffer);
   hadoop::OBinArchive oarchive(stream);
 
   proto::RequestHeader header;
@@ -2452,14 +2376,10 @@ int zoo_amulti(zhandle_t *zh,
   mheader.setdone(1);
   mheader.seterr(-1);
   mheader.serialize(oarchive, "req");
-  // TODO(michim) avoid copy
-  char* buffer = new char[serialized.size()];
-  memmove(buffer, serialized.c_str(), serialized.size());
-
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     add_multi_completion(zh, header.getxid(), completion, data, results, isSynchronous);
-    queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending multi request xid=%#08x with %d subrequests to %s") %
