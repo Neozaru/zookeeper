@@ -123,15 +123,7 @@ class adaptor_threads {
      int threadsToWait;         // barrier
      boost::condition_variable cond;  // barrier's conditional   
      boost::mutex lock;               // ... and a lock
-     boost::mutex mutex; // critical section lock
      int self_pipe[2];
-};
-
-/** the auth list for adding auth */
-class auth_list_head_t {
-  public:
-    boost::ptr_list<auth_info> authList_;
-    boost::mutex mutex_;
 };
 
 /**
@@ -162,7 +154,7 @@ class zhandle_t {
     proto::ConnectResponse connectResponse;
     SessionState::type state;
     void *context;
-    auth_list_head_t auth_h; /* authentication data list */
+    boost::ptr_list<auth_info> authList_; /* authentication data list */
     /* zookeeper_close is not reentrant because it de-allocates the zhandler. 
      * This guard variable is used to defer the destruction of zhandle till 
      * right before top-level API call returns to the caller */
@@ -178,6 +170,7 @@ class zhandle_t {
     zk_hashtable active_child_watchers;
     /** used for chroot path at the client side **/
     std::string chroot;
+    boost::mutex mutex; // critical section lock
 };
 
 

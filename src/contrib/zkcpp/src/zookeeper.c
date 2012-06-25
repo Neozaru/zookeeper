@@ -796,7 +796,6 @@ void free_completions(zhandle_t *zh, int reason) {
       // Nothing to do with a ping response
       destroy_completion_entry(cptr);
     } else if (cptr->c.isSynchronous) {
-      buffer_t *bptr = cptr->buffer;
       MemoryInStream stream(NULL, 0);
       hadoop::IBinArchive iarchive(stream);
       deserialize_response(cptr->c.type, cptr->xid, true,
@@ -823,8 +822,8 @@ void free_completions(zhandle_t *zh, int reason) {
     }
   }
   {
-    boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
-    BOOST_FOREACH(auth_info& info, zh->auth_h.authList_) {
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
+    BOOST_FOREACH(auth_info& info, zh->authList_) {
       if (info.completion) {
         info.completion(reason, info.data);
         info.data = NULL;
@@ -836,11 +835,11 @@ void free_completions(zhandle_t *zh, int reason) {
 
 static void cleanup_bufs(zhandle_t *zh, int rc) {
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     free_buffers(&zh->to_send);
     free_buffers(&zh->to_process);
-    free_completions(zh, rc);
   }
+  free_completions(zh, rc);
   if (zh->input_buffer != NULL) {
     delete zh->input_buffer;
     zh->input_buffer = 0;
@@ -879,16 +878,16 @@ static void auth_completion_func(int rc, zhandle_t* zh) {
     return;
   }
 
-  boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
+  boost::lock_guard<boost::mutex> lock(zh->mutex);
   if (rc != 0) {
-    LOG_ERROR("Authentication scheme " << zh->auth_h.authList_.front().scheme <<
+    LOG_ERROR("Authentication scheme " << zh->authList_.front().scheme <<
         " failed. Connection closed.");
     zh->state = SessionState::AuthFailed;
   }else{
-    LOG_INFO("Authentication scheme " << zh->auth_h.authList_.front().scheme <<
+    LOG_INFO("Authentication scheme " << zh->authList_.front().scheme <<
         " succeeded.");
     //change state for all auths
-    BOOST_FOREACH(auth_info& info, zh->auth_h.authList_) {
+    BOOST_FOREACH(auth_info& info, zh->authList_) {
       info.state = 1;
       if (info.completion) {
         info.completion(rc, info.data);
@@ -930,8 +929,8 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
 static int send_auth_info(zhandle_t *zh) {
     int rc = 0;
     {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
-        BOOST_FOREACH(auth_info& info, zh->auth_h.authList_) {
+        boost::lock_guard<boost::mutex> lock(zh->mutex);
+        BOOST_FOREACH(auth_info& info, zh->authList_) {
           rc = send_info_packet(zh, &info);
         }
     }
@@ -942,11 +941,11 @@ static int send_auth_info(zhandle_t *zh) {
 static int send_last_auth_info(zhandle_t *zh) {
   int rc = 0;
   {
-    boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
-    if (zh->auth_h.authList_.empty()) {
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
+    if (zh->authList_.empty()) {
       return ZOK; // there is nothing to send
     }
-    rc = send_info_packet(zh, &(zh->auth_h.authList_.back()));
+    rc = send_info_packet(zh, &(zh->authList_.back()));
   }
   LOG_DEBUG("Sending auth info request to " << format_current_endpoint_info(zh));
   return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
@@ -985,7 +984,7 @@ static int send_set_watches(zhandle_t *zh) {
   rc = queue_buffer_bytes(&zh->to_send,
         data, serialized.size());
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     adaptor_send_queue(zh, 0);
   }
 
@@ -1062,7 +1061,7 @@ static struct timeval get_timeval(int interval)
   memmove(data, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     gettimeofday(&zh->last_ping, 0);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0, false);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, data, serialized.size());
@@ -1832,10 +1831,7 @@ zookeeper_close(zhandle_t *zh) {
      * completed the adaptor_finish call below. */
 
     /* Signal any syncronous completions before joining the threads */
-    {
-      boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
-      free_completions(zh, ZCLOSING);
-    }
+    free_completions(zh, ZCLOSING);
 
     adaptor_finish(zh);
     /* Now we can allow the handle to be cleaned up, if the completion
@@ -1864,7 +1860,7 @@ zookeeper_close(zhandle_t *zh) {
     memmove(data, serialized.c_str(), serialized.size());
 
     {
-      boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+      boost::lock_guard<boost::mutex> lock(zh->mutex);
       rc = queue_buffer_bytes(&zh->to_send, data, serialized.size());
     }
 
@@ -2003,7 +1999,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
         create_watcher_registration(pathStr,data_result_checker,watcher,watcherCtx),
         isSynchronous);
@@ -2052,7 +2048,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0,
         isSynchronous);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
@@ -2103,7 +2099,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
         data, isSynchronous);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
@@ -2145,7 +2141,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
         isSynchronous);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
@@ -2186,7 +2182,7 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
         create_watcher_registration(req.getpath(), exists_result_checker,
           watcher,watcherCtx), isSynchronous);
@@ -2228,7 +2224,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
         create_watcher_registration(req.getpath(),child_result_checker,watcher,watcherCtx), false);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
@@ -2276,7 +2272,7 @@ int zoo_async(zhandle_t *zh, const char *path,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data, false) ;
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   }
@@ -2315,7 +2311,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data,
         isSynchronous);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
@@ -2357,7 +2353,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
         isSynchronous);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
@@ -2461,7 +2457,7 @@ int zoo_amulti(zhandle_t *zh,
   memmove(buffer, serialized.c_str(), serialized.size());
 
   {
-    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    boost::lock_guard<boost::mutex> lock(zh->mutex);
     add_multi_completion(zh, header.getxid(), completion, data, results, isSynchronous);
     queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
   }
@@ -2552,13 +2548,13 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
     assert(cert != NULL);
     assert(certLen >= 0);
     {
-        boost::lock_guard<boost::mutex> lock(zh->auth_h.mutex_);
+        boost::lock_guard<boost::mutex> lock(zh->mutex);
         authinfo = new auth_info();
         authinfo->scheme = scheme;
         authinfo->auth = std::string(cert, certLen);
         authinfo->completion=completion;
         authinfo->data=(const char*)data;
-        zh->auth_h.authList_.push_back(authinfo);
+        zh->authList_.push_back(authinfo);
     }
 
     if(zh->state == SessionState::Connected) {
