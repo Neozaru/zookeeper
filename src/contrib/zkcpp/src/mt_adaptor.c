@@ -58,108 +58,80 @@ static int set_nonblock(int fd){
     return fcntl(fd, F_SETFL, l | O_NONBLOCK);
 }
 
-void wait_for_others(zhandle_t* zh)
-{
-    struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-    boost::unique_lock<boost::mutex> lock(adaptor->lock);
-    while(adaptor->threadsToWait>0) {
-        adaptor->cond.wait(lock);
-    }
+void
+wait_for_others(zhandle_t* zh) {
+  boost::unique_lock<boost::mutex> lock(zh->threads.lock);
+  while(zh->threads.threadsToWait>0) {
+    zh->threads.cond.wait(lock);
+  }
 }
 
-void notify_thread_ready(zhandle_t* zh)
-{
-    struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-    boost::unique_lock<boost::mutex> lock(adaptor->lock);
-    adaptor->threadsToWait--;
-    adaptor->cond.notify_all();
-    while(adaptor->threadsToWait>0) {
-        adaptor->cond.wait(lock);
+void notify_thread_ready(zhandle_t* zh) {
+    boost::unique_lock<boost::mutex> lock(zh->threads.lock);
+    zh->threads.threadsToWait--;
+    zh->threads.cond.notify_all();
+    while(zh->threads.threadsToWait>0) {
+        zh->threads.cond.wait(lock);
     }
 }
 
 
-void start_threads(zhandle_t* zh)
-{
-    struct adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-    adaptor->threadsToWait=2;  // wait for 2 threads before opening the barrier
+void
+start_threads(zhandle_t* zh) {
+  zh->threads.threadsToWait=2;  // wait for 2 threads before opening the barrier
 
-    // use api_prolog() to make sure zhandle doesn't get destroyed
-    // while initialization is in progress
-    api_prolog(zh);
-    LOG_DEBUG("starting threads...");
-    adaptor->io = boost::thread(do_io, zh);
-    adaptor->completion = boost::thread(do_completion, zh);
-    wait_for_others(zh);
-    api_epilog(zh, 0);
+  // use api_prolog() to make sure zhandle doesn't get destroyed
+  // while initialization is in progress
+  api_prolog(zh);
+  LOG_DEBUG("starting threads...");
+  zh->threads.io = boost::thread(do_io, zh);
+  zh->threads.completion = boost::thread(do_completion, zh);
+  wait_for_others(zh);
+  api_epilog(zh, 0);
 }
 
-int adaptor_init(zhandle_t *zh)
-{
-    struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)calloc(1, sizeof(*adaptor_threads));
-    if (!adaptor_threads) {
-        LOG_ERROR("Out of memory");
-        return -1;
-    }
-
-    if(pipe(adaptor_threads->self_pipe)==-1) {
-        LOG_ERROR("Can't make a pipe " << errno);
-        free(adaptor_threads);
-        return -1;
-    }
-    set_nonblock(adaptor_threads->self_pipe[1]);
-    set_nonblock(adaptor_threads->self_pipe[0]);
-
-    zh->adaptor_priv = adaptor_threads;
-    start_threads(zh);
-    return 0;
+int
+adaptor_init(zhandle_t *zh) {
+  if(pipe(zh->threads.self_pipe)==-1) {
+    LOG_ERROR("Can't make a pipe " << errno);
+    return -1;
+  }
+  set_nonblock(zh->threads.self_pipe[1]);
+  set_nonblock(zh->threads.self_pipe[0]);
+  start_threads(zh);
+  return 0;
 }
 
-void adaptor_finish(zhandle_t *zh)
-{
-    struct adaptor_threads *adaptor_threads;
-    // make sure zh doesn't get destroyed until after we're done here
-    api_prolog(zh);
-    adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
-    if(adaptor_threads==0) {
-        api_epilog(zh,0);
-        return;
-    }
+void adaptor_finish(zhandle_t *zh) {
+  // make sure zh doesn't get destroyed until after we're done here
+  api_prolog(zh);
+  if(boost::this_thread::get_id() == zh->threads.io.get_id()) {
+    zh->threads.io.detach();
+  } else {
+    wakeup_io_thread(zh);
+    zh->threads.io.join();
+  }
 
-    if(boost::this_thread::get_id() == adaptor_threads->io.get_id()) {
-        adaptor_threads->io.detach();
-    } else {
-        wakeup_io_thread(zh);
-        adaptor_threads->io.join();
-    }
-
-    if(boost::this_thread::get_id() == adaptor_threads->completion.get_id()) {
-        adaptor_threads->completion.detach();
-    } else {
-        boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
-        (*(zh->completions_to_process.cond)).notify_all();
-        lock.unlock();
-        adaptor_threads->completion.join();
-    }
-    api_epilog(zh,0);
+  if(boost::this_thread::get_id() == zh->threads.completion.get_id()) {
+    zh->threads.completion.detach();
+  } else {
+    boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
+    (*(zh->completions_to_process.cond)).notify_all();
+    lock.unlock();
+    zh->threads.completion.join();
+  }
+  api_epilog(zh,0);
 }
 
-void adaptor_destroy(zhandle_t *zh)
-{
-    struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
-    if(adaptor==0) return;
-
-    close(adaptor->self_pipe[0]);
-    close(adaptor->self_pipe[1]);
-    free(adaptor);
-    zh->adaptor_priv=0;
+void adaptor_destroy(zhandle_t *zh) {
+  close(zh->threads.self_pipe[0]);
+  close(zh->threads.self_pipe[1]);
 }
 
-int wakeup_io_thread(zhandle_t *zh)
-{
-    struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
-    char c=0;
-    return write(adaptor_threads->self_pipe[1],&c,1)==1? ZOK: ZSYSTEMERROR;    
+int
+wakeup_io_thread(zhandle_t *zh) {
+    char c = 0;
+    return write(zh->threads.self_pipe[1],&c,1)==1? ZOK: ZSYSTEMERROR;
 }
 
 int adaptor_send_queue(zhandle_t *zh, int timeout)
@@ -181,12 +153,11 @@ void *do_io(void *v)
 {
     zhandle_t *zh = (zhandle_t*)v;
     struct pollfd fds[2];
-    struct adaptor_threads *adaptor_threads = (struct adaptor_threads*)zh->adaptor_priv;
 
     api_prolog(zh);
     notify_thread_ready(zh);
     LOG_DEBUG("started IO thread");
-    fds[0].fd=adaptor_threads->self_pipe[0];
+    fds[0].fd=zh->threads.self_pipe[0];
     fds[0].events=POLLIN;
     while(!zh->close_requested) {
         struct timeval tv;
@@ -213,7 +184,7 @@ void *do_io(void *v)
         if(fds[0].revents&POLLIN){
             // flush the pipe
             char b[128];
-            while(read(adaptor_threads->self_pipe[0],b,sizeof(b))==sizeof(b)){}
+            while(read(zh->threads.self_pipe[0],b,sizeof(b))==sizeof(b)){}
         }        
         // dispatch zookeeper events
         rc = zookeeper_process(zh, interest);
@@ -263,20 +234,4 @@ int32_t get_xid()
 {
     static uint32_t xid = 1;
     return boost::interprocess::detail::atomic_inc32(&xid);
-}
-
-void enter_critical(zhandle_t* zh)
-{
-    struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
-    if(adaptor) {
-        adaptor->zh_lock.lock();
-    }
-}
-
-void leave_critical(zhandle_t* zh)
-{
-    struct adaptor_threads *adaptor = (adaptor_threads*)zh->adaptor_priv;
-    if(adaptor) {
-        adaptor->zh_lock.unlock();
-    }
 }

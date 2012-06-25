@@ -66,8 +66,6 @@ public:
         zh=zookeeper_init("localhost:2121",watcher,10000,0,0,0); 
         
         CPPUNIT_ASSERT(zh!=0);
-        adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-        CPPUNIT_ASSERT(adaptor!=0);
 
         // do not actually free the memory while in zookeeper_close()
         Mock_free_noop freeMock;
@@ -86,7 +84,6 @@ public:
         CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(savezh));
         CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.hostname));
         CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.addrs));
-        CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
         // Cannot be maintained accurately: CPPUNIT_ASSERT_EQUAL(10,freeMock.callCounter);
     }
     void testCloseUnconnected1()
@@ -94,8 +91,6 @@ public:
         for(int i=0; i<100;i++){
             zh=zookeeper_init("localhost:2121",watcher,10000,0,0,0); 
             CPPUNIT_ASSERT(zh!=0);
-            adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-            CPPUNIT_ASSERT(adaptor!=0);
             int rc=zookeeper_close(zh);
             zh=0;
             CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);
@@ -126,12 +121,10 @@ public:
             freeMock.disable();
             
             CPPUNIT_ASSERT_EQUAL((int)ZOK,rc);            
-            adaptor_threads* adaptor=(adaptor_threads*)lzh.adaptor_priv;
             // memory
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(savezh));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.hostname));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh.addrs));
-            CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
         }
     }
     
@@ -172,12 +165,10 @@ public:
             freeMock.disable();
             
             CPPUNIT_ASSERT_EQUAL((int)ZOK,closeAction.rc);          
-            adaptor_threads* adaptor=(adaptor_threads*)closeAction.lzh.adaptor_priv;
             // memory
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(lzh));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.hostname));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.addrs));
-            CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
         }
     }
 
@@ -208,7 +199,6 @@ public:
             // make sure the watcher has been processed
             CPPUNIT_ASSERT(ensureCondition(closeAction.isWatcherTriggered(),1000)<1000);
             // make sure the threads have not been destroyed yet
-            adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
             // about to call zookeeper_close() -- no longer need the guard
             guard.disarm();
             
@@ -221,7 +211,6 @@ public:
             // memory
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.hostname));
             CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(closeAction.lzh.addrs));
-            CPPUNIT_ASSERT_EQUAL(1,freeMock.getFreeCount(adaptor));
         }
     }
 

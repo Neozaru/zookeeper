@@ -89,10 +89,6 @@ public:
         CPPUNIT_ASSERT(zh->connect_index==0);
         CPPUNIT_ASSERT(zh->last_zxid ==0);
         CPPUNIT_ASSERT(memcmp(&zh->client_id,&cid,sizeof(cid))==0);
-
-        // thread specific checks
-        adaptor_threads* adaptor=(adaptor_threads*)zh->adaptor_priv;
-        CPPUNIT_ASSERT(adaptor!=0);
     }
     void testAddressResolution()
     {

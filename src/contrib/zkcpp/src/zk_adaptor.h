@@ -116,13 +116,14 @@ struct connect_req {
 };
 
 /* this is used by mt_adaptor internally for thread management */
-struct adaptor_threads {
+class adaptor_threads {
+  public:
      boost::thread io;
      boost::thread completion;
      int threadsToWait;         // barrier
      boost::condition_variable cond;  // barrier's conditional   
      boost::mutex lock;               // ... and a lock
-     boost::mutex zh_lock;            // critical section lock
+     boost::mutex mutex; // critical section lock
      int self_pipe[2];
 };
 
@@ -167,7 +168,7 @@ class zhandle_t {
      * right before top-level API call returns to the caller */
     uint32_t ref_counter;
     volatile int close_requested;
-    void *adaptor_priv;
+    adaptor_threads threads;
     /* Used for debugging only: non-zero value indicates the time when the zookeeper_process
      * call returned while there was at least one unprocessed server response 
      * available in the socket recv buffer */
@@ -194,9 +195,6 @@ int flush_send_queue(zhandle_t*zh, int timeout);
 std::string stripChroot(const std::string& path, const std::string& chroot);
 void free_duplicate_path(const char* free_path, const char* path);
 
-// critical section guards
-void enter_critical(zhandle_t* zh);
-void leave_critical(zhandle_t* zh);
 // zhandle object reference counting
 void api_prolog(zhandle_t* zh);
 int api_epilog(zhandle_t *zh, int rc);

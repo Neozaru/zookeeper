@@ -834,17 +834,17 @@ void free_completions(zhandle_t *zh, int reason) {
   }
 }
 
-static void cleanup_bufs(zhandle_t *zh, int rc)
-{
-    enter_critical(zh);
+static void cleanup_bufs(zhandle_t *zh, int rc) {
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
     free_buffers(&zh->to_send);
     free_buffers(&zh->to_process);
     free_completions(zh, rc);
-    leave_critical(zh);
-    if (zh->input_buffer != NULL) {
-        delete zh->input_buffer;
-        zh->input_buffer = 0;
-    }
+  }
+  if (zh->input_buffer != NULL) {
+    delete zh->input_buffer;
+    zh->input_buffer = 0;
+  }
 }
 
 static void handle_error(zhandle_t *zh,int rc)
@@ -984,10 +984,10 @@ static int send_set_watches(zhandle_t *zh) {
   memmove(data, serialized.c_str(), serialized.size());
   rc = queue_buffer_bytes(&zh->to_send,
         data, serialized.size());
-
-  enter_critical(zh);
-  adaptor_send_queue(zh, 0);
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    adaptor_send_queue(zh, 0);
+  }
 
   LOG_DEBUG("Sending SetWatches request to " << format_current_endpoint_info(zh));
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
@@ -1061,11 +1061,12 @@ static struct timeval get_timeval(int interval)
   char* data = new char[serialized.size()];
   memmove(data, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  gettimeofday(&zh->last_ping, 0);
-  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0, false);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, data, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    gettimeofday(&zh->last_ping, 0);
+    rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0, false);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, data, serialized.size());
+  }
   return rc<0 ? rc : adaptor_send_queue(zh, 0);
  }
 
@@ -1831,9 +1832,10 @@ zookeeper_close(zhandle_t *zh) {
      * completed the adaptor_finish call below. */
 
     /* Signal any syncronous completions before joining the threads */
-    enter_critical(zh);
-    free_completions(zh, ZCLOSING);
-    leave_critical(zh);
+    {
+      boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+      free_completions(zh, ZCLOSING);
+    }
 
     adaptor_finish(zh);
     /* Now we can allow the handle to be cleaned up, if the completion
@@ -1861,9 +1863,10 @@ zookeeper_close(zhandle_t *zh) {
     char* data  = new char[serialized.size()];
     memmove(data, serialized.c_str(), serialized.size());
 
-    enter_critical(zh);
-    rc = queue_buffer_bytes(&zh->to_send, data, serialized.size());
-    leave_critical(zh);
+    {
+      boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+      rc = queue_buffer_bytes(&zh->to_send, data, serialized.size());
+    }
 
     if (rc < 0) {
       rc = ZMARSHALLINGERROR;
@@ -1999,13 +2002,14 @@ int zoo_awget(zhandle_t *zh, const char *path,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
-      create_watcher_registration(pathStr,data_result_checker,watcher,watcherCtx),
-      isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
-    serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
+        create_watcher_registration(pathStr,data_result_checker,watcher,watcherCtx),
+        isSynchronous);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
+        serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2047,12 +2051,13 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0,
-                                         isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
-    serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0,
+        isSynchronous);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
+        serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending set request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2097,12 +2102,13 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
-                                           data, isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
-                                        serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
+        data, isSynchronous);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer,
+        serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2138,11 +2144,12 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
-                                         isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
+        isSynchronous);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2178,12 +2185,13 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
-      create_watcher_registration(req.getpath(), exists_result_checker,
-        watcher,watcherCtx), isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
+        create_watcher_registration(req.getpath(), exists_result_checker,
+          watcher,watcherCtx), isSynchronous);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2219,11 +2227,12 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
-      create_watcher_registration(req.getpath(),child_result_checker,watcher,watcherCtx), false);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
+        create_watcher_registration(req.getpath(),child_result_checker,watcher,watcherCtx), false);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2266,10 +2275,11 @@ int zoo_async(zhandle_t *zh, const char *path,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data, false) ;
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data, false) ;
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2304,11 +2314,12 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data,
-                                        isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data,
+        isSynchronous);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2345,11 +2356,12 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  enter_critical(zh);
-  rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
-                                         isSynchronous);
-  rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
+        isSynchronous);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
       header.getxid() % path % format_current_endpoint_info(zh));
@@ -2448,11 +2460,11 @@ int zoo_amulti(zhandle_t *zh,
   char* buffer = new char[serialized.size()];
   memmove(buffer, serialized.c_str(), serialized.size());
 
-  /* BEGIN: CRTICIAL SECTION */
-  enter_critical(zh);
-  add_multi_completion(zh, header.getxid(), completion, data, results, isSynchronous);
-  queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
-  leave_critical(zh);
+  {
+    boost::lock_guard<boost::mutex> lock(zh->threads.mutex);
+    add_multi_completion(zh, header.getxid(), completion, data, results, isSynchronous);
+    queue_buffer_bytes(&zh->to_send, buffer, serialized.size());
+  }
 
   LOG_DEBUG(boost::format("Sending multi request xid=%#08x with %d subrequests to %s") %
       header.getxid() % index % format_current_endpoint_info(zh));
