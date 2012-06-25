@@ -41,7 +41,6 @@ class Zookeeper_init : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testNonexistentHost);
     CPPUNIT_TEST_SUITE_END();
     zhandle_t *zh;
-    static void watcher(zhandle_t *, int , int , const char *,void*){}
 public:
     Zookeeper_init():zh(0) {
     }
@@ -68,8 +67,8 @@ public:
         clientid_t cid;
         memset(&cid,0xFE,sizeof(cid));
 
-        zh=zookeeper_init(EXPECTED_HOST.c_str(),watcher,EXPECTED_RECV_TIMEOUT,
-                &cid,(void*)1,0);
+        zh=zookeeper_init(EXPECTED_HOST.c_str(),boost::shared_ptr<Watch>(),
+                          EXPECTED_RECV_TIMEOUT, &cid,(void*)1,0);
 
         CPPUNIT_ASSERT(zh!=0);
         // TODO fix timing.
@@ -79,7 +78,6 @@ public:
         CPPUNIT_ASSERT_EQUAL(EXPECTED_HOST,string(zh->hostname));
         CPPUNIT_ASSERT(zh->context == (void*)1);
         CPPUNIT_ASSERT_EQUAL(EXPECTED_RECV_TIMEOUT,zh->recv_timeout);
-        CPPUNIT_ASSERT(zh->watcher == watcher);
         CPPUNIT_ASSERT(zh->connect_index==0);
         CPPUNIT_ASSERT(zh->last_zxid ==0);
         CPPUNIT_ASSERT(memcmp(&zh->client_id,&cid,sizeof(cid))==0);

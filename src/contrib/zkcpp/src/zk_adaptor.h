@@ -122,7 +122,7 @@ class zhandle_t {
     char *hostname; /* the hostname of zookeeper */
     struct sockaddr_storage *addrs; /* the addresses that correspond to the hostname */
     int addrs_count; /* The number of addresses in the addrs array */
-    watcher_fn watcher; /* the registered watcher */
+    boost::shared_ptr<Watch> watch; /* the registered watcher */
     struct timeval last_recv; /* The time that the last message was received */
     struct timeval last_send; /* The time that the last message was sent */
     struct timeval last_ping; /* The time that the last PING was sent */

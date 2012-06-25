@@ -36,6 +36,7 @@
 #include <binarchive.hh>
 #include <proto.h>
 #include "zk_adaptor.h"
+#include "zookeeper/zookeeper.hh"
 #include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 #include "zk_hashtable.h"
@@ -432,19 +433,6 @@ const clientid_t *zoo_client_id(zhandle_t *zh)
     return &zh->client_id;
 }
 
-static void null_watcher_fn(zhandle_t* p1, int p2, int p3,const char* p4,void*p5){}
-
-watcher_fn zoo_set_watcher(zhandle_t *zh,watcher_fn newFn)
-{
-    watcher_fn oldWatcher=zh->watcher;
-    if (newFn) {
-       zh->watcher = newFn;
-    } else {
-       zh->watcher = null_watcher_fn;
-    }
-    return oldWatcher;
-}
-
 struct sockaddr* zookeeper_get_connected_host(zhandle_t *zh,
                  struct sockaddr *addr, socklen_t *addr_len)
 {
@@ -521,8 +509,8 @@ static void log_env() {
 /**
  * Create a zookeeper handle associated with the given host and port.
  */
-zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
-  int recv_timeout, const clientid_t *clientid, void *context, int flags)
+zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
+  int recv_timeout, const clientid_t *clientid, int flags)
 {
     int errnosave = 0;
     zhandle_t *zh = NULL;
@@ -531,11 +519,11 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     log_env();
     LOG_INFO(
       boost::format("Initiating client connection, host=%s sessionTimeout=%d "
-                    "watcher=%p sessionId=%#llx sessionPasswd=%s context=%p flags=%d") %
-                    host % recv_timeout % watcher %
+                    "watcher=%p sessionId=%#llx sessionPasswd=%s flags=%d") %
+                    host % recv_timeout % watch %
                     (clientid == 0 ? 0 : clientid->client_id) %
                     ((clientid == 0) || (clientid->passwd[0] == 0) ?
-                     "<null>" : "<hidden>") % context % flags);
+                     "<null>" : "<hidden>") % flags);
 
     zh = new zhandle_t();
     zh->sent_requests.lock.reset(new boost::mutex());
@@ -546,13 +534,8 @@ zhandle_t *zookeeper_init(const char *host, watcher_fn watcher,
     zh->ref_counter = 0;
     zh->fd = -1;
     zh->state = SessionState::Connecting;
-    zh->context = context;
     zh->recv_timeout = recv_timeout;
-    if (watcher) {
-       zh->watcher = watcher;
-    } else {
-       zh->watcher = null_watcher_fn;
-    }
+    zh->watch = watch;
     if (host == 0 || *host == 0) { // what we shouldn't dup
         errno=EINVAL;
         goto abort;
@@ -843,6 +826,7 @@ static void handle_error(zhandle_t *zh,int rc)
     if (is_unrecoverable(zh)) {
         queue_session_event(zh, zh->state);
     } else if (zh->state == SessionState::Connected) {
+        zh->state = SessionState::Connecting;
         queue_session_event(zh, SessionState::Connecting);
     }
     cleanup_bufs(zh, rc);
@@ -1631,14 +1615,13 @@ SessionState::type zoo_state(zhandle_t *zh)
 
 static watcher_registration_t* create_watcher_registration(
     const std::string& path, result_checker_fn checker,
-    watcher_fn watcher, void* ctx) {
+    boost::shared_ptr<Watch> watcher) {
   watcher_registration_t* wo;
   if(watcher==0)
     return 0;
   wo= new watcher_registration_t();
   wo->path = path;
-  wo->watcher=watcher;
-  wo->context=ctx;
+  wo->watch = watcher;
   wo->checker=checker;
   return wo;
 }
@@ -1937,7 +1920,7 @@ static int getRealString(zhandle_t *zh, int flags, const char* path,
  * ASYNC API
  *---------------------------------------------------------------------------*/
 int zoo_awget(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx,
+        boost::shared_ptr<Watch> watch,
         data_completion_t dc, const void *data, bool isSynchronous)
 {
   std::string pathStr;
@@ -1957,13 +1940,13 @@ int zoo_awget(zhandle_t *zh, const char *path,
 
   proto::GetDataRequest req;
   req.getpath() = pathStr;
-  req.setwatch(watcher != NULL);
+  req.setwatch(watch.get() != NULL);
   req.serialize(oarchive, "req");
 
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
-        create_watcher_registration(pathStr,data_result_checker,watcher,watcherCtx),
+        create_watcher_registration(pathStr,data_result_checker,watch),
         isSynchronous);
     rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
@@ -2098,8 +2081,9 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
-                 void* watcherCtx, stat_completion_t completion,
+int zoo_awexists(zhandle_t *zh, const char *path,
+                 boost::shared_ptr<Watch> watch,
+                 stat_completion_t completion,
                  const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
@@ -2118,14 +2102,14 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
 
   proto::ExistsRequest req;
   req.getpath() = pathStr;
-  req.setwatch(watcher != NULL);
+  req.setwatch(watch.get() != NULL);
   req.serialize(oarchive, "req");
 
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
         create_watcher_registration(req.getpath(), exists_result_checker,
-          watcher,watcherCtx), isSynchronous);
+          watch), isSynchronous);
     rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
@@ -2136,9 +2120,10 @@ int zoo_awexists(zhandle_t *zh, const char *path, watcher_fn watcher,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-static int zoo_awget_children2_(zhandle_t *zh, const char *path,
-         watcher_fn watcher, void* watcherCtx,
-         strings_stat_completion_t ssc, const void *data, bool isSynchronous) {
+int zoo_awget_children2(zhandle_t *zh, const char *path,
+         boost::shared_ptr<Watch> watch,
+         strings_stat_completion_t ssc, const void *data,
+         bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
   if (rc != ZOK) {
@@ -2156,13 +2141,13 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
 
   proto::GetChildren2Request req;
   req.getpath() = pathStr;
-  req.setwatch(watcher != NULL);
+  req.setwatch(watch.get() != NULL);
   req.serialize(oarchive, "req");
 
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
-        create_watcher_registration(req.getpath(),child_result_checker,watcher,watcherCtx), false);
+        create_watcher_registration(req.getpath(),child_result_checker,watch), false);
     rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
   }
 
@@ -2171,15 +2156,6 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
-}
-
-int zoo_awget_children2(zhandle_t *zh, const char *path,
-         watcher_fn watcher, void* watcherCtx,
-         strings_stat_completion_t dc,
-         const void *data, bool isSynchronous)
-{
-    return zoo_awget_children2_(zh,path,watcher,watcherCtx,dc,data,
-                                isSynchronous);
 }
 
 int zoo_async(zhandle_t *zh, const char *path,

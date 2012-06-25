@@ -246,32 +246,6 @@ class MyMultiCallback : public MultiCallback, public Waitable {
     boost::ptr_vector<OpResult>& results_;
 };
 
-class WatchContext {
-  public:
-    WatchContext(boost::shared_ptr<Watch> watch, bool deleteAfterCallback) :
-        watch_(watch), deleteAfterCallback_(deleteAfterCallback) {}
-    boost::shared_ptr<Watch> watch_;
-    bool deleteAfterCallback_;
-};
-
-void ZooKeeperImpl::
-watchCallback(zhandle_t *zh, int type, int state, const char *path,
-         void *watcherCtx) {
-  assert(watcherCtx);
-  WatchContext* context = (WatchContext*)watcherCtx;
-  WatchEvent::type eventType = (WatchEvent::type)type;
-  SessionState::type stateType = (SessionState::type)state;
-  LOG_DEBUG(boost::format("Got a watch event: type=%s, state=%s, path='%s'") %
-            WatchEvent::toString(eventType) %
-            SessionState::toString(stateType) % path);
-  Watch* watch = context->watch_.get();
-  assert(watch);
-  watch->process((WatchEvent::type)type, (SessionState::type)state, path);
-  if (context->deleteAfterCallback_) {
-    delete context;
-  }
-}
-
 ReturnCode::type ZooKeeperImpl::
 intToReturnCode(int rc) {
   /**
@@ -453,15 +427,8 @@ ZooKeeperImpl::
 ReturnCode::type ZooKeeperImpl::
 init(const std::string& hosts, int32_t sessionTimeoutMs,
      boost::shared_ptr<Watch> watch) {
-  watcher_fn watcher = NULL;
-  WatchContext* context = NULL;
-
-  if (watch.get()) {
-    watcher = &watchCallback;
-    context = new WatchContext(watch, false);
-  }
-  handle_ = zookeeper_init(hosts.c_str(), watcher, sessionTimeoutMs,
-                           NULL, (void*)context, 0);
+  handle_ = zookeeper_init(hosts.c_str(), watch, sessionTimeoutMs,
+                           NULL, 0);
   if (handle_ == NULL) {
     return ReturnCode::Error;
   }
@@ -563,8 +530,6 @@ ReturnCode::type ZooKeeperImpl::
 exists(const std::string& path, boost::shared_ptr<Watch> watch,
        boost::shared_ptr<ExistsCallback> cb,
        bool isSynchronous) {
-  watcher_fn watcher = NULL;
-  WatchContext* watchContext = NULL;
   stat_completion_t completion = NULL;
   CompletionContext* completionContext = NULL;
 
@@ -572,12 +537,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
     completion = &existsCompletion;
     completionContext = new CompletionContext(cb, path);
   }
-  if (watch.get()) {
-    watcher = &watchCallback;
-    watchContext = new WatchContext(watch, true);
-  }
-
-  int rc = zoo_awexists(handle_, path.c_str(), watcher, (void*)watchContext,
+  int rc = zoo_awexists(handle_, path.c_str(), watch,
                         completion,  (void*)completionContext, isSynchronous);
   return intToReturnCode(rc);
 }
@@ -598,21 +558,15 @@ ReturnCode::type ZooKeeperImpl::
 get(const std::string& path, boost::shared_ptr<Watch> watch,
     boost::shared_ptr<GetCallback> cb,
     bool isSynchronous) {
-  watcher_fn watcher = NULL;
-  WatchContext* watchContext = NULL;
   data_completion_t completion = NULL;
   CompletionContext* context = NULL;
 
-  if (watch.get()) {
-    watcher = &watchCallback;
-    watchContext = new WatchContext(watch, true);
-  }
   if (cb.get()) {
     completion = &dataCompletion;
     context = new CompletionContext(cb, path);
   }
 
-  int rc = zoo_awget(handle_, path.c_str(), watcher, (void*)watchContext,
+  int rc = zoo_awget(handle_, path.c_str(), watch,
                     completion, (void*)context, isSynchronous);
   return intToReturnCode(rc);
 }
@@ -663,22 +617,16 @@ ReturnCode::type ZooKeeperImpl::
 getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
             boost::shared_ptr<GetChildrenCallback> cb,
             bool isSynchronous) {
-  watcher_fn watcher = NULL;
-  WatchContext* watchContext = NULL;
   strings_stat_completion_t completion = NULL;
   CompletionContext* context = NULL;
 
-  if (watch.get()) {
-    watcher = &watchCallback;
-    watchContext = new WatchContext(watch, true);
-  }
   if (cb.get()) {
     completion = &childrenCompletion;
     context = new CompletionContext(cb, path);
   }
 
-  int rc = zoo_awget_children2(handle_, path.c_str(), watcher,
-                               (void*)watchContext, completion, (void*)context,
+  int rc = zoo_awget_children2(handle_, path.c_str(), watch,
+                               completion, (void*)context,
                                isSynchronous);
   return intToReturnCode(rc);
 }
@@ -799,10 +747,6 @@ close() {
     return ReturnCode::Error;
   }
   inited_ = false;
-  WatchContext* context = (WatchContext*)zoo_get_context(handle_);
-  if (context) {
-    delete context;
-  }
   // XXX handle return codes.
   zookeeper_close(handle_);
   handle_ = NULL;

@@ -433,8 +433,8 @@ typedef void (*watcher_fn)(zhandle_t *zh, int type,
  * a new zhandle the function returns NULL and the errno variable 
  * indicates the reason.
  */
-ZOOAPI zhandle_t *zookeeper_init(const char *host, watcher_fn fn,
-  int recv_timeout, const clientid_t *clientid, void *context, int flags);
+ZOOAPI zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
+  int recv_timeout, const clientid_t *clientid, int flags);
 
 /**
  * \brief close the zookeeper handle and free up any resources.
@@ -770,7 +770,7 @@ ZOOAPI int zoo_adelete(zhandle_t *zh, const char *path, int version,
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_awexists(zhandle_t *zh, const char *path, 
-        watcher_fn watcher, void* watcherCtx, 
+        boost::shared_ptr<Watch> watch,
         stat_completion_t completion, const void *data, bool isSynchronous);
 
 /**
@@ -823,7 +823,7 @@ ZOOAPI int zoo_aget(zhandle_t *zh, const char *path, int watch,
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_awget(zhandle_t *zh, const char *path, 
-        watcher_fn watcher, void* watcherCtx, 
+        boost::shared_ptr<Watch> watch,
         data_completion_t completion, const void *data, bool isSynchronous);
 
 /**
@@ -885,7 +885,7 @@ ZOOAPI int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buf
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 ZOOAPI int zoo_awget_children2(zhandle_t *zh, const char *path,
-        watcher_fn watcher, void* watcherCtx, 
+        boost::shared_ptr<Watch> watch,
         strings_stat_completion_t completion, const void *data,
         bool isSynchronous);
 

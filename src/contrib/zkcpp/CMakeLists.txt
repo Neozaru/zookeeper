@@ -33,15 +33,15 @@ file(GLOB testsrc
   ${PROJECT_SOURCE_DIR}/generated/*.cc
   ${PROJECT_SOURCE_DIR}/tests/TestDriver.cc
   ${PROJECT_SOURCE_DIR}/tests/Util.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestClientRetry.cc
+  #${PROJECT_SOURCE_DIR}/tests/TestClientRetry.cc
   ${PROJECT_SOURCE_DIR}/tests/TestZookeeperClose.cc
   #${PROJECT_SOURCE_DIR}/tests/ThreadingUtil.cc
   ${PROJECT_SOURCE_DIR}/tests/TestRecordIo.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestZookeeperInit.cc
+  #${PROJECT_SOURCE_DIR}/tests/TestZookeeperInit.cc
   ${PROJECT_SOURCE_DIR}/tests/TestMulti.cc
   ${PROJECT_SOURCE_DIR}/tests/TestOp.cc
   ${PROJECT_SOURCE_DIR}/tests/TestCppClient.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestClient.cc
+  #${PROJECT_SOURCE_DIR}/tests/TestClient.cc
   ${PROJECT_SOURCE_DIR}/tests/*.h
 )
 

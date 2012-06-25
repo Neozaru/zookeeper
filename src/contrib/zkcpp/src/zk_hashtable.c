@@ -38,7 +38,7 @@ watcher_object_t* getFirstWatcher(zk_hashtable* ht,const char* path)
 
 watcher_object_t* clone_watcher_object(watcher_object_t* wo)
 {
-    return new watcher_object_t(wo->watcher_, wo->context_);
+    return new watcher_object_t(wo->watch_);
 }
 
 static watcher_object_list_t* create_watcher_object_list(watcher_object_t* head) 
@@ -88,8 +88,9 @@ static watcher_object_t* search_watcher(watcher_object_list_t** wl,watcher_objec
 {
     watcher_object_t* wobj=(*wl)->head;
     while(wobj!=0){
-        if(wobj->watcher_==wo->watcher_ && wobj->context_==wo->context_)
+        if(wobj->watch_.get() == wo->watch_.get()) {
             return wobj;
+        }
         wobj=wobj->next_;
     }
     return 0;
@@ -166,8 +167,8 @@ static void add_for_event(zk_hashtable *ht, const std::string& path,
 void collectWatchers(zhandle_t *zh, int type, const std::string& path,
     std::list<watcher_object_t*>& watches) {
   if(type==ZOO_SESSION_EVENT){
-    if (zh->watcher != NULL) {
-      watcher_object_t* defWatcher = new watcher_object_t(zh->watcher, zh->context);
+    if (zh->watch.get() != NULL) {
+      watcher_object_t* defWatcher = new watcher_object_t(zh->watch);
       watches.push_back(defWatcher);
     }
     collect_session_watchers(zh, watches);
@@ -199,10 +200,15 @@ void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
   std::string client_path =
     type == ZOO_SESSION_EVENT ? path : stripChroot(path, zh->chroot);
   BOOST_FOREACH(watcher_object_t* watch, watches) {
-    watch->watcher_(zh, type, state, client_path.c_str(), watch->context_);
-    if (type == ZOO_SESSION_EVENT) {
-      //delete watch;
+    watch->watch_.get()->process((WatchEvent::type)type,
+        (SessionState::type)state, client_path);
+    if (type != ZOO_SESSION_EVENT) {
+      delete watch;
     }
+  }
+  // TODO fix this hack.
+  if (type == ZOO_SESSION_EVENT && !watches.empty()) {
+    delete *(watches.begin());
   }
 }
 
@@ -212,7 +218,7 @@ void activateWatcher(zhandle_t* zh, watcher_registration_t* reg, int rc) {
     zk_hashtable *ht = reg->checker(zh, rc);
     if (ht != NULL) {
       insert_watcher_object(ht,reg->path,
-          new watcher_object_t(reg->watcher, reg->context));
+          new watcher_object_t(reg->watch));
     }
   }
 }

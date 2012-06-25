@@ -20,6 +20,7 @@
 #define ZK_HASHTABLE_H_
 
 #include <zookeeper.h>
+#include <zookeeper/zookeeper.hh>
 #include <boost/unordered_map.hpp>
 #include <list>
 
@@ -29,10 +30,9 @@ extern "C" {
 
 class watcher_object_t {
   public:
-    watcher_object_t(watcher_fn watcher, void* context) :
-      watcher_(watcher), context_(context), next_(NULL) { assert(watcher);}
-    watcher_fn watcher_;
-    void* context_;
+    watcher_object_t(boost::shared_ptr<Watch> watch) :
+      watch_(watch), next_(NULL) {}
+    boost::shared_ptr<Watch> watch_;
     watcher_object_t* next_;
 };
 
@@ -61,7 +61,7 @@ typedef zk_hashtable *(*result_checker_fn)(zhandle_t *, int rc);
  */
 class watcher_registration_t {
   public:
-    watcher_fn watcher;
+    boost::shared_ptr<Watch> watch;
     void* context;
     result_checker_fn checker;
     std::string path;
