@@ -69,6 +69,34 @@ class buffer_list_t {
     boost::recursive_mutex mutex_;
 };
 
+class completion_t {
+  public:
+    int type; /* one of COMPLETION_* values above */
+    union {
+        void_completion_t void_result;
+        stat_completion_t stat_result;
+        data_completion_t data_result;
+        strings_completion_t strings_result;
+        strings_stat_completion_t strings_stat_result;
+        acl_completion_t acl_result;
+        string_completion_t string_result;
+        multi_completion_t multi_result;
+    };
+    std::list<watcher_object_t*> watcher_result;
+    boost::scoped_ptr<boost::ptr_vector<OpResult> > results; /* For multi-op */
+    bool isSynchronous;
+};
+
+class completion_list_t {
+  public:
+    int xid;
+    completion_t c;
+    const void *data;
+    buffer_t *buffer;
+    completion_list_t* next;
+    watcher_registration_t* watcher;
+};
+
 class completion_head_t {
   public:
     completion_list_t* volatile head;
@@ -118,6 +146,7 @@ class adaptor_threads {
 
 class zhandle_t {
   public:
+    ~zhandle_t();
     int fd; /* the descriptor used to talk to zookeeper */
     char *hostname; /* the hostname of zookeeper */
     struct sockaddr_storage *addrs; /* the addresses that correspond to the hostname */
@@ -157,19 +186,19 @@ class zhandle_t {
     /** used for chroot path at the client side **/
     std::string chroot;
     boost::mutex mutex; // critical section lock
+    static buffer_t packetOfDeath;
+    static completion_list_t completionOfDeath;
 };
 
 
 int adaptor_init(zhandle_t *zh);
-void adaptor_finish(zhandle_t *zh);
-void adaptor_destroy(zhandle_t *zh);
 struct sync_completion *alloc_sync_completion(void);
 int wait_sync_completion(struct sync_completion *sc);
 void free_sync_completion(struct sync_completion *sc);
 void notify_sync_completion(struct sync_completion *sc);
 int adaptor_send_queue(zhandle_t *zh, int timeout);
 int process_async(int outstanding_sync);
-void process_completions(zhandle_t *zh);
+int process_completions(zhandle_t *zh);
 int flush_send_queue(zhandle_t*zh, int timeout);
 std::string stripChroot(const std::string& path, const std::string& chroot);
 void free_duplicate_path(const char* free_path, const char* path);
@@ -182,6 +211,7 @@ int32_t get_xid();
 uint32_t inc_ref_counter(zhandle_t* zh);
 uint32_t dec_ref_counter(zhandle_t* zh);
 uint32_t get_ref_counter(zhandle_t* zh);
+int wakeup_io_thread(zhandle_t *zh);
 
 #ifdef __cplusplus
 }

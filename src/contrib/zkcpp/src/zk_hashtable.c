@@ -64,21 +64,14 @@ static void destroy_watcher_object_list(watcher_object_list_t* list)
     free(list);
 }
 
-static void do_clean_hashtable(zk_hashtable* ht)
-{
-    boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
-    for (itr = ht->map.begin(); itr != ht->map.end(); itr++) {
-        LOG_DEBUG("Deleting a watch for path: " << itr->first);
-        destroy_watcher_object_list(itr->second);
-    }
-    ht->map.clear();
-}
-
-void destroy_zk_hashtable(zk_hashtable* ht)
-{
-    if(ht!=0){
-        do_clean_hashtable(ht);
-    }
+zk_hashtable::
+~zk_hashtable() {
+  boost::unordered_map<std::string, watcher_object_list_t*>::iterator itr;
+  for (itr = map.begin(); itr != map.end(); itr++) {
+    LOG_DEBUG("Deleting a watch for path: " << itr->first);
+    destroy_watcher_object_list(itr->second);
+  }
+  map.clear();
 }
 
 // searches for a watcher object instance in a watcher object list;

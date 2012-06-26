@@ -43,6 +43,7 @@ class watcher_object_list_t {
 
 class zk_hashtable {
   public:
+    ~zk_hashtable();
     boost::unordered_map<std::string, watcher_object_list_t*> map;
 };
 
@@ -67,7 +68,6 @@ class watcher_registration_t {
     std::string path;
 };
 
-zk_hashtable* create_zk_hashtable();
 void destroy_zk_hashtable(zk_hashtable* ht);
 
 void collectKeys(zk_hashtable *ht, std::vector<std::string>& keys);

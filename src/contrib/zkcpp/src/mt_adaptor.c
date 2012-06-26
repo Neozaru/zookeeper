@@ -42,6 +42,8 @@ ENABLE_LOGGING;
 #include <unistd.h>
 #include <sys/time.h>
 
+
+
 int process_async(int outstanding_sync)
 {
     return 0;
@@ -79,15 +81,10 @@ void notify_thread_ready(zhandle_t* zh) {
 void
 start_threads(zhandle_t* zh) {
   zh->threads.threadsToWait=2;  // wait for 2 threads before opening the barrier
-
-  // use api_prolog() to make sure zhandle doesn't get destroyed
-  // while initialization is in progress
-  api_prolog(zh);
   LOG_DEBUG("starting threads...");
   zh->threads.io = boost::thread(do_io, zh);
   zh->threads.completion = boost::thread(do_completion, zh);
   wait_for_others(zh);
-  api_epilog(zh, 0);
 }
 
 int
@@ -102,31 +99,6 @@ adaptor_init(zhandle_t *zh) {
   return 0;
 }
 
-void adaptor_finish(zhandle_t *zh) {
-  // make sure zh doesn't get destroyed until after we're done here
-  api_prolog(zh);
-  if(boost::this_thread::get_id() == zh->threads.io.get_id()) {
-    zh->threads.io.detach();
-  } else {
-    wakeup_io_thread(zh);
-    zh->threads.io.join();
-  }
-
-  if(boost::this_thread::get_id() == zh->threads.completion.get_id()) {
-    zh->threads.completion.detach();
-  } else {
-    boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
-    (*(zh->completions_to_process.cond)).notify_all();
-    lock.unlock();
-    zh->threads.completion.join();
-  }
-  api_epilog(zh,0);
-}
-
-void adaptor_destroy(zhandle_t *zh) {
-  close(zh->threads.self_pipe[0]);
-  close(zh->threads.self_pipe[1]);
-}
 
 int
 wakeup_io_thread(zhandle_t *zh) {
@@ -154,20 +126,18 @@ void *do_io(void *v)
     zhandle_t *zh = (zhandle_t*)v;
     struct pollfd fds[2];
 
-    api_prolog(zh);
     notify_thread_ready(zh);
     LOG_DEBUG("started IO thread");
     fds[0].fd=zh->threads.self_pipe[0];
     fds[0].events=POLLIN;
-    while(!zh->close_requested) {
+    while(true) {
         struct timeval tv;
         int fd;
         int interest;
         int timeout;
         int maxfd=1;
-        int rc;
-        
         zookeeper_interest(zh, &fd, &interest, &tv);
+
         if (fd != -1) {
             fds[1].fd=fd;
             fds[1].events=(interest&ZOOKEEPER_READ)?POLLIN:0;
@@ -187,14 +157,18 @@ void *do_io(void *v)
             while(read(zh->threads.self_pipe[0],b,sizeof(b))==sizeof(b)){}
         }        
         // dispatch zookeeper events
-        rc = zookeeper_process(zh, interest);
+        if (ZCLOSING == zookeeper_process(zh, interest)) {
+          LOG_DEBUG("Received the packet of death. Breaking the IO event loop");
+          break;
+        }
+
         // check the current state of the zhandle and terminate 
         // if it is_unrecoverable()
         if(is_unrecoverable(zh)) {
           break;
         }
     }
-    api_epilog(zh, 0);    
+    zh->threads.io.detach();
     LOG_DEBUG("IO thread terminated");
     return 0;
 }
@@ -202,20 +176,20 @@ void *do_io(void *v)
 void *do_completion(void *v)
 {
     zhandle_t *zh = (zhandle_t*)v;
-    api_prolog(zh);
     notify_thread_ready(zh);
     LOG_DEBUG("started completion thread");
-    while(!zh->close_requested) {
+    int rc = ZOK;
+    while(rc != ZCLOSING) {
         boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
         while(!zh->completions_to_process.head && !zh->close_requested) {
             (*(zh->completions_to_process.cond)).wait(lock);
         }
         lock.unlock();
-        process_completions(zh);
+        rc = process_completions(zh);
     }
     zh->threads.io.join();
+    zh->threads.completion.detach();
     process_completions(zh);
-    api_epilog(zh, 0);    
     LOG_DEBUG("completion thread terminated");
     return 0;
 }

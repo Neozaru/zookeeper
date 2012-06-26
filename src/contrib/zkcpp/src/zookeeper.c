@@ -70,7 +70,8 @@ ENABLE_LOGGING;
 #endif
 
 #define IF_DEBUG(x) if(logLevel==ZOO_LOG_LEVEL_DEBUG) {x;}
-
+buffer_t zhandle_t::packetOfDeath;
+completion_list_t zhandle_t::completionOfDeath;
 const int ZOOKEEPER_WRITE = 1 << 0;
 const int ZOOKEEPER_READ = 1 << 1;
 
@@ -112,34 +113,6 @@ static __attribute__ ((unused)) const char* watcherEvent2String(int ev){
 #define COMPLETION_ACLLIST 5
 #define COMPLETION_STRING 6
 #define COMPLETION_MULTI 7
-
-class completion_t {
-  public:
-    int type; /* one of COMPLETION_* values above */
-    union {
-        void_completion_t void_result;
-        stat_completion_t stat_result;
-        data_completion_t data_result;
-        strings_completion_t strings_result;
-        strings_stat_completion_t strings_stat_result;
-        acl_completion_t acl_result;
-        string_completion_t string_result;
-        multi_completion_t multi_result;
-    };
-    std::list<watcher_object_t*> watcher_result;
-    boost::scoped_ptr<boost::ptr_vector<OpResult> > results; /* For multi-op */
-    bool isSynchronous;
-};
-
-class completion_list_t {
-  public:
-    int xid;
-    completion_t c;
-    const void *data;
-    buffer_t *buffer;
-    completion_list_t* next;
-    watcher_registration_t* watcher;
-};
 
 const char*err2string(int err);
 static int queue_session_event(zhandle_t *zh, SessionState::type state);
@@ -223,35 +196,26 @@ zk_hashtable *child_result_checker(zhandle_t *zh, int rc)
     return rc==ZOK ? &zh->active_child_watchers : 0;
 }
 
-/**
- * Frees and closes everything associated with a handle,
- * including the handle itself.
- */
-static void destroy(zhandle_t *zh)
-{
-    if (zh == NULL) {
-        return;
-    }
+zhandle_t::
+~zhandle_t() {
     /* call any outstanding completions with a special error code */
-    cleanup_bufs(zh, ZCLOSING);
-    if (zh->hostname != 0) {
-        free(zh->hostname);
-        zh->hostname = NULL;
+    cleanup_bufs(this, ZCLOSING);
+    if (hostname != 0) {
+        free(hostname);
+        hostname = NULL;
     }
-    if (zh->fd != -1) {
-        close(zh->fd);
-        zh->fd = -1;
+    if (fd != -1) {
+        close(fd);
+        fd = -1;
         // TODO introduce closed state?
-        zh->state = (SessionState::type)0;
+        state = (SessionState::type)0;
     }
-    if (zh->addrs != 0) {
-        free(zh->addrs);
-        zh->addrs = NULL;
+    if (addrs != 0) {
+        free(addrs);
+        addrs = NULL;
     }
-
-    destroy_zk_hashtable(&zh->active_node_watchers);
-    destroy_zk_hashtable(&zh->active_exist_watchers);
-    destroy_zk_hashtable(&zh->active_child_watchers);
+    close(threads.self_pipe[0]);
+    close(threads.self_pipe[1]);
 }
 
 /**
@@ -587,7 +551,6 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
     return zh;
 abort:
     errnosave=errno;
-    destroy(zh);
     delete zh;
     errno=errnosave;
     return 0;
@@ -651,14 +614,16 @@ static int remove_buffer(buffer_list_t *list)
     if (!b) {
         return 0;
     }
+    if (b != &zhandle_t::packetOfDeath) {
     delete b;
+    }
     return 1;
 }
 
-static int queue_buffer(buffer_list_t *list, buffer_t* b) {
+static void
+queue_buffer(buffer_list_t *list, buffer_t* b) {
   boost::lock_guard<boost::recursive_mutex> lock(list->mutex_);
   list->bufferList_.push_back(b);
-  return ZOK;
 }
 
 /* returns:
@@ -767,7 +732,9 @@ void free_completions(zhandle_t *zh, int reason) {
       completion_list_t *cptr = zh->sent_requests.head;
 
       zh->sent_requests.head = cptr->next;
-      if(cptr->xid == PING_XID){
+      if (cptr == &zhandle_t::completionOfDeath) {
+        LOG_DEBUG("Packet of death! do somethign");
+      } if(cptr->xid == PING_XID){
         // Nothing to do with a ping response
         destroy_completion_entry(cptr);
       } else if (cptr->c.isSynchronous) {
@@ -891,7 +858,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
   req.serialize(oarchive, "req");
 
   /* add this buffer to the head of the send queue */
-  rc = queue_buffer(&zh->to_send, buffer);
+  queue_buffer(&zh->to_send, buffer);
   adaptor_send_queue(zh, 0);
   return rc;
 }
@@ -922,8 +889,8 @@ static int send_last_auth_info(zhandle_t *zh) {
   return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
 }
 
-static int send_set_watches(zhandle_t *zh) {
-  int rc = 0;
+static void
+send_set_watches(zhandle_t *zh) {
   proto::SetWatches req;
   collectKeys(&zh->active_node_watchers, req.getdataWatches());
   collectKeys(&zh->active_exist_watchers, req.getexistWatches());
@@ -932,7 +899,7 @@ static int send_set_watches(zhandle_t *zh) {
   // return if there are no pending watches
   if (req.getdataWatches().empty() && req.getexistWatches().empty() &&
       req.getchildWatches().empty()) {
-    return ZOK;
+    return;
   }
 
   buffer_t* buffer = new buffer_t();
@@ -950,14 +917,13 @@ static int send_set_watches(zhandle_t *zh) {
   req.serialize(oarchive, "req");
 
   /* add this buffer to the head of the send queue */
-  rc = queue_buffer(&zh->to_send, buffer);
+  queue_buffer(&zh->to_send, buffer);
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     adaptor_send_queue(zh, 0);
   }
 
   LOG_DEBUG("Sending SetWatches request to " << format_current_endpoint_info(zh));
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
 static int sendConnectRequest(zhandle_t *zh) {
@@ -1011,8 +977,8 @@ static struct timeval get_timeval(int interval)
  static int add_string_completion(zhandle_t *zh, int xid,
      string_completion_t dc, const void *data, bool isSynchronous);
 
- int
- send_ping(zhandle_t* zh) {
+int
+send_ping(zhandle_t* zh) {
   int rc = 0;
   std::string serialized;
   buffer_t* buffer = new buffer_t();
@@ -1027,10 +993,10 @@ static struct timeval get_timeval(int interval)
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     gettimeofday(&zh->last_ping, 0);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), 0, 0, false);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
   return rc<0 ? rc : adaptor_send_queue(zh, 0);
- }
+}
 
 int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
      struct timeval *tv) {
@@ -1047,7 +1013,6 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         if (time_left > max_exceed)
             LOG_WARN("Exceeded deadline by " << time_left << "ms");
     }
-    api_prolog(zh);
     *fd = zh->fd;
     *interest = 0;
     tv->tv_sec = 0;
@@ -1063,8 +1028,8 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
 
             zh->fd = socket(zh->addrs[zh->connect_index].ss_family, SOCK_STREAM, 0);
             if (zh->fd < 0) {
-                return api_epilog(zh,handle_socket_error_msg(zh,__LINE__,
-                                                             ZSYSTEMERROR, "socket() call failed"));
+                return handle_socket_error_msg(zh,__LINE__,
+                    ZSYSTEMERROR, "socket() call failed");
             }
             ssoresult = setsockopt(zh->fd, IPPROTO_TCP, TCP_NODELAY, &enable_tcp_nodelay, sizeof(enable_tcp_nodelay));
             if (ssoresult != 0) {
@@ -1088,12 +1053,11 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
                 if (errno == EWOULDBLOCK || errno == EINPROGRESS)
                     zh->state = SessionState::Connecting;
                 else
-                    return api_epilog(zh,handle_socket_error_msg(zh,__LINE__,
-                            ZCONNECTIONLOSS,"connect() call failed"));
+                    return handle_socket_error_msg(zh,__LINE__,
+                            ZCONNECTIONLOSS,"connect() call failed");
             } else {
                 if((rc=sendConnectRequest(zh))!=0)
-                    return api_epilog(zh,rc);
-
+                    return rc;
                 LOG_INFO("Initiated connection to server: " <<
                         format_endpoint_info(&zh->addrs[zh->connect_index]));
             }
@@ -1116,8 +1080,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             *fd=-1;
             *interest=0;
             *tv = get_timeval(0);
-            return api_epilog(zh,handle_socket_error_msg(zh,
-                  __LINE__,ZOPERATIONTIMEOUT, ""));
+            return handle_socket_error_msg(zh, __LINE__,ZOPERATIONTIMEOUT, "");
         }
         // We only allow 1/3 of our timeout time to expire before sending
         // a PING
@@ -1129,7 +1092,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
                 int rc=send_ping(zh);
                 if (rc < 0){
                     //LOG_ERROR("failed to send PING request (zk retcode=" << rc << ")");
-                    return api_epilog(zh,rc);
+                    return rc;
                 }
                 send_to = zh->recv_timeout/3;
             }
@@ -1151,13 +1114,26 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             *interest |= ZOOKEEPER_WRITE;
         }
     }
-    return api_epilog(zh,ZOK);
+    return ZOK;
 }
 
 static int check_events(zhandle_t *zh, int events)
 {
     if (zh->fd == -1)
         return ZINVALIDSTATE;
+    LOG_DEBUG("Check to see if to_send is empty");
+    if (!(zh->to_send.bufferList_.empty())) {
+      boost::lock_guard<boost::recursive_mutex> lock(zh->to_send.mutex_);
+      if (&(zh->to_send.bufferList_.front()) == &zhandle_t::packetOfDeath) {
+        LOG_DEBUG("Received the packet of death");
+        dequeue_buffer(&zh->to_send);
+        queue_completion(&zh->completions_to_process, &zhandle_t::completionOfDeath);
+        return ZCLOSING;
+      }
+    } else {
+    LOG_DEBUG("Queue is empty");
+    }
+
     if ((events&ZOOKEEPER_WRITE)&&(zh->state == SessionState::Connecting)) {
         int rc, error;
         socklen_t len = sizeof(error);
@@ -1180,9 +1156,12 @@ static int check_events(zhandle_t *zh, int events)
     if (!(zh->to_send.bufferList_.empty()) && (events&ZOOKEEPER_WRITE)) {
         /* make the flush call non-blocking by specifying a 0 timeout */
         int rc=flush_send_queue(zh,0);
-        if (rc < 0)
+        if (rc == ZCLOSING) {
+          return rc;
+        } else if (rc < 0) {
             return handle_socket_error_msg(zh,__LINE__,ZCONNECTIONLOSS,
                 "failed while flushing send queue");
+        }
     }
     if (events&ZOOKEEPER_READ) {
         int rc;
@@ -1244,18 +1223,6 @@ static int check_events(zhandle_t *zh, int events)
         }
     }
     return ZOK;
-}
-
-void api_prolog(zhandle_t* zh)
-{
-    inc_ref_counter(zh);
-}
-
-int api_epilog(zhandle_t *zh,int rc)
-{
-    if(dec_ref_counter(zh)==0 && zh->close_requested!=0)
-        zookeeper_close(zh);
-    return rc;
 }
 
 // IO thread queues session events to be processed by the completion thread
@@ -1484,9 +1451,13 @@ static void deserialize_response(int type, int xid, int failed, int rc,
 
 
 /* handles async completion (both single- and multithreaded) */
-void process_completions(zhandle_t *zh) {
+int process_completions(zhandle_t *zh) {
   completion_list_t *cptr;
   while ((cptr = dequeue_completion(&zh->completions_to_process)) != 0) {
+    if (cptr == &zhandle_t::completionOfDeath) {
+      LOG_DEBUG("Received the completion of death");
+      return ZCLOSING;
+    }
     buffer_t *bptr = cptr->buffer;
     MemoryInStream stream(bptr->buffer.data(), bptr->buffer.size());
     hadoop::IBinArchive iarchive(stream);
@@ -1509,6 +1480,7 @@ void process_completions(zhandle_t *zh) {
     }
     destroy_completion_entry(cptr);
   }
+  return ZOK;
 }
 
 int
@@ -1520,10 +1492,10 @@ zookeeper_process(zhandle_t *zh, int events) {
     return ZBADARGUMENTS;
   if (is_unrecoverable(zh))
     return ZINVALIDSTATE;
-  api_prolog(zh);
   rc = check_events(zh, events);
-  if (rc!=ZOK)
-    return api_epilog(zh, rc);
+  if (rc!=ZOK) {
+    return rc;
+  }
   while (rc >= 0 && (bptr=dequeue_buffer(&zh->to_process))) {
     MemoryInStream stream(bptr->buffer.data(), bptr->length);
     hadoop::IBinArchive iarchive(stream);
@@ -1554,7 +1526,7 @@ zookeeper_process(zhandle_t *zh, int events) {
       // auth completion may change the connection state to unrecoverable
       if(is_unrecoverable(zh)){
         handle_error(zh, ZAUTHFAILED);
-        return api_epilog(zh, ZAUTHFAILED);
+        return ZAUTHFAILED;
       }
     } else {
       /* Find the request corresponding to the response */
@@ -1562,7 +1534,7 @@ zookeeper_process(zhandle_t *zh, int events) {
 
       /* [ZOOKEEPER-804] Don't assert if zookeeper_close has been called. */
       if (zh->close_requested == 1 && !cptr) {
-        return api_epilog(zh,ZINVALIDSTATE);
+        return ZINVALIDSTATE;
       }
       assert(cptr);
       /* The requests are going to come back in order */
@@ -1602,7 +1574,7 @@ zookeeper_process(zhandle_t *zh, int events) {
       }
     }
   }
-  return api_epilog(zh,ZOK);
+  return ZOK;
 }
 
 SessionState::type zoo_state(zhandle_t *zh)
@@ -1775,27 +1747,35 @@ static int add_multi_completion(zhandle_t *zh, int xid, multi_completion_t dc,
 
 int
 zookeeper_close(zhandle_t *zh) {
-  LOG_DEBUG("Entering zookeeper_close()");
   int rc = ZOK;
   if (zh == 0)
     return ZBADARGUMENTS;
-
-  zh->close_requested=1;
-  if (inc_ref_counter(zh)>1) {
-    /* We have incremented the ref counter to prevent the
-     * completions from calling zookeeper_close before we have
-     * completed the adaptor_finish call below. */
-
-    adaptor_finish(zh);
-    /* Now we can allow the handle to be cleaned up, if the completion
-     * threads finished during the adaptor_finish call. */
-    api_epilog(zh, 0);
+  if (zh->close_requested) {
     return ZOK;
   }
+  zh->close_requested = 1;
+  {
+    boost::lock_guard<boost::recursive_mutex> lock(zh->to_send.mutex_);
+    zh->to_send.bufferList_.push_front(&zhandle_t::packetOfDeath);
+  }
+  LOG_DEBUG("Enqueued the packet of death");
+  if (boost::this_thread::get_id() == zh->threads.completion.get_id()) {
+    // completion thread
+    wakeup_io_thread(zh);
+  } else if (boost::this_thread::get_id() == zh->threads.io.get_id()) {
+    // io thread
+  } else {
+    // some other thread
+    wakeup_io_thread(zh);
+    zh->threads.io.join();
+    zh->threads.completion.join();
+    delete zh;
+  }
+  return ZOK;
+
   /* No need to decrement the counter since we're just going to
    * destroy the handle later. */
   if(zh->state==SessionState::Connected){
-    int rc = 0;
     buffer_t* buffer = new buffer_t();
     StringOutStream stream(buffer->buffer);
     hadoop::OBinArchive oarchive(stream);
@@ -1808,25 +1788,13 @@ zookeeper_close(zhandle_t *zh) {
         zh->client_id.client_id % format_current_endpoint_info(zh));
     {
       boost::lock_guard<boost::mutex> lock(zh->mutex);
-      rc = queue_buffer(&zh->to_send, buffer);
+      queue_buffer(&zh->to_send, buffer);
     }
 
-    if (rc < 0) {
-      rc = ZMARSHALLINGERROR;
-      goto finish;
-    }
     /* make sure the close request is sent; we set timeout to an arbitrary
      * (but reasonable) number of milliseconds since we want the call to block*/
     rc = adaptor_send_queue(zh, 3000);
-  } else {
-    LOG_INFO(boost::format("Freeing zookeeper resources for sessionId=%#llx") %
-        zh->client_id.client_id);
-    rc = ZOK;
   }
-finish:
-  destroy(zh);
-  adaptor_destroy(zh);
-  delete zh;
   return rc;
 }
 
@@ -1945,7 +1913,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
     rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
         create_watcher_registration(pathStr,data_result_checker,watch),
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -1987,7 +1955,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), dc, data,0,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending set request xid=%#08x for path [%s] to %s") %
@@ -2032,7 +2000,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
         data, isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2068,7 +2036,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2107,7 +2075,7 @@ int zoo_awexists(zhandle_t *zh, const char *path,
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
         create_watcher_registration(req.getpath(), exists_result_checker,
           watch), isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2145,7 +2113,7 @@ int zoo_awget_children2(zhandle_t *zh, const char *path,
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
         create_watcher_registration(req.getpath(),child_result_checker,watch), false);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2179,7 +2147,7 @@ int zoo_async(zhandle_t *zh, const char *path,
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion, data, false) ;
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2215,7 +2183,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_acl_completion(zh, header.getxid(), completion, data,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2253,7 +2221,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_void_completion(zh, header.getxid(), completion, data,
         isSynchronous);
-    rc = rc < 0 ? rc : queue_buffer(&zh->to_send, buffer);
+    queue_buffer(&zh->to_send, buffer);
   }
 
   LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
@@ -2378,6 +2346,12 @@ int flush_send_queue(zhandle_t*zh, int timeout)
           lock(zh->to_send.mutex_);
         while (!(zh->to_send.bufferList_.empty()) &&
                zh->state == SessionState::Connected) {
+            if (&(zh->to_send.bufferList_.front()) == &zhandle_t::packetOfDeath) {
+              LOG_DEBUG("Received the packet of death");
+              dequeue_buffer(&zh->to_send);
+              queue_completion(&zh->completions_to_process, &zhandle_t::completionOfDeath);
+              return ZCLOSING;
+            }
             if(timeout!=0){
                 int elapsed;
                 struct timeval now;
