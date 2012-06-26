@@ -32,7 +32,7 @@
 using namespace org::apache::zookeeper;
 
 /* predefined xid's values recognized as special by the server */
-#define WATCHER_EVENT_XID -1 
+#define WATCHER_EVENT_XID -1
 #define PING_XID -2
 #define AUTH_XID -4
 #define SET_WATCHES_XID -8
@@ -190,28 +190,15 @@ class zhandle_t {
     static completion_list_t completionOfDeath;
 };
 
-
 int adaptor_init(zhandle_t *zh);
-struct sync_completion *alloc_sync_completion(void);
-int wait_sync_completion(struct sync_completion *sc);
-void free_sync_completion(struct sync_completion *sc);
-void notify_sync_completion(struct sync_completion *sc);
 int adaptor_send_queue(zhandle_t *zh, int timeout);
-int process_async(int outstanding_sync);
 int process_completions(zhandle_t *zh);
 int flush_send_queue(zhandle_t*zh, int timeout);
 std::string stripChroot(const std::string& path, const std::string& chroot);
 void free_duplicate_path(const char* free_path, const char* path);
-
-// zhandle object reference counting
-void api_prolog(zhandle_t* zh);
-int api_epilog(zhandle_t *zh, int rc);
 int32_t get_xid();
-// returns the new value of the ref counter
-uint32_t inc_ref_counter(zhandle_t* zh);
-uint32_t dec_ref_counter(zhandle_t* zh);
-uint32_t get_ref_counter(zhandle_t* zh);
 int wakeup_io_thread(zhandle_t *zh);
+void free_completions(zhandle_t *zh, int reason);
 
 #ifdef __cplusplus
 }

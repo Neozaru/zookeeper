@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 
+#include <zookeeper/zookeeper.hh>
 #include <zookeeper/logging.hh>
 ENABLE_LOGGING;
 #include "zk_hashtable.h"
@@ -159,7 +160,7 @@ static void add_for_event(zk_hashtable *ht, const std::string& path,
 
 void collectWatchers(zhandle_t *zh, int type, const std::string& path,
     std::list<watcher_object_t*>& watches) {
-  if(type==ZOO_SESSION_EVENT){
+  if(type==WatchEvent::SessionStateChanged){
     if (zh->watch.get() != NULL) {
       watcher_object_t* defWatcher = new watcher_object_t(zh->watch);
       watches.push_back(defWatcher);
@@ -191,16 +192,17 @@ void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
                      std::list<watcher_object_t*>& watches) {
   // session event's don't have paths
   std::string client_path =
-    type == ZOO_SESSION_EVENT ? path : stripChroot(path, zh->chroot);
+    type == WatchEvent::SessionStateChanged ? path :
+                                              stripChroot(path, zh->chroot);
   BOOST_FOREACH(watcher_object_t* watch, watches) {
     watch->watch_.get()->process((WatchEvent::type)type,
         (SessionState::type)state, client_path);
-    if (type != ZOO_SESSION_EVENT) {
+    if (type != WatchEvent::SessionStateChanged) {
       delete watch;
     }
   }
   // TODO fix this hack.
-  if (type == ZOO_SESSION_EVENT && !watches.empty()) {
+  if (type == WatchEvent::SessionStateChanged && !watches.empty()) {
     delete *(watches.begin());
   }
 }

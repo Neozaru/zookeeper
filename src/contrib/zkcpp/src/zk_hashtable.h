@@ -68,8 +68,6 @@ class watcher_registration_t {
     std::string path;
 };
 
-void destroy_zk_hashtable(zk_hashtable* ht);
-
 void collectKeys(zk_hashtable *ht, std::vector<std::string>& keys);
 
 /**

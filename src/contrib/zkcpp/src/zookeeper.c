@@ -69,7 +69,6 @@ ENABLE_LOGGING;
 #include <pwd.h>
 #endif
 
-#define IF_DEBUG(x) if(logLevel==ZOO_LOG_LEVEL_DEBUG) {x;}
 buffer_t zhandle_t::packetOfDeath;
 completion_list_t zhandle_t::completionOfDeath;
 const int ZOOKEEPER_WRITE = 1 << 0;
@@ -77,32 +76,6 @@ const int ZOOKEEPER_READ = 1 << 1;
 
 const int ZOO_EPHEMERAL = 1 << 0;
 const int ZOO_SEQUENCE = 1 << 1;
-
-const int ZOO_CREATED_EVENT = CREATED_EVENT_DEF;
-const int ZOO_DELETED_EVENT = DELETED_EVENT_DEF;
-const int ZOO_CHANGED_EVENT = CHANGED_EVENT_DEF;
-const int ZOO_CHILD_EVENT = CHILD_EVENT_DEF;
-const int ZOO_SESSION_EVENT = SESSION_EVENT_DEF;
-const int ZOO_NOTWATCHING_EVENT = NOTWATCHING_EVENT_DEF;
-static __attribute__ ((unused)) const char* watcherEvent2String(int ev){
-    switch(ev){
-    case 0:
-        return "ZOO_ERROR_EVENT";
-    case CREATED_EVENT_DEF:
-        return "ZOO_CREATED_EVENT";
-    case DELETED_EVENT_DEF:
-        return "ZOO_DELETED_EVENT";
-    case CHANGED_EVENT_DEF:
-        return "ZOO_CHANGED_EVENT";
-    case CHILD_EVENT_DEF:
-        return "ZOO_CHILD_EVENT";
-    case SESSION_EVENT_DEF:
-        return "ZOO_SESSION_EVENT";
-    case NOTWATCHING_EVENT_DEF:
-        return "ZOO_NOTWATCHING_EVENT";
-    }
-    return "INVALID_EVENT";
-}
 
 #define COMPLETION_WATCH -1
 #define COMPLETION_VOID 0
@@ -796,7 +769,8 @@ static void handle_error(zhandle_t *zh,int rc)
         zh->state = SessionState::Connecting;
         queue_session_event(zh, SessionState::Connecting);
     }
-    cleanup_bufs(zh, rc);
+    // TODO(michim) need to handle completion callbacks
+    //cleanup_bufs(zh, rc);
     zh->fd = -1;
     zh->connect_index++;
     if (!is_unrecoverable(zh)) {
@@ -1238,7 +1212,7 @@ static int queue_session_event(zhandle_t *zh, SessionState::type state) {
   header.setzxid(0);
   header.seterr(0);
   proto::WatcherEvent event;
-  event.settype(ZOO_SESSION_EVENT);
+  event.settype(WatchEvent::SessionStateChanged);
   event.setstate(state);
   event.getpath() = "";
 
@@ -1248,7 +1222,8 @@ static int queue_session_event(zhandle_t *zh, SessionState::type state) {
 
   cptr->buffer = buffer;
   cptr->buffer->offset = buffer->buffer.size();
-  collectWatchers(zh, ZOO_SESSION_EVENT, "", cptr->c.watcher_result);
+  collectWatchers(zh, WatchEvent::SessionStateChanged, "",
+                  cptr->c.watcher_result);
   queue_completion(&zh->completions_to_process, cptr);
   return ZOK;
 }
@@ -1472,7 +1447,8 @@ int process_completions(zhandle_t *zh) {
       type = event.gettype();
       state = event.getstate();
       LOG_DEBUG(boost::format("Calling a watcher for node [%s], type = %d event=%s") %
-          event.getpath() % cptr->c.type % watcherEvent2String(type));
+          event.getpath() % cptr->c.type %
+          WatchEvent::toString((WatchEvent::type)type));
       deliverWatchers(zh,type,state,event.getpath().c_str(), cptr->c.watcher_result);
     } else {
       deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,

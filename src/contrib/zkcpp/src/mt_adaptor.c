@@ -42,22 +42,16 @@ ENABLE_LOGGING;
 #include <unistd.h>
 #include <sys/time.h>
 
-
-
-int process_async(int outstanding_sync)
-{
-    return 0;
-}
-
-void *do_io(void *);
-void *do_completion(void *);
+void do_io(zhandle_t* zh);
+void do_completion(zhandle_t* zh);
 
 int wakeup_io_thread(zhandle_t *zh);
 
-static int set_nonblock(int fd){
-    long l = fcntl(fd, F_GETFL);
-    if(l & O_NONBLOCK) return 0;
-    return fcntl(fd, F_SETFL, l | O_NONBLOCK);
+static int
+set_nonblock(int fd) {
+  long l = fcntl(fd, F_GETFL);
+  if(l & O_NONBLOCK) return 0;
+  return fcntl(fd, F_SETFL, l | O_NONBLOCK);
 }
 
 void
@@ -68,23 +62,14 @@ wait_for_others(zhandle_t* zh) {
   }
 }
 
-void notify_thread_ready(zhandle_t* zh) {
-    boost::unique_lock<boost::mutex> lock(zh->threads.lock);
-    zh->threads.threadsToWait--;
-    zh->threads.cond.notify_all();
-    while(zh->threads.threadsToWait>0) {
-        zh->threads.cond.wait(lock);
-    }
-}
-
-
 void
-start_threads(zhandle_t* zh) {
-  zh->threads.threadsToWait=2;  // wait for 2 threads before opening the barrier
-  LOG_DEBUG("starting threads...");
-  zh->threads.io = boost::thread(do_io, zh);
-  zh->threads.completion = boost::thread(do_completion, zh);
-  wait_for_others(zh);
+notify_thread_ready(zhandle_t* zh) {
+  boost::unique_lock<boost::mutex> lock(zh->threads.lock);
+  zh->threads.threadsToWait--;
+  zh->threads.cond.notify_all();
+  while(zh->threads.threadsToWait>0) {
+    zh->threads.cond.wait(lock);
+  }
 }
 
 int
@@ -95,24 +80,29 @@ adaptor_init(zhandle_t *zh) {
   }
   set_nonblock(zh->threads.self_pipe[1]);
   set_nonblock(zh->threads.self_pipe[0]);
-  start_threads(zh);
+
+  // start threads
+  zh->threads.threadsToWait=2;  // wait for 2 threads before opening the barrier
+  LOG_DEBUG("starting threads...");
+  zh->threads.io = boost::thread(do_io, zh);
+  zh->threads.completion = boost::thread(do_completion, zh);
+  wait_for_others(zh);
   return 0;
 }
 
-
 int
 wakeup_io_thread(zhandle_t *zh) {
-    char c = 0;
-    return write(zh->threads.self_pipe[1],&c,1)==1? ZOK: ZSYSTEMERROR;
+  char c = 0;
+  return write(zh->threads.self_pipe[1],&c,1)==1? ZOK: ZSYSTEMERROR;
 }
 
-int adaptor_send_queue(zhandle_t *zh, int timeout)
-{
-    if(!zh->close_requested)
-        return wakeup_io_thread(zh);
-    // don't rely on the IO thread to send the messages if the app has
-    // requested to close 
-    return flush_send_queue(zh, timeout);
+int
+adaptor_send_queue(zhandle_t *zh, int timeout) {
+  if(!zh->close_requested)
+    return wakeup_io_thread(zh);
+  // don't rely on the IO thread to send the messages if the app has
+  // requested to close
+  return flush_send_queue(zh, timeout);
 }
 
 /* These two are declared here because we will run the event loop
@@ -121,93 +111,76 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         struct timeval *tv);
 int zookeeper_process(zhandle_t *zh, int events);
 
-void *do_io(void *v)
-{
-    zhandle_t *zh = (zhandle_t*)v;
-    struct pollfd fds[2];
+void
+do_io(zhandle_t* zh) {
+  struct pollfd fds[2];
 
-    notify_thread_ready(zh);
-    LOG_DEBUG("started IO thread");
-    fds[0].fd=zh->threads.self_pipe[0];
-    fds[0].events=POLLIN;
-    while(true) {
-        struct timeval tv;
-        int fd;
-        int interest;
-        int timeout;
-        int maxfd=1;
-        zookeeper_interest(zh, &fd, &interest, &tv);
+  notify_thread_ready(zh);
+  LOG_DEBUG("started IO thread");
+  fds[0].fd=zh->threads.self_pipe[0];
+  fds[0].events=POLLIN;
+  while(true) {
+    struct timeval tv;
+    int fd;
+    int interest;
+    int timeout;
+    int maxfd=1;
+    zookeeper_interest(zh, &fd, &interest, &tv);
 
-        if (fd != -1) {
-            fds[1].fd=fd;
-            fds[1].events=(interest&ZOOKEEPER_READ)?POLLIN:0;
-            fds[1].events|=(interest&ZOOKEEPER_WRITE)?POLLOUT:0;
-            maxfd=2;
-        }
-        timeout=tv.tv_sec * 1000 + (tv.tv_usec/1000);
-        
-        poll(fds,maxfd,timeout);
-        if (fd != -1) {
-            interest=(fds[1].revents&POLLIN)?ZOOKEEPER_READ:0;
-            interest|=((fds[1].revents&POLLOUT)||(fds[1].revents&POLLHUP))?ZOOKEEPER_WRITE:0;
-        }
-        if(fds[0].revents&POLLIN){
-            // flush the pipe
-            char b[128];
-            while(read(zh->threads.self_pipe[0],b,sizeof(b))==sizeof(b)){}
-        }        
-        // dispatch zookeeper events
-        if (ZCLOSING == zookeeper_process(zh, interest)) {
-          LOG_DEBUG("Received the packet of death. Breaking the IO event loop");
-          break;
-        }
-
-        // check the current state of the zhandle and terminate 
-        // if it is_unrecoverable()
-        if(is_unrecoverable(zh)) {
-          break;
-        }
+    if (fd != -1) {
+      fds[1].fd=fd;
+      fds[1].events=(interest&ZOOKEEPER_READ)?POLLIN:0;
+      fds[1].events|=(interest&ZOOKEEPER_WRITE)?POLLOUT:0;
+      maxfd=2;
     }
-    zh->threads.io.detach();
-    LOG_DEBUG("IO thread terminated");
-    return 0;
-}
+    timeout=tv.tv_sec * 1000 + (tv.tv_usec/1000);
 
-void *do_completion(void *v)
-{
-    zhandle_t *zh = (zhandle_t*)v;
-    notify_thread_ready(zh);
-    LOG_DEBUG("started completion thread");
-    int rc = ZOK;
-    while(rc != ZCLOSING) {
-        boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
-        while(!zh->completions_to_process.head && !zh->close_requested) {
-            (*(zh->completions_to_process.cond)).wait(lock);
-        }
-        lock.unlock();
-        rc = process_completions(zh);
+    poll(fds,maxfd,timeout);
+    if (fd != -1) {
+      interest=(fds[1].revents&POLLIN)?ZOOKEEPER_READ:0;
+      interest|=((fds[1].revents&POLLOUT)||(fds[1].revents&POLLHUP))?ZOOKEEPER_WRITE:0;
     }
-    zh->threads.io.join();
-    zh->threads.completion.detach();
-    process_completions(zh);
-    LOG_DEBUG("completion thread terminated");
-    return 0;
+    if(fds[0].revents&POLLIN){
+      // flush the pipe
+      char b[128];
+      while(read(zh->threads.self_pipe[0],b,sizeof(b))==sizeof(b)){}
+    }
+    // dispatch zookeeper events
+    if (ZCLOSING == zookeeper_process(zh, interest)) {
+      LOG_DEBUG("Received the packet of death. Breaking the IO event loop");
+      break;
+    }
+
+    // check the current state of the zhandle and terminate
+    // if it is_unrecoverable()
+    if(is_unrecoverable(zh)) {
+      break;
+    }
+  }
+  LOG_DEBUG("IO thread terminated");
 }
 
-uint32_t inc_ref_counter(zhandle_t* zh) {
-  return boost::interprocess::detail::atomic_inc32(&(zh->ref_counter)) + 1;
+void
+do_completion(zhandle_t* zh) {
+  notify_thread_ready(zh);
+  LOG_DEBUG("started completion thread");
+  int rc = ZOK;
+  while(rc != ZCLOSING) {
+    boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
+    while(!zh->completions_to_process.head && !zh->close_requested) {
+      (*(zh->completions_to_process.cond)).wait(lock);
+    }
+    lock.unlock();
+    rc = process_completions(zh);
+  }
+  zh->threads.io.join();
+  free_completions(zh, ZCLOSING);
+  process_completions(zh);
+  LOG_DEBUG("completion thread terminated");
 }
 
-uint32_t dec_ref_counter(zhandle_t* zh) {
-  return boost::interprocess::detail::atomic_dec32(&(zh->ref_counter)) - 1;
-}
-
-uint32_t get_ref_counter(zhandle_t* zh) {
-  return boost::interprocess::detail::atomic_read32(&(zh->ref_counter));
-}
-
-int32_t get_xid()
-{
-    static uint32_t xid = 1;
-    return boost::interprocess::detail::atomic_inc32(&xid);
+int32_t
+get_xid() {
+  static uint32_t xid = 0;
+  return boost::interprocess::detail::atomic_inc32(&xid);
 }
