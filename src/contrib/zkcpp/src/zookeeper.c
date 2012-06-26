@@ -69,7 +69,6 @@ ENABLE_LOGGING;
 #include <pwd.h>
 #endif
 
-buffer_t zhandle_t::packetOfDeath;
 completion_list_t zhandle_t::completionOfDeath;
 const int ZOOKEEPER_WRITE = 1 << 0;
 const int ZOOKEEPER_READ = 1 << 1;
@@ -173,6 +172,11 @@ zhandle_t::
 ~zhandle_t() {
     /* call any outstanding completions with a special error code */
     cleanup_bufs(this, ZCLOSING);
+    if (input_buffer != NULL) {
+      delete input_buffer;
+      input_buffer = 0;
+    }
+
     if (hostname != 0) {
         free(hostname);
         hostname = NULL;
@@ -587,9 +591,7 @@ static int remove_buffer(buffer_list_t *list)
     if (!b) {
         return 0;
     }
-    if (b != &zhandle_t::packetOfDeath) {
     delete b;
-    }
     return 1;
 }
 
@@ -754,10 +756,6 @@ static void cleanup_bufs(zhandle_t *zh, int rc) {
     free_buffers(&zh->to_process);
   }
   free_completions(zh, rc);
-  if (zh->input_buffer != NULL) {
-    delete zh->input_buffer;
-    zh->input_buffer = 0;
-  }
 }
 
 static void handle_error(zhandle_t *zh,int rc)
@@ -770,7 +768,7 @@ static void handle_error(zhandle_t *zh,int rc)
         queue_session_event(zh, SessionState::Connecting);
     }
     // TODO(michim) need to handle completion callbacks
-    //cleanup_bufs(zh, rc);
+    cleanup_bufs(zh, rc);
     zh->fd = -1;
     zh->connect_index++;
     if (!is_unrecoverable(zh)) {
@@ -1095,19 +1093,6 @@ static int check_events(zhandle_t *zh, int events)
 {
     if (zh->fd == -1)
         return ZINVALIDSTATE;
-    LOG_DEBUG("Check to see if to_send is empty");
-    if (!(zh->to_send.bufferList_.empty())) {
-      boost::lock_guard<boost::recursive_mutex> lock(zh->to_send.mutex_);
-      if (&(zh->to_send.bufferList_.front()) == &zhandle_t::packetOfDeath) {
-        LOG_DEBUG("Received the packet of death");
-        dequeue_buffer(&zh->to_send);
-        queue_completion(&zh->completions_to_process, &zhandle_t::completionOfDeath);
-        return ZCLOSING;
-      }
-    } else {
-    LOG_DEBUG("Queue is empty");
-    }
-
     if ((events&ZOOKEEPER_WRITE)&&(zh->state == SessionState::Connecting)) {
         int rc, error;
         socklen_t len = sizeof(error);
@@ -1730,11 +1715,8 @@ zookeeper_close(zhandle_t *zh) {
     return ZOK;
   }
   zh->close_requested = 1;
-  {
-    boost::lock_guard<boost::recursive_mutex> lock(zh->to_send.mutex_);
-    zh->to_send.bufferList_.push_front(&zhandle_t::packetOfDeath);
-  }
-  LOG_DEBUG("Enqueued the packet of death");
+  queue_completion(&zh->completions_to_process, &zhandle_t::completionOfDeath);
+  LOG_DEBUG("Enqueued the completion of death");
   if (boost::this_thread::get_id() == zh->threads.completion.get_id()) {
     // completion thread
     wakeup_io_thread(zh);
@@ -2322,12 +2304,6 @@ int flush_send_queue(zhandle_t*zh, int timeout)
           lock(zh->to_send.mutex_);
         while (!(zh->to_send.bufferList_.empty()) &&
                zh->state == SessionState::Connected) {
-            if (&(zh->to_send.bufferList_.front()) == &zhandle_t::packetOfDeath) {
-              LOG_DEBUG("Received the packet of death");
-              dequeue_buffer(&zh->to_send);
-              queue_completion(&zh->completions_to_process, &zhandle_t::completionOfDeath);
-              return ZCLOSING;
-            }
             if(timeout!=0){
                 int elapsed;
                 struct timeval now;

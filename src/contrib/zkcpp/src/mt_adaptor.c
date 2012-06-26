@@ -119,7 +119,7 @@ do_io(zhandle_t* zh) {
   LOG_DEBUG("started IO thread");
   fds[0].fd=zh->threads.self_pipe[0];
   fds[0].events=POLLIN;
-  while(true) {
+  while (!zh->close_requested) {
     struct timeval tv;
     int fd;
     int interest;
@@ -146,10 +146,7 @@ do_io(zhandle_t* zh) {
       while(read(zh->threads.self_pipe[0],b,sizeof(b))==sizeof(b)){}
     }
     // dispatch zookeeper events
-    if (ZCLOSING == zookeeper_process(zh, interest)) {
-      LOG_DEBUG("Received the packet of death. Breaking the IO event loop");
-      break;
-    }
+    zookeeper_process(zh, interest);
 
     // check the current state of the zhandle and terminate
     // if it is_unrecoverable()

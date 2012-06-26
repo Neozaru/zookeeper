@@ -186,7 +186,6 @@ class zhandle_t {
     /** used for chroot path at the client side **/
     std::string chroot;
     boost::mutex mutex; // critical section lock
-    static buffer_t packetOfDeath;
     static completion_list_t completionOfDeath;
 };
 
