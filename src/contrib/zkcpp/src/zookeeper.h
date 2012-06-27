@@ -547,7 +547,7 @@ ZOOAPI SessionState::type zoo_state(zhandle_t *zh);
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
+ZOOAPI int zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
         int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl,
         int flags, string_completion_t completion, const void *data,
         bool isSynchronous);
@@ -575,7 +575,7 @@ ZOOAPI int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_adelete(zhandle_t *zh, const char *path, int version, 
+ZOOAPI int zoo_adelete(zhandle_t *zh, const std::string& path, int version,
         void_completion_t completion, const void *data, bool isSynchronous);
 
 
@@ -608,7 +608,7 @@ ZOOAPI int zoo_adelete(zhandle_t *zh, const char *path, int version,
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_awexists(zhandle_t *zh, const char *path, 
+ZOOAPI int zoo_awexists(zhandle_t *zh, const std::string& path,
         boost::shared_ptr<Watch> watch,
         stat_completion_t completion, const void *data, bool isSynchronous);
 
@@ -632,7 +632,7 @@ ZOOAPI int zoo_awexists(zhandle_t *zh, const char *path,
  * ZINVALIDSTATE - zhandle state is either in ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_aget(zhandle_t *zh, const char *path, int watch, 
+ZOOAPI int zoo_aget(zhandle_t *zh, const std::string& path, int watch,
         data_completion_t completion, const void *data);
 
 /**
@@ -661,7 +661,7 @@ ZOOAPI int zoo_aget(zhandle_t *zh, const char *path, int watch,
  * ZINVALIDSTATE - zhandle state is either in ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_awget(zhandle_t *zh, const char *path, 
+ZOOAPI int zoo_awget(zhandle_t *zh, const std::string& path,
         boost::shared_ptr<Watch> watch,
         data_completion_t completion, const void *data, bool isSynchronous);
 
@@ -691,7 +691,7 @@ ZOOAPI int zoo_awget(zhandle_t *zh, const char *path,
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen, 
+ZOOAPI int zoo_aset(zhandle_t *zh, const std::string& path, const char *buffer, int buflen, 
         int version, stat_completion_t completion, const void *data,
         bool isSynchronous);
 
@@ -723,7 +723,7 @@ ZOOAPI int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buf
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_awget_children2(zhandle_t *zh, const char *path,
+ZOOAPI int zoo_awget_children2(zhandle_t *zh, const std::string& path,
         boost::shared_ptr<Watch> watch,
         strings_stat_completion_t completion, const void *data,
         bool isSynchronous);
@@ -747,7 +747,7 @@ ZOOAPI int zoo_awget_children2(zhandle_t *zh, const char *path,
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 
-ZOOAPI int zoo_async(zhandle_t *zh, const char *path, 
+ZOOAPI int zoo_async(zhandle_t *zh, const std::string& path,
         string_completion_t completion, const void *data);
 
 
@@ -769,7 +769,7 @@ ZOOAPI int zoo_async(zhandle_t *zh, const char *path,
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion, 
+ZOOAPI int zoo_aget_acl(zhandle_t *zh, const std::string& path, acl_completion_t completion, 
         const void *data, bool isSynchronous);
 
 /**
@@ -794,7 +794,7 @@ ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t comple
  * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
+ZOOAPI int zoo_aset_acl(zhandle_t *zh, const std::string& path, int version,
         const std::vector<org::apache::zookeeper::data::ACL>& acl,
         void_completion_t, const void *data, bool isSynchronous);
 

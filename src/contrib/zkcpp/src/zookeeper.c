@@ -20,7 +20,6 @@
 #  define USE_STATIC_LIB
 #endif
 
-#include <boost/algorithm/string/predicate.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/ptr_container/ptr_list.hpp>
 #include <boost/thread/locks.hpp>
@@ -40,6 +39,7 @@
 #include "zookeeper/logging.hh"
 ENABLE_LOGGING;
 #include "zk_hashtable.h"
+#include "path_utils.hh"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -69,6 +69,7 @@ ENABLE_LOGGING;
 #include <pwd.h>
 #endif
 
+using namespace org::apache::zookeeper;
 completion_list_t zhandle_t::completionOfDeath;
 const int ZOOKEEPER_WRITE = 1 << 0;
 const int ZOOKEEPER_READ = 1 << 1;
@@ -114,8 +115,6 @@ static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
 static void cleanup_bufs(zhandle_t *zh, int rc);
 
 static int disable_conn_permute=0; // permute enabled by default
-
-static int isValidPath(const char* path, const int flags);
 
 static ssize_t zookeeper_send(int s, const void* buf, size_t len)
 {
@@ -499,10 +498,6 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
     } else {
         zh->hostname = strdup(host);
     }
-    if (!zh->chroot.empty() && !isValidPath(zh->chroot.c_str(), 0)) {
-        errno = EINVAL;
-        goto abort;
-    }
     if (zh->hostname == 0) {
         goto abort;
     }
@@ -541,40 +536,6 @@ void free_duplicate_path(const char *free_path, const char* path) {
     if (free_path != path) {
         free((void*)free_path);
     }
-}
-
-/**
-  prepend the chroot path if available else return the path
-*/
-static char* prepend_string(zhandle_t *zh, const char* client_path) {
-    char *ret_str;
-    if (zh == NULL || zh->chroot.empty()) {
-        return (char *) client_path;
-    }
-    // handle the chroot itself, client_path = "/"
-    if (strlen(client_path) == 1) {
-        return strdup(zh->chroot.c_str());
-    }
-    ret_str = (char *) malloc(zh->chroot.size() + strlen(client_path) + 1);
-    strcpy(ret_str, zh->chroot.c_str());
-    return strcat(ret_str, client_path);
-}
-
-/**
-   strip off the chroot string from the server path
-   if there is one else return the exact path
- */
-std::string stripChroot(const std::string& path, const std::string& chroot) {
-  //ZOOKEEPER-1027
-  if (!boost::starts_with(path, chroot)) {
-    LOG_ERROR(boost::format("server path %s does not include chroot path %s") %
-              path % chroot);
-    return path;
-  }
-  if (path == chroot) {
-    return "/";
-  }
-  return path.substr(chroot.size());
 }
 
 static buffer_t *dequeue_buffer(buffer_list_t *list) {
@@ -1293,6 +1254,8 @@ deserialize_multi(int xid, completion_list_t *cptr,
           results.push_back(result);
           break;
         }
+        default:
+          LOG_ERROR("Unknown multi operation type: " << (clist->begin())->getType());
       }
     }
     mheader.deserialize(iarchive, "multiheader");
@@ -1364,7 +1327,7 @@ static void deserialize_response(int type, int xid, int failed, int rc,
         res.deserialize(iarchive, "reply");
 
         //ZOOKEEPER-1027
-        cptr->c.string_result(rc, stripChroot(res.getpath(), chroot), cptr->data);
+        cptr->c.string_result(rc, PathUtils::stripChroot(res.getpath(), chroot), cptr->data);
       }
       break;
     case COMPLETION_ACLLIST:
@@ -1755,93 +1718,19 @@ zookeeper_close(zhandle_t *zh) {
   return rc;
 }
 
-static int isValidPath(const char* path, const int flags) {
-    int len = 0;
-    char lastc = '/';
-    char c;
-    int i = 0;
-
-  if (path == 0)
-    return 0;
-  len = strlen(path);
-  if (len == 0)
-    return 0;
-  if (path[0] != '/')
-    return 0;
-  if (len == 1) // done checking - it's the root
-    return 1;
-  if (path[len - 1] == '/' && !(flags & ZOO_SEQUENCE))
-    return 0;
-
-  i = 1;
-  for (; i < len; lastc = path[i], i++) {
-    c = path[i];
-
-    if (c == 0) {
-      return 0;
-    } else if (c == '/' && lastc == '/') {
-      return 0;
-    } else if (c == '.' && lastc == '.') {
-      if (path[i-2] == '/' && (((i + 1 == len) && !(flags & ZOO_SEQUENCE))
-                               || path[i+1] == '/')) {
-        return 0;
-      }
-    } else if (c == '.') {
-      if ((path[i-1] == '/') && (((i + 1 == len) && !(flags & ZOO_SEQUENCE))
-                                 || path[i+1] == '/')) {
-        return 0;
-      }
-    } else if (c > 0x00 && c < 0x1f) {
-      return 0;
-    }
+static int getRealString(zhandle_t *zh, int flags, const std::string& path,
+    std::string& pathStr) {
+  if (zh == NULL) {
+    return ZBADARGUMENTS;
   }
-
-  return 1;
-}
-
-/*---------------------------------------------------------------------------*
- * REQUEST INIT HELPERS
- *---------------------------------------------------------------------------*/
-/* Common Request init helper functions to reduce code duplication */
-static int Request_path_init(zhandle_t *zh, int flags, 
-        char **path_out, const char *path)
-{
-    assert(path_out);
-    
-    *path_out = prepend_string(zh, path);
-    if (zh == NULL || !isValidPath(*path_out, flags)) {
-        free_duplicate_path(*path_out, path);
-        return ZBADARGUMENTS;
-    }
-    if (is_unrecoverable(zh)) {
-        free_duplicate_path(*path_out, path);
-        return ZINVALIDSTATE;
-    }
-
-    return ZOK;
-}
-
-/**
- * TODO:michim Avoid extra copies.
- */
-static int getRealString(zhandle_t *zh, int flags, const char* path,
-                         std::string& pathStr) {
-  char* tempPath = NULL;;
-  int rc = Request_path_init(zh, flags, &tempPath, path);
-  if (rc != ZOK) {
-    return rc;
-  }
-  pathStr.assign(tempPath, strlen(tempPath));
-  if (path != tempPath) {
-    free(tempPath);
-  }
-  return rc;
+  pathStr = zh->chroot + path;
+  return ZOK;
 }
 
 /*---------------------------------------------------------------------------*
  * ASYNC API
  *---------------------------------------------------------------------------*/
-int zoo_awget(zhandle_t *zh, const char *path,
+int zoo_awget(zhandle_t *zh, const std::string& path,
         boost::shared_ptr<Watch> watch,
         data_completion_t dc, const void *data, bool isSynchronous)
 {
@@ -1880,7 +1769,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
+int zoo_aset(zhandle_t *zh, const std::string& path, const char *buf, int buflen,
         int version, stat_completion_t dc, const void *data, bool isSynchronous)
 {
   std::string pathStr;
@@ -1922,7 +1811,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buf, int buflen,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
+int zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
         int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl,
         int flags, string_completion_t completion, const void *data,
         bool isSynchronous) {
@@ -1967,7 +1856,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_adelete(zhandle_t *zh, const char *path, int version,
+int zoo_adelete(zhandle_t *zh, const std::string& path, int version,
         void_completion_t completion, const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
@@ -2003,7 +1892,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_awexists(zhandle_t *zh, const char *path,
+int zoo_awexists(zhandle_t *zh, const std::string& path,
                  boost::shared_ptr<Watch> watch,
                  stat_completion_t completion,
                  const void *data, bool isSynchronous) {
@@ -2042,7 +1931,7 @@ int zoo_awexists(zhandle_t *zh, const char *path,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_awget_children2(zhandle_t *zh, const char *path,
+int zoo_awget_children2(zhandle_t *zh, const std::string& path,
          boost::shared_ptr<Watch> watch,
          strings_stat_completion_t ssc, const void *data,
          bool isSynchronous) {
@@ -2080,7 +1969,7 @@ int zoo_awget_children2(zhandle_t *zh, const char *path,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_async(zhandle_t *zh, const char *path,
+int zoo_async(zhandle_t *zh, const std::string& path,
               string_completion_t completion, const void *data) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
@@ -2115,7 +2004,7 @@ int zoo_async(zhandle_t *zh, const char *path,
 
 }
 
-int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
+int zoo_aget_acl(zhandle_t *zh, const std::string& path, acl_completion_t completion,
         const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
@@ -2150,7 +2039,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
+int zoo_aset_acl(zhandle_t *zh, const std::string& path, int version,
         const std::vector<data::ACL>& acl, void_completion_t completion,
         const void *data, bool isSynchronous) {
   std::string pathStr;

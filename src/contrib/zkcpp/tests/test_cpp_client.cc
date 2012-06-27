@@ -139,6 +139,40 @@ TEST(CppClient, testCreate) {
   EXPECT_EQ(0, stat.getnumChildren());
 }
 
+TEST(CppClient, testSequential) {
+  ZooKeeper zk;
+  ReturnCode::type rc;
+  data::Stat stat;
+  std::string pathCreated;
+  std::vector<data::ACL> acl;
+  data::ACL temp;
+  temp.getid().getscheme() = "world";
+  temp.getid().getid() = "anyone";
+  temp.setperms(Permission::All);
+  acl.push_back(temp);
+
+  rc = zk.init(ZkServer::HOST_PORT, 30000, shared_ptr<Watch>());
+  EXPECT_EQ(ReturnCode::Ok, rc);
+
+  // Non-sequential path cannot end with a '/'.
+  rc = zk.create("/testSequential", "data",  acl, CreateMode::Persistent,
+                 pathCreated);
+  EXPECT_EQ(ReturnCode::Ok, rc);
+  rc = zk.create("/testSequential/", "data",  acl, CreateMode::Persistent,
+                 pathCreated);
+  EXPECT_EQ(ReturnCode::BadArguments, rc);
+
+  // Create /testSequential/000000000 ... /testSequential/000000009
+  for (int i = 0; i < 10; i++) {
+    rc = zk.create("/testSequential/", "data",  acl,
+        CreateMode::PersistentSequential, pathCreated);
+    EXPECT_EQ(ReturnCode::Ok, rc);
+    EXPECT_EQ(str(boost::format("/testSequential/%010d") % i), pathCreated);
+    rc = zk.exists(pathCreated, boost::shared_ptr<Watch>(), stat);
+    EXPECT_EQ(ReturnCode::Ok, rc);
+  }
+}
+
 TEST(CppClient, testBasic) {
   ZooKeeper zk;
   data::Stat stat;

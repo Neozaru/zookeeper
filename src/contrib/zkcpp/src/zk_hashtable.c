@@ -19,6 +19,7 @@
 #include <zookeeper/zookeeper.hh>
 #include <zookeeper/logging.hh>
 ENABLE_LOGGING;
+#include "path_utils.hh"
 #include "zk_hashtable.h"
 #include "zk_adaptor.h"
 #include <string.h>
@@ -193,7 +194,7 @@ void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
   // session event's don't have paths
   std::string client_path =
     type == WatchEvent::SessionStateChanged ? path :
-                                              stripChroot(path, zh->chroot);
+                                              PathUtils::stripChroot(path, zh->chroot);
   BOOST_FOREACH(watcher_object_t* watch, watches) {
     watch->watch_.get()->process((WatchEvent::type)type,
         (SessionState::type)state, client_path);
