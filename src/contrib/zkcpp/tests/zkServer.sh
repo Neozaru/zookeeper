@@ -142,15 +142,6 @@ start|startClean)
         fi
     done
 
-    if $success
-    then
-        ## in case for debug, but generally don't use as it messes up the
-        ## console test output
-        echo -n " ZooKeeper server started"
-    else
-        echo -n " ZooKeeper server NOT started"
-    fi
-
     ;;
 stop)
     # Already killed above

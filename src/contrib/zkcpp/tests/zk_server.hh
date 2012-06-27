@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -15,31 +15,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef SRC_CONTRIB_ZKCPP_TESTS_ZKSERVER_H_
+#define SRC_CONTRIB_ZKCPP_TESTS_ZKSERVER_H_
+
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
-#include <boost/ptr_container/ptr_vector.hpp>
-#include <cppunit/extensions/HelperMacros.h>
-#include <zookeeper/zookeeper_multi.hh>
 
-using namespace org::apache::zookeeper;
-
-class TestOp : public CPPUNIT_NS::TestFixture
-{
+class ZkServer {
   public:
-    CPPUNIT_TEST_SUITE(TestOp);
-    CPPUNIT_TEST(testOp);
-    CPPUNIT_TEST(testOpResult);
-    CPPUNIT_TEST_SUITE_END();
-
-    void testOp() {
-      boost::ptr_vector<Op> ops;
-      ops.push_back(new Op::Check("/path", -1));
-      ops.push_back(new Op::Remove("/path", -1));
+    static std::string HOST_PORT;
+    static void start() {
+      char cmd[1024];
+      sprintf(cmd, "%s startClean %s", ZKSERVER_CMD, HOST_PORT.c_str());
+      assert(system(cmd) == 0);
     }
 
-    void testOpResult() {
-      boost::ptr_vector<OpResult> results;
-      results.push_back(new OpResult::Create(ReturnCode::Ok, "/path"));
+    static void stop() {
+      char cmd[1024];
+      sprintf(cmd, "%s stop %s", ZKSERVER_CMD, HOST_PORT.c_str());
+      assert(system(cmd) == 0);
     }
+
 };
 
-CPPUNIT_TEST_SUITE_REGISTRATION(TestOp);
+#endif  // SRC_CONTRIB_ZKCPP_TESTS_ZKSERVER_H_

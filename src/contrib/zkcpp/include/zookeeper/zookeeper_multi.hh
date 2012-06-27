@@ -112,6 +112,7 @@ class OpResult {
     class Remove;
     class SetData;
     class Check;
+    class Error;
 
   protected:
     OpResult(OpCode::type type, ReturnCode::type rc);
@@ -123,19 +124,18 @@ class OpResult {
 
 class OpResult::Create : public OpResult {
   public:
-    Create(ReturnCode::type rc, const std::string& pathCreated);
+    Create();
     virtual ~Create();
     const std::string getPathCreated() const;
     void setPathCreated(const std::string& pathCreated);
 
   private:
-    Create();
     std::string pathCreated_;
 };
 
 class OpResult::Remove : public OpResult {
   public:
-    Remove(ReturnCode::type rc);
+    Remove();
     virtual ~Remove();
 };
 
@@ -154,6 +154,12 @@ class OpResult::Check : public OpResult {
   public:
     Check();
     virtual ~Check();
+};
+
+class OpResult::Error : public OpResult {
+  public:
+    Error();
+    virtual ~Error();
 };
 
 }}}

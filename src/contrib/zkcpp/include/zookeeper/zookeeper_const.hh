@@ -305,6 +305,7 @@ namespace OpCode {
     Remove = 2,
     SetData = 5,
     Check = 13,
+    Error = -1,
   };
 
   const std::string toString(OpCode::type code);

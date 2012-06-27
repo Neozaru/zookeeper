@@ -15,23 +15,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <gtest/gtest.h>
+#include <string>
+#include <boost/ptr_container/ptr_vector.hpp>
+#include <zookeeper/zookeeper_multi.hh>
 
-#ifndef CPPASSERTHELPER_H_
-#define CPPASSERTHELPER_H_
+using namespace org::apache::zookeeper;
 
-#include <cppunit/TestAssert.h>
+TEST(TestOp, testOp) {
+  boost::ptr_vector<Op> ops;
 
-// make it possible to specify location of the ASSERT call
-#define CPPUNIT_ASSERT_EQUAL_LOC(expected,actual,file,line) \
-  ( CPPUNIT_NS::assertEquals( (expected),              \
-                              (actual),                \
-                              CPPUNIT_NS::SourceLine(file,line),    \
-                              "" ) )
+  ops.push_back(new Op::Create("/path", "data", std::vector<data::ACL>(),
+                               CreateMode::Persistent));
+  ops.push_back(new Op::Remove("/path", -1));
+  ops.push_back(new Op::SetData("/path", "data", -1));
+  ops.push_back(new Op::Check("/path", -1));
 
-#define CPPUNIT_ASSERT_EQUAL_MESSAGE_LOC(message,expected,actual,file,line) \
-  ( CPPUNIT_NS::assertEquals( (expected),              \
-                              (actual),                \
-                              CPPUNIT_NS::SourceLine(file,line), \
-                              (message) ) )
-
-#endif /*CPPASSERTHELPER_H_*/
+  boost::ptr_vector<OpResult> results;
+  results.push_back(new OpResult::Create());
+  results.push_back(new OpResult::Remove());
+  results.push_back(new OpResult::SetData());
+  results.push_back(new OpResult::Check());
+  results.push_back(new OpResult::Error());
+}

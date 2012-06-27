@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -15,17 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "zk_server.hh"
 
-#include "Util.h"
-#include "string.h"
-
-const std::string EMPTY_STRING;
-
-TestConfig globalTestConfig;
-
-void millisleep(int ms){
-    timespec ts;
-    ts.tv_sec=ms/1000;
-    ts.tv_nsec=(ms%1000)*1000000; // to nanoseconds
-    nanosleep(&ts,0);
-}
+std::string ZkServer::HOST_PORT = "127.0.0.1:22181";

@@ -146,8 +146,7 @@ setReturnCode(ReturnCode::type rc) {
 
 
 OpResult::Create::
-Create(ReturnCode::type rc, const std::string& path) :
-  OpResult(OpCode::Create, rc), pathCreated_(path) {
+Create() : OpResult(OpCode::Create, ReturnCode::Ok) {
 }
 
 OpResult::Create::
@@ -165,7 +164,7 @@ setPathCreated(const std::string& pathCreated) {
 }
 
 OpResult::Remove::
-Remove(ReturnCode::type rc) : OpResult(OpCode::Remove, rc) {
+Remove() : OpResult(OpCode::Remove, ReturnCode::Ok) {
 }
 
 OpResult::Remove::
@@ -198,6 +197,12 @@ OpResult::Check::
 ~Check() {
 }
 
+OpResult::Error::
+Error() : OpResult(OpCode::Error, ReturnCode::Ok) {
+}
 
+OpResult::Error::
+~Error() {
+}
 
 }}}  // namespace org::apache::zookeeper

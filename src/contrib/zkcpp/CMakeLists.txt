@@ -25,24 +25,8 @@ file(GLOB source
   ${PROJECT_SOURCE_DIR}/generated/*.cc
 )
 
-# TODO derive this from ${source} and ${testsrc}
 file(GLOB testsrc
-  ${PROJECT_SOURCE_DIR}/src/*.cc
-  ${PROJECT_SOURCE_DIR}/src/*.c
-  ${PROJECT_SOURCE_DIR}/generated/*.c
-  ${PROJECT_SOURCE_DIR}/generated/*.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestDriver.cc
-  ${PROJECT_SOURCE_DIR}/tests/Util.cc
-  #${PROJECT_SOURCE_DIR}/tests/TestClientRetry.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestZookeeperClose.cc
-  #${PROJECT_SOURCE_DIR}/tests/ThreadingUtil.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestRecordIo.cc
-  #${PROJECT_SOURCE_DIR}/tests/TestZookeeperInit.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestMulti.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestOp.cc
-  ${PROJECT_SOURCE_DIR}/tests/TestCppClient.cc
-  #${PROJECT_SOURCE_DIR}/tests/TestClient.cc
-  ${PROJECT_SOURCE_DIR}/tests/*.h
+  ${PROJECT_SOURCE_DIR}/tests/*.cc
 )
 
 # Set parameters needed by config.h.in to generate config.h
@@ -86,19 +70,18 @@ endif()
 find_package(Boost COMPONENTS thread REQUIRED)
 find_package(Boost COMPONENTS system REQUIRED)
 
+# Look for googletest
+find_path(GTEST_INCLUDE_DIR gtest/gtest.h)
+find_library(GTEST_LIBRARY NAMES gtest)
 
-# Look for cppunit
-find_path(CPPUNIT_INCLUDE_DIR cppunit/Test.h)
-find_library(CPPUNIT_LIBRARY NAMES cppunit)
-
-if(CPPUNIT_INCLUDE_DIR AND CPPUNIT_LIBRARY)
-  set(CPPUNIT_FOUND TRUE)
+if(GTEST_INCLUDE_DIR AND GTEST_LIBRARY)
+  set(GTEST_FOUND TRUE)
 endif()
 
-if(CPPUNIT_FOUND)
-  message(STATUS "Found cppunit: ${CPPUNIT_LIBRARY}")
+if(GTEST_FOUND)
+  message(STATUS "Found googletest: ${GTEST_LIBRARY}")
 else()
-  message(FATAL_ERROR "Could not find cppunit")
+  message(FATAL_ERROR "Could not find googletest")
 endif()
 
 # Treat C source code as C++ source code.
@@ -115,12 +98,11 @@ target_link_libraries (zkcpp
   ${Boost_SYSTEM_LIBRARY}
 )
 
+
 add_executable(zktest ${testsrc})
 target_link_libraries(zktest
-  ${CPPUNIT_LIBRARY}
-  ${Boost_THREAD_LIBRARY}
-  ${Boost_SYSTEM_LIBRARY}
-  ${LOG4CXX_LIBRARY}
+  zkcpp
+  ${GTEST_LIBRARY}
 )
 
 # Add "make lint" target

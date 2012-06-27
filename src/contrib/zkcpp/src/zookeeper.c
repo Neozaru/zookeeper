@@ -1250,8 +1250,7 @@ deserialize_multi(int xid, completion_list_t *cptr,
       errorResponse.deserialize(iarchive, "error");
       ReturnCode::type error = (ReturnCode::type)errorResponse.geterr();
       LOG_DEBUG("got error response for: " << ReturnCode::toString(error));
-      mheader.seterr(error);
-      OpResult* result = clist->release(clist->begin()).release();
+      OpResult* result = new OpResult::Error();
       result->setReturnCode(error);
       results.push_back(result);
       if (rc == 0 && (int)error != 0 && (int)error != ZRUNTIMEINCONSISTENCY) {
@@ -2226,7 +2225,7 @@ int zoo_amulti(zhandle_t *zh,
         createReq.getacl() = createOp->getAcl();
         createReq.setflags(createOp->getMode());
         createReq.serialize(oarchive, "req");
-        results->push_back(new OpResult::Create(ReturnCode::Ok, ""));
+        results->push_back(new OpResult::Create());
         break;
       }
       case ZOO_DELETE_OP: {
@@ -2236,7 +2235,7 @@ int zoo_amulti(zhandle_t *zh,
         removeReq.getpath() = pathStr;
         removeReq.setversion(removeOp->getVersion());
         removeReq.serialize(oarchive, "req");
-        results->push_back(new OpResult::Remove(ReturnCode::Ok));
+        results->push_back(new OpResult::Remove());
         break;
       }
 
