@@ -16,9 +16,6 @@
  * limitations under the License.
  */
 #include <gtest/gtest.h>
-#include "zookeeper/logging.hh"
-ENABLE_LOGGING;
-
 #include <memory_in_stream.hh>
 #include <string_out_stream.hh>
 #include <zookeeper.jute.hh>
