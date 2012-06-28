@@ -29,6 +29,7 @@ using namespace org::apache::zookeeper;
 
 class TestInitWatch : public Watch {
   public:
+    TestInitWatch() : connected(false), connecting(false), authFailed(false) {}
     void process(WatchEvent::type event, SessionState::type state,
         const std::string& path) {
       LOG_DEBUG("session state: " << SessionState::toString(state));
@@ -39,10 +40,16 @@ class TestInitWatch : public Watch {
             connected = true;
           }
           cond.notify_all();
+        } else if (state == SessionState::Connecting) {
+          {
+            boost::lock_guard<boost::mutex> lock(mutex);
+            connecting = true;
+          }
+          cond.notify_all();
         } else if (state == SessionState::AuthFailed) {
           {
             boost::lock_guard<boost::mutex> lock(mutex);
-            authFailed_ = true;
+            authFailed = true;
           }
           cond.notify_all();
         }
@@ -62,12 +69,26 @@ class TestInitWatch : public Watch {
       return true;
     }
 
+    bool waitForConnecting(uint32_t timeoutMs) {
+      boost::system_time const timeout=boost::get_system_time() +
+        boost::posix_time::milliseconds(timeoutMs);
+
+      boost::mutex::scoped_lock lock(mutex);
+      while (!connecting) {
+        if(!cond.timed_wait(lock,timeout)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+
     bool waitForAuthFailed(uint32_t timeoutMs) {
       boost::system_time const timeout=boost::get_system_time() +
         boost::posix_time::milliseconds(timeoutMs);
 
       boost::mutex::scoped_lock lock(mutex);
-      while (!authFailed_) {
+      while (!authFailed) {
         if(!cond.timed_wait(lock,timeout)) {
           return false;
         }
@@ -78,7 +99,8 @@ class TestInitWatch : public Watch {
     boost::condition_variable cond;
     boost::mutex mutex;
     bool connected;
-    bool authFailed_;
+    bool connecting;
+    bool authFailed;
 };
 
 TEST(CppClient, testInit) {
@@ -88,6 +110,7 @@ TEST(CppClient, testInit) {
   EXPECT_TRUE(watch->waitForConnected(1000));
   EXPECT_EQ(SessionState::Connected, zk.getState());
   ZkServer::stop();
+  EXPECT_TRUE(watch->waitForConnecting(1000));
   EXPECT_EQ(SessionState::Connecting, zk.getState());
   ZkServer::start();
 }
