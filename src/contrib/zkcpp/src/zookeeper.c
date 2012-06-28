@@ -93,7 +93,7 @@ static const char* format_endpoint_info(const struct sockaddr_storage* ep);
 static const char* format_current_endpoint_info(zhandle_t* zh);
 
 /* deserialize forward declarations */
-static void deserialize_response(int type, int xid, int failed, int rc,
+static void deserialize_response(int type, int xid, ReturnCode::type rc,
     completion_list_t *cptr, hadoop::IBinArchive& iarchive,
      const std::string& chroot);
 static int deserialize_multi(int xid, completion_list_t *cptr,
@@ -387,63 +387,7 @@ struct sockaddr* zookeeper_get_connected_host(zhandle_t *zh,
 
 // TODO Fix these macros
 static void log_env() {
-  char buf[2048];
-#ifdef HAVE_SYS_UTSNAME_H
-  struct utsname utsname;
-#endif
-
-#if defined(HAVE_GETUID) && defined(HAVE_GETPWUID_R)
-  struct passwd pw;
-  struct passwd *pwp = NULL;
-  uid_t uid = 0;
-#endif
-
-  LOG_INFO("Client environment:zookeeper.version=" << PACKAGE_STRING);
-
-#ifdef HAVE_GETHOSTNAME
-  gethostname(buf, sizeof(buf));
-  LOG_INFO("Client environment:host.name=" << buf);
-#else
-  LOG_INFO("Client environment:host.name=<not implemented>");
-#endif
-
-#ifdef HAVE_SYS_UTSNAME_H
-  uname(&utsname);
-  LOG_INFO("Client environment:os.name=" << utsname.sysname);
-  LOG_INFO("Client environment:os.arch=" << utsname.release);
-  LOG_INFO("Client environment:os.version=" << utsname.version);
-#else
-  LOG_INFO("Client environment:os.name=<not implemented>");
-  LOG_INFO("Client environment:os.arch=<not implemented>");
-  LOG_INFO("Client environment:os.version=<not implemented>");
-#endif
-
-#ifdef HAVE_GETLOGIN
-  LOG_INFO("Client environment:user.name=" << getlogin());
-#else
-  LOG_INFO("Client environment:user.name=<not implemented>");
-#endif
-
-#if defined(HAVE_GETUID) && defined(HAVE_GETPWUID_R)
-  uid = getuid();
-  if (!getpwuid_r(uid, &pw, buf, sizeof(buf), &pwp) && pwp) {
-    LOG_INFO("Client environment:user.home=" << pw.pw_dir);
-  } else {
-    LOG_INFO("Client environment:user.home=<NA>");
-  }
-#else
-  LOG_INFO("Client environment:user.home=<not implemented>");
-#endif
-
-#ifdef HAVE_GETCWD
-  if (!getcwd(buf, sizeof(buf))) {
-    LOG_INFO("Client environment:user.dir=<toolong>");
-  } else {
-    LOG_INFO("Client environment:user.dir=" << buf);
-  }
-#else
-  LOG_INFO("Client environment:user.dir=<not implemented>");
-#endif
+  LOG_INFO("Initializing a ZooKeeper client: version=" << PACKAGE_STRING);
 }
 
 /**
@@ -676,8 +620,8 @@ void free_completions(zhandle_t *zh, int reason) {
       } else if (cptr->c.isSynchronous) {
         MemoryInStream stream(NULL, 0);
         hadoop::IBinArchive iarchive(stream);
-        deserialize_response(cptr->c.type, cptr->xid, true,
-            reason, cptr, iarchive, zh->chroot);
+        deserialize_response(cptr->c.type, cptr->xid,
+            (ReturnCode::type)reason, cptr, iarchive, zh->chroot);
       } else {
         // Fake the response
         LOG_DEBUG(boost::format("Enqueueing a fake response: xid=%#08x") %
@@ -1264,14 +1208,14 @@ deserialize_multi(int xid, completion_list_t *cptr,
   return rc;
 }
 
-static void deserialize_response(int type, int xid, int failed, int rc,
+static void deserialize_response(int type, int xid, ReturnCode::type rc,
     completion_list_t *cptr, hadoop::IBinArchive& iarchive,
     const std::string& chroot) {
   switch (type) {
     case COMPLETION_DATA:
-      LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#08x failed=%d rc=%d") %
-          cptr->xid % failed % rc);
-      if (failed) {
+      LOG_DEBUG(boost::format("Calling COMPLETION_DATA for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
+      if (rc != ReturnCode::Ok) {
         data::Stat stat;
         cptr->c.data_result(rc, "", stat, cptr->data);
       } else {
@@ -1281,9 +1225,9 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       }
       break;
     case COMPLETION_STAT:
-      LOG_DEBUG(boost::format("Calling COMPLETION_STAT for xid=%#08x failed=%d rc=%d") % 
-          cptr->xid % failed % rc);
-      if (failed) {
+      LOG_DEBUG(boost::format("Calling COMPLETION_STAT for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
+      if (rc != ReturnCode::Ok) {
         data::Stat stat;
         cptr->c.stat_result(rc, stat, cptr->data);
       } else {
@@ -1293,9 +1237,9 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       }
       break;
     case COMPLETION_STRINGLIST:
-      LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST for xid=%#08x failed=%d rc=%d") %
-          cptr->xid % failed % rc);
-      if (failed) {
+      LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
+      if (rc != ReturnCode::Ok) {
         std::vector<std::string> res;
         cptr->c.strings_result(rc, res, cptr->data);
       } else {
@@ -1305,9 +1249,9 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       }
       break;
     case COMPLETION_STRINGLIST_STAT:
-      LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST_STAT for xid=%#08x failed=%d rc=%d") %
-          cptr->xid % failed % rc);
-      if (failed) {
+      LOG_DEBUG(boost::format("Calling COMPLETION_STRINGLIST_STAT for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
+      if (rc != ReturnCode::Ok) {
         std::vector<std::string> children;
         data::Stat stat;
         cptr->c.strings_stat_result(rc, children, stat, cptr->data);
@@ -1318,9 +1262,9 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       }
       break;
     case COMPLETION_STRING:
-      LOG_DEBUG(boost::format("Calling COMPLETION_STRING for xid=%#08x failed=%d, rc=%d") %
-          cptr->xid % failed % rc);
-      if (failed) {
+      LOG_DEBUG(boost::format("Calling COMPLETION_STRING for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
+      if (rc != ReturnCode::Ok) {
         cptr->c.string_result(rc, "", cptr->data);
       } else {
         proto::CreateResponse res;
@@ -1331,9 +1275,9 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       }
       break;
     case COMPLETION_ACLLIST:
-      LOG_DEBUG(boost::format("Calling COMPLETION_ACLLIST for xid=%#08x failed=%d rc=%d") %
-          cptr->xid % failed % rc);
-      if (failed) {
+      LOG_DEBUG(boost::format("Calling COMPLETION_ACLLIST for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
+      if (rc != ReturnCode::Ok) {
         std::vector<data::ACL> acl;
         data::Stat stat;
         cptr->c.acl_result(rc, acl, stat, cptr->data);
@@ -1344,24 +1288,24 @@ static void deserialize_response(int type, int xid, int failed, int rc,
       }
       break;
     case COMPLETION_VOID:
-      LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#08x failed=%d rc=%d") %
-          cptr->xid % failed % rc);
+      LOG_DEBUG(boost::format("Calling COMPLETION_VOID for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
       if (xid != PING_XID && cptr->c.void_result) {
         cptr->c.void_result(rc, cptr->data);
       }
       break;
     case COMPLETION_MULTI: {
       assert(cptr);
-      LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#08x failed=%d rc=%d") %
-          cptr->xid % failed % rc);
-      if (failed) {
+      LOG_DEBUG(boost::format("Calling COMPLETION_MULTI for xid=%#08x rc=%s") %
+          cptr->xid % ReturnCode::toString(rc));
+      if (rc != ReturnCode::Ok) {
         boost::ptr_vector<OpResult> results;
         cptr->c.multi_result(rc, results, cptr->data);
       } else {
         boost::ptr_vector<OpResult> results;
-        rc = deserialize_multi(xid, cptr, iarchive, results);
+        int returnCode = deserialize_multi(xid, cptr, iarchive, results);
         if (cptr->c.multi_result) {
-          cptr->c.multi_result(rc, results, cptr->data);
+          cptr->c.multi_result(returnCode, results, cptr->data);
         }
       }
       break;
@@ -1398,8 +1342,8 @@ int process_completions(zhandle_t *zh) {
           WatchEvent::toString((WatchEvent::type)type));
       deliverWatchers(zh,type,state,event.getpath().c_str(), cptr->c.watcher_result);
     } else {
-      deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
-                           header.geterr(), cptr, iarchive, zh->chroot);
+      deserialize_response(cptr->c.type, header.getxid(),
+          (ReturnCode::type)header.geterr(), cptr, iarchive, zh->chroot);
     }
     destroy_completion_entry(cptr);
   }
@@ -1486,8 +1430,8 @@ zookeeper_process(zhandle_t *zh, int events) {
         if (cptr->c.isSynchronous) {
           LOG_DEBUG(boost::format("Processing synchronous request "
                 "from the IO thread: xid=%#08x") % header.getxid());
-          deserialize_response(cptr->c.type, header.getxid(), header.geterr() != 0,
-                               header.geterr(), cptr, iarchive, zh->chroot);
+          deserialize_response(cptr->c.type, header.getxid(),
+              (ReturnCode::type)header.geterr(), cptr, iarchive, zh->chroot);
           delete bptr;
           destroy_completion_entry(cptr);
         } else {
@@ -1849,8 +1793,8 @@ int zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
     queue_buffer(&zh->to_send, buffer);
   }
 
-  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-      header.getxid() % path % format_current_endpoint_info(zh));
+  LOG_DEBUG(boost::format("Sending a create request: path=[%s], server=%s, xid=%#08x") %
+      path % format_current_endpoint_info(zh) % header.getxid());
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
   return (rc < 0)?ZMARSHALLINGERROR:ZOK;
