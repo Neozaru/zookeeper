@@ -108,7 +108,6 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
         const void *dc, const void *data, watcher_registration_t* wo,
         boost::ptr_vector<OpResult>* results, bool isSynchronous);
 static void destroy_completion_entry(completion_list_t* c);
-static void queue_completion_nolock(completion_head_t *list, completion_list_t *c);
 static void queue_completion(completion_head_t *list, completion_list_t *c);
 static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
                                   const std::string& message);
@@ -1521,54 +1520,42 @@ static void destroy_completion_entry(completion_list_t* c) {
   }
 }
 
-static void queue_completion_nolock(completion_head_t *list, 
-                                    completion_list_t *c)
-{
-    c->next = 0;
-    /* appending a new entry to the back of the list */
-    if (list->last) {
-        assert(list->head);
-        // List is not empty
-        list->last->next = c;
-        list->last = c;
-    } else {
-        // List is empty
-        assert(!list->head);
-        list->head = c;
-        list->last = c;
-    }
-}
-
-static void queue_completion(completion_head_t *list, completion_list_t *c)
-{
-
-    boost::lock_guard<boost::mutex> lock(*(list->lock));
-    queue_completion_nolock(list, c);
-    list->cond->notify_all();
+static void
+queue_completion(completion_head_t *list, completion_list_t *c) {
+  boost::lock_guard<boost::mutex> lock(*(list->lock));
+  c->next = 0;
+  /* appending a new entry to the back of the list */
+  if (list->last) {
+    assert(list->head);
+    // List is not empty
+    list->last->next = c;
+    list->last = c;
+  } else {
+    // List is empty
+    assert(!list->head);
+    list->head = c;
+    list->last = c;
+  }
+  list->cond->notify_all();
 }
 
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
-        const void *dc, const void *data,
-        watcher_registration_t* wo, boost::ptr_vector<OpResult>* results,
-        bool isSynchronous)
-{
-    completion_list_t *c =create_completion_entry(xid, completion_type, dc,
-            data, wo, results, isSynchronous);
-    int rc = 0;
-    if (!c)
-        return ZSYSTEMERROR;
-    {
-        boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
-        if (zh->close_requested != 1) {
-            queue_completion_nolock(&zh->sent_requests, c);
-            rc = ZOK;
-        } else {
-            free(c);
-            rc = ZINVALIDSTATE;
-        }
-        (*(zh->sent_requests.cond)).notify_all();
-    }
-    return rc;
+    const void *dc, const void *data, watcher_registration_t* wo,
+    boost::ptr_vector<OpResult>* results, bool isSynchronous) {
+  completion_list_t *c =create_completion_entry(xid, completion_type, dc, data,
+                                                wo, results, isSynchronous);
+  int rc = 0;
+  if (!c) {
+    return ZSYSTEMERROR;
+  }
+  if (zh->close_requested != 1) {
+    queue_completion(&zh->sent_requests, c);
+    rc = ZOK;
+  } else {
+    free(c);
+    rc = ZINVALIDSTATE;
+  }
+  return rc;
 }
 
 static int add_data_completion(zhandle_t *zh, int xid, data_completion_t dc,

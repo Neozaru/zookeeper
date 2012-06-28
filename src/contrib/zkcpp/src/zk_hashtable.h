@@ -63,7 +63,6 @@ typedef zk_hashtable *(*result_checker_fn)(zhandle_t *, int rc);
 class watcher_registration_t {
   public:
     boost::shared_ptr<Watch> watch;
-    void* context;
     result_checker_fn checker;
     std::string path;
 };
