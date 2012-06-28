@@ -30,6 +30,7 @@ ENABLE_LOGGING;
 
 #include <boost/interprocess/detail/atomic.hpp>
 #include <boost/thread.hpp>
+#include <boost/version.hpp>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
@@ -179,5 +180,9 @@ do_completion(zhandle_t* zh) {
 int32_t
 get_xid() {
   static uint32_t xid = 0;
+#if BOOST_VERSION / 100 % 1000 >= 46
+  return boost::interprocess::ipcdetail::atomic_inc32(&xid);
+#else
   return boost::interprocess::detail::atomic_inc32(&xid);
+#endif
 }

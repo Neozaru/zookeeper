@@ -69,6 +69,7 @@ endif()
 # Look for boost with thread
 find_package(Boost COMPONENTS thread REQUIRED)
 find_package(Boost COMPONENTS system REQUIRED)
+find_package(Boost COMPONENTS filesystem REQUIRED)
 
 # Look for googletest
 find_path(GTEST_INCLUDE_DIR gtest/gtest.h)
@@ -91,11 +92,17 @@ add_definitions(
   -DZKSERVER_CMD="${PROJECT_SOURCE_DIR}/tests/zkServer.sh"
 )
 
+include_directories(
+  ${Boost_INCLUDE_DIRS}
+  ${GTEST_INCLUDE_DIR}
+)
+
 add_library(zkcpp SHARED ${header} ${source})
 target_link_libraries (zkcpp
   ${LOG4CXX_LIBRARY}
   ${Boost_THREAD_LIBRARY}
   ${Boost_SYSTEM_LIBRARY}
+  ${Boost_FILESYSTEM_LIBRARY}
 )
 
 
