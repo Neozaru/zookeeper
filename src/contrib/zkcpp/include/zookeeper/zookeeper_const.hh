@@ -301,10 +301,24 @@ namespace Permission {
  */
 namespace OpCode {
   enum type {
+    Notify = 0,
     Create = 1,
     Remove = 2,
+    Exists = 3,
+    GetData = 4,
     SetData = 5,
+    GetAcl = 6,
+    SetAcl = 7,
+    GetChildren = 8,
+    Sync= 9,
+    Ping = 11,
+    GetChildren2 = 12,
     Check = 13,
+    Multi = 14,
+    CreateSession = -10,
+    CloseSession = -11,
+    SetAuth = 100,
+    SetWatches = 101,
     Error = -1,
   };
 

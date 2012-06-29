@@ -33,7 +33,6 @@
 #include <string_out_stream.hh>
 #include <recordio.hh>
 #include <binarchive.hh>
-#include <proto.h>
 #include "zk_adaptor.h"
 #include "zookeeper/zookeeper.hh"
 #include "zookeeper/logging.hh"
@@ -723,7 +722,7 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
 
   proto::RequestHeader header;
   header.setxid(AUTH_XID);
-  header.settype(ZOO_SETAUTH_OP);
+  header.settype(OpCode::SetAuth);
   header.serialize(oarchive, "header");
 
   proto::AuthPacket req;
@@ -783,7 +782,7 @@ send_set_watches(zhandle_t *zh) {
 
   proto::RequestHeader header;
   header.setxid(SET_WATCHES_XID);
-  header.settype(ZOO_SETWATCHES_OP);
+  header.settype(OpCode::SetWatches);
 
   std::vector<std::string> paths;
   req.setrelativeZxid(zh->last_zxid);
@@ -862,7 +861,7 @@ send_ping(zhandle_t* zh) {
 
   proto::RequestHeader header;
   header.setxid(PING_XID);
-  header.settype(ZOO_PING_OP);
+  header.settype(OpCode::Ping);
   header.serialize(oarchive, "header");
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
@@ -1612,7 +1611,7 @@ zookeeper_close(zhandle_t *zh) {
 
     proto::RequestHeader header;
     header.setxid(get_xid());
-    header.settype(ZOO_CLOSE_OP);
+    header.settype(OpCode::CloseSession);
     header.serialize(oarchive, "header");
     LOG_INFO(boost::format("Closing zookeeper sessionId=%#llx to [%s]\n") %
         zh->client_id.client_id % format_current_endpoint_info(zh));
@@ -1656,7 +1655,7 @@ int zoo_awget(zhandle_t *zh, const std::string& path,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_GETDATA_OP);
+  header.settype(OpCode::GetData);
   header.serialize(oarchive, "header");
 
   proto::GetDataRequest req;
@@ -1694,7 +1693,7 @@ int zoo_aset(zhandle_t *zh, const std::string& path, const char *buf, int buflen
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_SETDATA_OP);
+  header.settype(OpCode::SetData);
   header.serialize(oarchive, "header");
 
   proto::SetDataRequest req;
@@ -1738,7 +1737,7 @@ int zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_CREATE_OP);
+  header.settype(OpCode::Create);
   header.serialize(oarchive, "header");
 
   proto::CreateRequest req;
@@ -1780,7 +1779,7 @@ int zoo_adelete(zhandle_t *zh, const std::string& path, int version,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_DELETE_OP);
+  header.settype(OpCode::Remove);
   header.serialize(oarchive, "header");
 
   proto::DeleteRequest req;
@@ -1818,7 +1817,7 @@ int zoo_awexists(zhandle_t *zh, const std::string& path,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_EXISTS_OP);
+  header.settype(OpCode::Exists);
   header.serialize(oarchive, "header");
 
   proto::ExistsRequest req;
@@ -1857,7 +1856,7 @@ int zoo_awget_children2(zhandle_t *zh, const std::string& path,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_GETCHILDREN2_OP);
+  header.settype(OpCode::GetChildren2);
   header.serialize(oarchive, "header");
 
   proto::GetChildren2Request req;
@@ -1893,7 +1892,7 @@ int zoo_async(zhandle_t *zh, const std::string& path,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_SYNC_OP);
+  header.settype(OpCode::Sync);
   header.serialize(oarchive, "header");
 
   proto::SyncRequest req;
@@ -1928,7 +1927,7 @@ int zoo_aget_acl(zhandle_t *zh, const std::string& path, acl_completion_t comple
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_GETACL_OP);
+  header.settype(OpCode::GetAcl);
   header.serialize(oarchive, "header");
 
   proto::GetACLRequest req;
@@ -1964,7 +1963,7 @@ int zoo_aset_acl(zhandle_t *zh, const std::string& path, int version,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_SETACL_OP);
+  header.settype(OpCode::SetAcl);
   header.serialize(oarchive, "header");
 
   proto::SetACLRequest req;
@@ -1996,7 +1995,7 @@ int zoo_amulti(zhandle_t *zh,
 
   proto::RequestHeader header;
   header.setxid(get_xid());
-  header.settype(ZOO_MULTI_OP);
+  header.settype(OpCode::Multi);
   header.serialize(oarchive, "header");
   boost::ptr_vector<OpResult>* results = new boost::ptr_vector<OpResult>();
 
@@ -2015,7 +2014,7 @@ int zoo_amulti(zhandle_t *zh,
     }
 
     switch(ops[index].getType()) {
-      case ZOO_CREATE_OP: {
+      case OpCode::Create: {
         const Op::Create* createOp = dynamic_cast<const Op::Create*>(&(ops[index]));
         assert(createOp != NULL);
         proto::CreateRequest createReq;
@@ -2027,7 +2026,7 @@ int zoo_amulti(zhandle_t *zh,
         results->push_back(new OpResult::Create());
         break;
       }
-      case ZOO_DELETE_OP: {
+      case OpCode::Remove: {
         const Op::Remove* removeOp = dynamic_cast<const Op::Remove*>(&(ops[index]));
         assert(removeOp != NULL);
         proto::DeleteRequest removeReq;
@@ -2038,7 +2037,7 @@ int zoo_amulti(zhandle_t *zh,
         break;
       }
 
-      case ZOO_SETDATA_OP: {
+      case OpCode::SetData: {
         const Op::SetData* setDataOp = dynamic_cast<const Op::SetData*>(&(ops[index]));
         assert(setDataOp != NULL);
         proto::SetDataRequest setDataReq;
@@ -2050,7 +2049,7 @@ int zoo_amulti(zhandle_t *zh,
         break;
      }
 
-      case ZOO_CHECK_OP: {
+      case OpCode::Check: {
         const Op::Check* checkOp = dynamic_cast<const Op::Check*>(&(ops[index]));
         assert(checkOp != NULL);
         proto::CheckVersionRequest checkReq;
