@@ -108,7 +108,7 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
         boost::ptr_vector<OpResult>* results, bool isSynchronous);
 static void destroy_completion_entry(completion_list_t* c);
 static void queue_completion(completion_head_t *list, completion_list_t *c);
-static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
+static ReturnCode::type handle_socket_error_msg(zhandle_t *zh, int line, ReturnCode::type rc,
                                   const std::string& message);
 static void cleanup_bufs(zhandle_t *zh, int rc);
 
@@ -140,35 +140,34 @@ int zoo_recv_timeout(zhandle_t *zh)
     return zh->recv_timeout;
 }
 
-int is_unrecoverable(zhandle_t *zh)
-{
-    return (zh->state<0)? ZINVALIDSTATE: ZOK;
+bool is_unrecoverable(zhandle_t *zh) {
+  return zh->state < 0;
 }
 
-zk_hashtable *exists_result_checker(zhandle_t *zh, int rc)
-{
-    if (rc == ZOK) {
-        return &zh->active_node_watchers;
-    } else if (rc == ZNONODE) {
-        return &zh->active_exist_watchers;
-    }
-    return 0;
+zk_hashtable*
+exists_result_checker(zhandle_t *zh, ReturnCode::type rc) {
+  if (rc == ReturnCode::Ok) {
+    return &zh->active_node_watchers;
+  } else if (rc == ReturnCode::NoNode) {
+    return &zh->active_exist_watchers;
+  }
+  return 0;
 }
 
-zk_hashtable *data_result_checker(zhandle_t *zh, int rc)
-{
-    return rc==ZOK ? &zh->active_node_watchers : 0;
+zk_hashtable*
+data_result_checker(zhandle_t *zh, ReturnCode::type rc) {
+  return rc == ReturnCode::Ok ? &zh->active_node_watchers : 0;
 }
 
-zk_hashtable *child_result_checker(zhandle_t *zh, int rc)
-{
-    return rc==ZOK ? &zh->active_child_watchers : 0;
+zk_hashtable*
+child_result_checker(zhandle_t *zh, ReturnCode::type rc) {
+  return rc == ReturnCode::Ok ? &zh->active_child_watchers : 0;
 }
 
 zhandle_t::
 ~zhandle_t() {
     /* call any outstanding completions with a special error code */
-    cleanup_bufs(this, ZCLOSING);
+    cleanup_bufs(this, ReturnCode::InvalidState);
     if (input_buffer != NULL) {
       delete input_buffer;
       input_buffer = 0;
@@ -232,7 +231,7 @@ int getaddrs(zhandle_t *zh) {
   if (!hosts) {
     LOG_ERROR("out of memory");
     errno=ENOMEM;
-    return ZSYSTEMERROR;
+    return ReturnCode::SystemError;
   }
   zh->addrs = 0;
   host=strtok_r(hosts, ",", &strtok_last);
@@ -243,7 +242,7 @@ int getaddrs(zhandle_t *zh) {
     if (!port_spec) {
       LOG_ERROR("no port in " << host);
       errno=EINVAL;
-      rc=ZBADARGUMENTS;
+      rc=ReturnCode::BadArguments;
       goto fail;
     }
     *port_spec = '\0';
@@ -252,7 +251,7 @@ int getaddrs(zhandle_t *zh) {
     if (!*port_spec || *end_port_spec || port == 0) {
       LOG_ERROR("invalid port in " << host);
       errno=EINVAL;
-      rc=ZBADARGUMENTS;
+      rc=ReturnCode::BadArguments;
       goto fail;
     }
     {
@@ -295,7 +294,7 @@ int getaddrs(zhandle_t *zh) {
 #else
             LOG_ERROR("getaddrinfo: " << strerror(errno));
 #endif
-            rc=ZSYSTEMERROR;
+            rc=ReturnCode::SystemError;
             goto fail;
           }
         }
@@ -309,7 +308,7 @@ int getaddrs(zhandle_t *zh) {
             if (tmpaddr == 0) {
               LOG_ERROR("out of memory");
               errno=ENOMEM;
-              rc=ZSYSTEMERROR;
+              rc=ReturnCode::SystemError;
               freeaddrinfo(res0);
               goto fail;
             }
@@ -354,7 +353,7 @@ int getaddrs(zhandle_t *zh) {
         }
       }
     }
-    return ZOK;
+    return ReturnCode::Ok;
 fail:
     if (zh->addrs) {
       free(zh->addrs);
@@ -649,7 +648,7 @@ static void cleanup_bufs(zhandle_t *zh, int rc) {
   free_completions(zh, rc);
 }
 
-static void handle_error(zhandle_t *zh,int rc)
+static void handle_error(zhandle_t *zh, ReturnCode::type rc)
 {
     close(zh->fd);
     if (is_unrecoverable(zh)) {
@@ -668,7 +667,7 @@ static void handle_error(zhandle_t *zh,int rc)
     }
 }
 
-static int handle_socket_error_msg(zhandle_t *zh, int line, int rc,
+static ReturnCode::type handle_socket_error_msg(zhandle_t *zh, int line, ReturnCode::type rc,
         const std::string& message)
 {
     LOG_ERROR(boost::format("%s:%d Socket [%s] zk retcode=%d, errno=%d(%s): %s") %
@@ -736,7 +735,7 @@ static int send_auth_info(zhandle_t *zh) {
         }
     }
     LOG_DEBUG("Sending all auth info request to " << format_current_endpoint_info(zh));
-    return (rc <0) ? ZMARSHALLINGERROR:ZOK;
+    return (rc <0) ? ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 static int send_last_auth_info(zhandle_t *zh) {
@@ -744,12 +743,12 @@ static int send_last_auth_info(zhandle_t *zh) {
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     if (zh->authList_.empty()) {
-      return ZOK; // there is nothing to send
+      return ReturnCode::Ok; // there is nothing to send
     }
     rc = send_info_packet(zh, &(zh->authList_.back()));
   }
   LOG_DEBUG("Sending auth info request to " << format_current_endpoint_info(zh));
-  return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
+  return (rc < 0) ? ReturnCode::MarshallingError : ReturnCode::Ok;
 }
 
 static void
@@ -789,7 +788,8 @@ send_set_watches(zhandle_t *zh) {
   LOG_DEBUG("Sending SetWatches request to " << format_current_endpoint_info(zh));
 }
 
-static int sendConnectRequest(zhandle_t *zh) {
+static ReturnCode::type
+sendConnectRequest(zhandle_t *zh) {
   int rc;
   std::string serialized;
   StringOutStream stream(serialized);
@@ -806,10 +806,10 @@ static int sendConnectRequest(zhandle_t *zh) {
   rc=zookeeper_send(zh->fd, &len, sizeof(len));
   rc=rc<0 ? rc : zookeeper_send(zh->fd, serialized.data(), serialized.size());
   if (rc<0) {
-    return handle_socket_error_msg(zh, __LINE__, ZCONNECTIONLOSS, "");
+    return handle_socket_error_msg(zh, __LINE__, ReturnCode::ConnectionLoss, "");
   }
   zh->state = SessionState::Associating;
-  return ZOK;
+  return ReturnCode::Ok;
 }
 
 static inline int calculate_interval(const struct timeval *start,
@@ -864,9 +864,9 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
      struct timeval *tv) {
     struct timeval now;
     if(zh==0 || fd==0 ||interest==0 || tv==0)
-        return ZBADARGUMENTS;
+        return ReturnCode::BadArguments;
     if (is_unrecoverable(zh))
-        return ZINVALIDSTATE;
+        return ReturnCode::InvalidState;
     gettimeofday(&now, 0);
     if(zh->next_deadline.tv_sec!=0 || zh->next_deadline.tv_usec!=0){
         int time_left = calculate_interval(&zh->next_deadline, &now);
@@ -891,7 +891,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             zh->fd = socket(zh->addrs[zh->connect_index].ss_family, SOCK_STREAM, 0);
             if (zh->fd < 0) {
                 return handle_socket_error_msg(zh,__LINE__,
-                    ZSYSTEMERROR, "socket() call failed");
+                    ReturnCode::SystemError, "socket() call failed");
             }
             ssoresult = setsockopt(zh->fd, IPPROTO_TCP, TCP_NODELAY, &enable_tcp_nodelay, sizeof(enable_tcp_nodelay));
             if (ssoresult != 0) {
@@ -916,7 +916,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
                     zh->state = SessionState::Connecting;
                 else
                     return handle_socket_error_msg(zh,__LINE__,
-                            ZCONNECTIONLOSS,"connect() call failed");
+                            ReturnCode::ConnectionLoss,"connect() call failed");
             } else {
                 if((rc=sendConnectRequest(zh))!=0)
                     return rc;
@@ -942,7 +942,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             *fd=-1;
             *interest=0;
             *tv = get_timeval(0);
-            return handle_socket_error_msg(zh, __LINE__,ZOPERATIONTIMEOUT, "");
+            return handle_socket_error_msg(zh, __LINE__,ReturnCode::OperationTimeout, "");
         }
         // We only allow 1/3 of our timeout time to expire before sending
         // a PING
@@ -976,15 +976,17 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
             *interest |= ZOOKEEPER_WRITE;
         }
     }
-    return ZOK;
+    return ReturnCode::Ok;
 }
 
-static int check_events(zhandle_t *zh, int events)
+static ReturnCode::type
+check_events(zhandle_t *zh, int events)
 {
     if (zh->fd == -1)
-        return ZINVALIDSTATE;
+        return ReturnCode::InvalidState;
     if ((events&ZOOKEEPER_WRITE)&&(zh->state == SessionState::Connecting)) {
         int rc, error;
+        ReturnCode::type returnCode;
         socklen_t len = sizeof(error);
         rc = getsockopt(zh->fd, SOL_SOCKET, SO_ERROR, &error, &len);
         /* the description in section 16.4 "Non-blocking connect"
@@ -993,22 +995,22 @@ static int check_events(zhandle_t *zh, int events)
         if (rc < 0 || error) {
             if (rc == 0)
                 errno = error;
-            return handle_socket_error_msg(zh, __LINE__,ZCONNECTIONLOSS,
+            return handle_socket_error_msg(zh, __LINE__,ReturnCode::ConnectionLoss,
                 "server refused to accept the client");
         }
-        if((rc=sendConnectRequest(zh))!=0)
-            return rc;
+        if((returnCode = sendConnectRequest(zh)) != ReturnCode::Ok)
+            return returnCode;
         LOG_INFO("initiated connection to server: " <<
                 format_endpoint_info(&zh->addrs[zh->connect_index]));
-        return ZOK;
+        return ReturnCode::Ok;
     }
     if (!(zh->to_send.bufferList_.empty()) && (events&ZOOKEEPER_WRITE)) {
         /* make the flush call non-blocking by specifying a 0 timeout */
-        int rc=flush_send_queue(zh,0);
-        if (rc == ZCLOSING) {
-          return rc;
-        } else if (rc < 0) {
-            return handle_socket_error_msg(zh,__LINE__,ZCONNECTIONLOSS,
+        ReturnCode::type returnCode = flush_send_queue(zh,0);
+        if (returnCode == ReturnCode::InvalidState) {
+          return returnCode;
+        } else if (returnCode != ReturnCode::Ok) {
+            return handle_socket_error_msg(zh,__LINE__,ReturnCode::ConnectionLoss,
                 "failed while flushing send queue");
         }
     }
@@ -1023,7 +1025,7 @@ static int check_events(zhandle_t *zh, int events)
         if (rc < 0) {
             delete zh->input_buffer;
             zh->input_buffer = NULL;
-            return handle_socket_error_msg(zh, __LINE__,ZCONNECTIONLOSS,
+            return handle_socket_error_msg(zh, __LINE__,ReturnCode::ConnectionLoss,
                 "failed while receiving a server response");
         }
         if (rc > 0) {
@@ -1048,7 +1050,7 @@ static int check_events(zhandle_t *zh, int events)
                 if (oldid != 0 && oldid != newid) {
                     zh->state = SessionState::Expired;
                     errno = ESTALE;
-                    return handle_socket_error_msg(zh,__LINE__,ZSESSIONEXPIRED,
+                    return handle_socket_error_msg(zh,__LINE__,ReturnCode::SessionExpired,
                     "");
                 } else {
                     zh->recv_timeout = zh->connectResponse.gettimeOut();
@@ -1069,7 +1071,7 @@ static int check_events(zhandle_t *zh, int events)
             zh->input_buffer = 0;
         }
     }
-    return ZOK;
+    return ReturnCode::Ok;
 }
 
 // IO thread queues session events to be processed by the completion thread
@@ -1098,7 +1100,7 @@ static int queue_session_event(zhandle_t *zh, SessionState::type state) {
   collectWatchers(zh, WatchEvent::SessionStateChanged, "",
                   cptr->c.watcher_result);
   queue_completion(&zh->completions_to_process, cptr);
-  return ZOK;
+  return ReturnCode::Ok;
 }
 
 completion_list_t*
@@ -1133,7 +1135,7 @@ deserialize_multi(int xid, completion_list_t *cptr,
       OpResult* result = new OpResult::Error();
       result->setReturnCode(error);
       results.push_back(result);
-      if (rc == 0 && (int)error != 0 && (int)error != ZRUNTIMEINCONSISTENCY) {
+      if (rc == 0 && (int)error != 0 && (int)error != ReturnCode::RuntimeInconsistency) {
         rc = (int)error;
       }
     } else {
@@ -1292,12 +1294,12 @@ static void deserialize_response(int type, int xid, ReturnCode::type rc,
 
 
 /* handles async completion (both single- and multithreaded) */
-int process_completions(zhandle_t *zh) {
+ReturnCode::type process_completions(zhandle_t *zh) {
   completion_list_t *cptr;
   while ((cptr = dequeue_completion(&zh->completions_to_process)) != 0) {
     if (cptr == &zhandle_t::completionOfDeath) {
       LOG_DEBUG("Received the completion of death");
-      return ZCLOSING;
+      return ReturnCode::InvalidState;
     }
     buffer_t *bptr = cptr->buffer;
     MemoryInStream stream(bptr->buffer.data(), bptr->buffer.size());
@@ -1322,20 +1324,20 @@ int process_completions(zhandle_t *zh) {
     }
     destroy_completion_entry(cptr);
   }
-  return ZOK;
+  return ReturnCode::Ok;
 }
 
 int
 zookeeper_process(zhandle_t *zh, int events) {
   buffer_t *bptr;
-  int rc;
+  ReturnCode::type rc;
 
   if (zh==NULL)
-    return ZBADARGUMENTS;
+    return ReturnCode::BadArguments;
   if (is_unrecoverable(zh))
-    return ZINVALIDSTATE;
+    return ReturnCode::InvalidState;
   rc = check_events(zh, events);
-  if (rc!=ZOK) {
+  if (rc!=ReturnCode::Ok) {
     return rc;
   }
   while (rc >= 0 && (bptr=dequeue_buffer(&zh->to_process))) {
@@ -1367,8 +1369,8 @@ zookeeper_process(zhandle_t *zh, int events) {
       delete bptr;
       // auth completion may change the connection state to unrecoverable
       if(is_unrecoverable(zh)){
-        handle_error(zh, ZAUTHFAILED);
-        return ZAUTHFAILED;
+        handle_error(zh, ReturnCode::AuthFailed);
+        return ReturnCode::AuthFailed;
       }
     } else {
       /* Find the request corresponding to the response */
@@ -1376,7 +1378,7 @@ zookeeper_process(zhandle_t *zh, int events) {
 
       /* [ZOOKEEPER-804] Don't assert if zookeeper_close has been called. */
       if (zh->close_requested == 1 && !cptr) {
-        return ZINVALIDSTATE;
+        return ReturnCode::InvalidState;
       }
       assert(cptr);
       /* The requests are going to come back in order */
@@ -1388,7 +1390,7 @@ zookeeper_process(zhandle_t *zh, int events) {
         // signaled and deallocated) and disconnect from the server
         // TODO destroy completion
         queue_completion(&zh->sent_requests,cptr);
-        return handle_socket_error_msg(zh, __LINE__,ZRUNTIMEINCONSISTENCY,
+        return handle_socket_error_msg(zh, __LINE__,ReturnCode::RuntimeInconsistency,
             "");
       }
 
@@ -1416,7 +1418,7 @@ zookeeper_process(zhandle_t *zh, int events) {
       }
     }
   }
-  return ZOK;
+  return ReturnCode::Ok;
 }
 
 SessionState::type zoo_state(zhandle_t *zh)
@@ -1510,14 +1512,14 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
                                                 wo, results, isSynchronous);
   int rc = 0;
   if (!c) {
-    return ZSYSTEMERROR;
+    return ReturnCode::SystemError;
   }
   if (zh->close_requested != 1) {
     queue_completion(&zh->sent_requests, c);
-    rc = ZOK;
+    rc = ReturnCode::Ok;
   } else {
     free(c);
-    rc = ZINVALIDSTATE;
+    rc = ReturnCode::InvalidState;
   }
   return rc;
 }
@@ -1565,11 +1567,11 @@ static int add_multi_completion(zhandle_t *zh, int xid, multi_completion_t dc,
 
 int
 zookeeper_close(zhandle_t *zh) {
-  int rc = ZOK;
+  int rc = ReturnCode::Ok;
   if (zh == 0)
-    return ZBADARGUMENTS;
+    return ReturnCode::BadArguments;
   if (zh->close_requested) {
-    return ZOK;
+    return ReturnCode::Ok;
   }
   zh->close_requested = 1;
   queue_completion(&zh->completions_to_process, &zhandle_t::completionOfDeath);
@@ -1586,7 +1588,7 @@ zookeeper_close(zhandle_t *zh) {
     zh->threads.completion.join();
     delete zh;
   }
-  return ZOK;
+  return ReturnCode::Ok;
 
   /* No need to decrement the counter since we're just going to
    * destroy the handle later. */
@@ -1613,13 +1615,13 @@ zookeeper_close(zhandle_t *zh) {
   return rc;
 }
 
-static int getRealString(zhandle_t *zh, int flags, const std::string& path,
+static ReturnCode::type getRealString(zhandle_t *zh, int flags, const std::string& path,
     std::string& pathStr) {
   if (zh == NULL) {
-    return ZBADARGUMENTS;
+    return ReturnCode::BadArguments;
   }
   pathStr = zh->chroot + path;
-  return ZOK;
+  return ReturnCode::Ok;
 }
 
 /*---------------------------------------------------------------------------*
@@ -1631,7 +1633,7 @@ int zoo_awget(zhandle_t *zh, const std::string& path,
 {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1661,7 +1663,7 @@ int zoo_awget(zhandle_t *zh, const std::string& path,
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 int zoo_aset(zhandle_t *zh, const std::string& path, const char *buf, int buflen,
@@ -1669,7 +1671,7 @@ int zoo_aset(zhandle_t *zh, const std::string& path, const char *buf, int buflen
 {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1703,17 +1705,17 @@ int zoo_aset(zhandle_t *zh, const std::string& path, const char *buf, int buflen
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
-int zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
+ReturnCode::type zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
         int valuelen, const std::vector<org::apache::zookeeper::data::ACL>& acl,
         int flags, string_completion_t completion, const void *data,
         bool isSynchronous) {
   LOG_DEBUG("Entering zoo_acreate()");
   std::string pathStr;
-  int rc = getRealString(zh, flags, path, pathStr);
-  if (rc != ZOK) {
+  ReturnCode::type rc = getRealString(zh, flags, path, pathStr);
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1739,8 +1741,7 @@ int zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
 
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
-    rc = rc < 0 ? rc : add_string_completion(zh, header.getxid(), completion,
-        data, isSynchronous);
+    add_string_completion(zh, header.getxid(), completion, data, isSynchronous);
     queue_buffer(&zh->to_send, buffer);
   }
 
@@ -1748,14 +1749,14 @@ int zoo_acreate(zhandle_t *zh, const std::string& path, const char *value,
       path % format_current_endpoint_info(zh) % header.getxid());
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 int zoo_adelete(zhandle_t *zh, const std::string& path, int version,
         void_completion_t completion, const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1784,7 +1785,7 @@ int zoo_adelete(zhandle_t *zh, const std::string& path, int version,
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 int zoo_awexists(zhandle_t *zh, const std::string& path,
@@ -1793,7 +1794,7 @@ int zoo_awexists(zhandle_t *zh, const std::string& path,
                  const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1823,7 +1824,7 @@ int zoo_awexists(zhandle_t *zh, const std::string& path,
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 int zoo_awget_children2(zhandle_t *zh, const std::string& path,
@@ -1832,7 +1833,7 @@ int zoo_awget_children2(zhandle_t *zh, const std::string& path,
          bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1861,14 +1862,14 @@ int zoo_awget_children2(zhandle_t *zh, const std::string& path,
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 int zoo_async(zhandle_t *zh, const std::string& path,
               string_completion_t completion, const void *data) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1895,7 +1896,7 @@ int zoo_async(zhandle_t *zh, const std::string& path,
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 
 }
 
@@ -1903,7 +1904,7 @@ int zoo_aget_acl(zhandle_t *zh, const std::string& path, acl_completion_t comple
         const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1931,7 +1932,7 @@ int zoo_aget_acl(zhandle_t *zh, const std::string& path, acl_completion_t comple
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 int zoo_aset_acl(zhandle_t *zh, const std::string& path, int version,
@@ -1939,7 +1940,7 @@ int zoo_aset_acl(zhandle_t *zh, const std::string& path, int version,
         const void *data, bool isSynchronous) {
   std::string pathStr;
   int rc = getRealString(zh, 0, path, pathStr);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     return rc;
   }
 
@@ -1969,7 +1970,7 @@ int zoo_aset_acl(zhandle_t *zh, const std::string& path, int version,
       header.getxid() % path % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+  return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
 }
 
 int zoo_amulti(zhandle_t *zh,
@@ -1995,7 +1996,7 @@ int zoo_amulti(zhandle_t *zh,
     mheader.serialize(oarchive, "req");
 
     int rc = getRealString(zh, 0, ops[index].getPath().c_str(), pathStr);
-    if (rc != ZOK) {
+    if (rc != ReturnCode::Ok) {
       return rc;
     }
 
@@ -2048,7 +2049,7 @@ int zoo_amulti(zhandle_t *zh,
       default:
         LOG_ERROR("Unimplemented sub-op type=" << ops[index].getType()
                                                << " in multi-op.");
-        return ZUNIMPLEMENTED;
+        return ReturnCode::Unimplemented;
     }
   }
 
@@ -2068,65 +2069,60 @@ int zoo_amulti(zhandle_t *zh,
       header.getxid() % index % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
-  return ZOK;
+  return ReturnCode::Ok;
 }
 
 /* specify timeout of 0 to make the function non-blocking */
 /* timeout is in milliseconds */
-int flush_send_queue(zhandle_t*zh, int timeout)
-{
-    int rc= ZOK;
-    struct timeval started;
-    gettimeofday(&started,0);
-    // we can't use dequeue_buffer() here because if (non-blocking) send_buffer()
-    // returns EWOULDBLOCK we'd have to put the buffer back on the queue.
-    // we use a recursive lock instead and only dequeue the buffer if a send was
-    // successful
-    {
-        boost::lock_guard<boost::recursive_mutex>
-          lock(zh->to_send.mutex_);
-        while (!(zh->to_send.bufferList_.empty()) &&
-               zh->state == SessionState::Connected) {
-            if(timeout!=0){
-                int elapsed;
-                struct timeval now;
-                gettimeofday(&now,0);
-                elapsed=calculate_interval(&started,&now);
-                if (elapsed>timeout) {
-                    rc = ZOPERATIONTIMEOUT;
-                    break;
-                }
-
-                struct pollfd fds;
-                fds.fd = zh->fd;
-                fds.events = POLLOUT;
-                fds.revents = 0;
-                rc = poll(&fds, 1, timeout-elapsed);
-                if (rc<=0) {
-                    /* timed out or an error or POLLERR */
-                    rc = rc==0 ? ZOPERATIONTIMEOUT : ZSYSTEMERROR;
-                    break;
-                }
-            }
-
-            rc = send_buffer(zh->fd, &(zh->to_send.bufferList_.front()));
-            if(rc==0 && timeout==0){
-                /* send_buffer would block while sending this buffer */
-                rc = ZOK;
-                break;
-            }
-            if (rc < 0) {
-                rc = ZCONNECTIONLOSS;
-                break;
-            }
-            // if the buffer has been sent successfully, remove it from the queue
-            if (rc > 0)
-                remove_buffer(&zh->to_send);
-            gettimeofday(&zh->last_send, 0);
-            rc = ZOK;
+ReturnCode::type
+flush_send_queue(zhandle_t*zh, int timeout) {
+  int rc;
+  struct timeval started;
+  gettimeofday(&started,0);
+  // we can't use dequeue_buffer() here because if (non-blocking) send_buffer()
+  // returns EWOULDBLOCK we'd have to put the buffer back on the queue.
+  // we use a recursive lock instead and only dequeue the buffer if a send was
+  // successful
+  {
+    boost::lock_guard<boost::recursive_mutex> lock(zh->to_send.mutex_);
+    while (!(zh->to_send.bufferList_.empty()) &&
+           zh->state == SessionState::Connected) {
+      if(timeout != 0){
+        int elapsed;
+        struct timeval now;
+        gettimeofday(&now,0);
+        elapsed=calculate_interval(&started,&now);
+        if (elapsed>timeout) {
+          return ReturnCode::OperationTimeout;
         }
+
+        struct pollfd fds;
+        fds.fd = zh->fd;
+        fds.events = POLLOUT;
+        fds.revents = 0;
+        rc = poll(&fds, 1, timeout-elapsed);
+        if (rc <= 0) {
+          /* timed out or an error or POLLERR */
+          return rc == 0 ? ReturnCode::OperationTimeout : ReturnCode::SystemError;
+        }
+      }
+
+      rc = send_buffer(zh->fd, &(zh->to_send.bufferList_.front()));
+      if(rc == 0 && timeout == 0){
+        /* send_buffer would block while sending this buffer */
+        return ReturnCode::Ok;
+      }
+      if (rc < 0) {
+        return ReturnCode::ConnectionLoss;
+      }
+      // if the buffer has been sent successfully, remove it from the queue
+      if (rc > 0) {
+        remove_buffer(&zh->to_send);
+      }
+      gettimeofday(&zh->last_send, 0);
     }
-    return rc;
+  }
+  return ReturnCode::Ok;
 }
 
 // TODO(michim) handle synchronous
@@ -2136,15 +2132,15 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
 {
     auth_info *authinfo;
     if(scheme==NULL || zh==NULL)
-        return ZBADARGUMENTS;
+        return ReturnCode::BadArguments;
 
     if (is_unrecoverable(zh))
-        return ZINVALIDSTATE;
+        return ReturnCode::InvalidState;
 
-    // [ZOOKEEPER-800] zoo_add_auth should return ZINVALIDSTATE if
+    // [ZOOKEEPER-800] zoo_add_auth should return ReturnCode::InvalidState if
     // the connection is closed. 
     if (zoo_state(zh) == 0) {
-        return ZINVALIDSTATE;
+        return ReturnCode::InvalidState;
     }
 
     assert(cert != NULL);
@@ -2163,7 +2159,7 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
         return send_last_auth_info(zh);
     }
 
-    return ZOK;
+    return ReturnCode::Ok;
 }
 
 static const char* format_endpoint_info(const struct sockaddr_storage* ep)

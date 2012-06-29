@@ -246,19 +246,6 @@ class MyMultiCallback : public MultiCallback, public Waitable {
     boost::ptr_vector<OpResult>& results_;
 };
 
-ReturnCode::type ZooKeeperImpl::
-intToReturnCode(int rc) {
-  /**
-   * ZINVALIDSTATE is a C client specific error, but it was put under system
-   * error range (between -1 and -100). To avoid future collision, I moved it
-   * to C++ error range (greater than 0).
-   */
-  if (rc == ZINVALIDSTATE) {
-    return ReturnCode::InvalidState;
-  }
-  return (ReturnCode::type)rc;
-}
-
 class CompletionContext {
   public:
     CompletionContext(boost::shared_ptr<void> callback,
@@ -448,7 +435,7 @@ addAuth(const std::string& scheme, const std::string& cert,
   int rc = zoo_add_auth(handle_, scheme.c_str(), cert.c_str(),
                         cert.size(), completion, (void*)context,
                         isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -475,12 +462,12 @@ create(const std::string& path, const std::string& data,
     completion = &stringCompletion;
     context = new CompletionContext(callback, path);
   }
-  int rc = zoo_acreate(handle_, path.c_str(), data.c_str(), data.size(),
+  ReturnCode::type rc = zoo_acreate(handle_, path.c_str(), data.c_str(), data.size(),
                        acl, mode, completion, (void*)context, isSynchronous);
-  if (rc != ZOK) {
+  if (rc != ReturnCode::Ok) {
     delete context;
   }
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -511,7 +498,7 @@ remove(const std::string& path, int32_t version,
   }
   int rc = zoo_adelete(handle_, path.c_str(), version,
          completion, (void*)context, isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -538,7 +525,7 @@ exists(const std::string& path, boost::shared_ptr<Watch> watch,
   }
   int rc = zoo_awexists(handle_, path.c_str(), watch,
                         completion,  (void*)completionContext, isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -567,7 +554,7 @@ get(const std::string& path, boost::shared_ptr<Watch> watch,
 
   int rc = zoo_awget(handle_, path.c_str(), watch,
                     completion, (void*)context, isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -595,7 +582,7 @@ set(const std::string& path, const std::string& data,
 
   int rc = zoo_aset(handle_, path.c_str(), data.c_str(), data.size(), version,
                     completion, (void*)context, isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 
@@ -627,7 +614,7 @@ getChildren(const std::string& path, boost::shared_ptr<Watch> watch,
   int rc = zoo_awget_children2(handle_, path.c_str(), watch,
                                completion, (void*)context,
                                isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -655,7 +642,7 @@ getAcl(const std::string& path, boost::shared_ptr<GetAclCallback> cb,
   }
   int rc = zoo_aget_acl(handle_, path.c_str(), completion, (void*)context,
                         isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 
@@ -686,7 +673,7 @@ setAcl(const std::string& path, int32_t version,
 
   int rc = zoo_aset_acl(handle_, path.c_str(), version, acl, completion,
                          (void*)context, isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::
@@ -725,7 +712,7 @@ multi(const boost::ptr_vector<Op>& ops,
     context = new MultiCompletionContext(cb);
   }
   int rc = zoo_amulti(handle_, ops, completion, context, isSynchronous);
-  return intToReturnCode(rc);
+  return (ReturnCode::type)rc;
 }
 
 ReturnCode::type ZooKeeperImpl::

@@ -46,7 +46,12 @@ ENABLE_LOGGING;
 void do_io(zhandle_t* zh);
 void do_completion(zhandle_t* zh);
 
-int wakeup_io_thread(zhandle_t *zh);
+ReturnCode::type
+wakeup_io_thread(zhandle_t *zh) {
+  char c = 0;
+  return write(zh->threads.self_pipe[1],&c,1)==1?
+    ReturnCode::Ok : ReturnCode::Error;
+}
 
 static int
 set_nonblock(int fd) {
@@ -89,12 +94,6 @@ adaptor_init(zhandle_t *zh) {
   zh->threads.completion = boost::thread(do_completion, zh);
   wait_for_others(zh);
   return 0;
-}
-
-int
-wakeup_io_thread(zhandle_t *zh) {
-  char c = 0;
-  return write(zh->threads.self_pipe[1],&c,1)==1? ZOK: ZSYSTEMERROR;
 }
 
 int
@@ -162,8 +161,8 @@ void
 do_completion(zhandle_t* zh) {
   notify_thread_ready(zh);
   LOG_DEBUG("started completion thread");
-  int rc = ZOK;
-  while(rc != ZCLOSING) {
+  ReturnCode::type rc = ReturnCode::Ok;
+  while(rc != ReturnCode::InvalidState) {
     boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
     while(zh->completions_to_process.completions.empty() &&
           !zh->close_requested) {
@@ -173,7 +172,7 @@ do_completion(zhandle_t* zh) {
     rc = process_completions(zh);
   }
   zh->threads.io.join();
-  free_completions(zh, ZCLOSING);
+  free_completions(zh, ReturnCode::InvalidState);
   process_completions(zh);
   LOG_DEBUG("completion thread terminated");
 }

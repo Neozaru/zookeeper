@@ -96,7 +96,6 @@ class ZooKeeperImpl {
     void setState(SessionState::type state);
 
   private:
-    static ReturnCode::type intToReturnCode(int rc);
     static void watchCallback(zhandle_t *zh, int type, int state, const char *path,
                          void *watcherCtx);
     static void stringCompletion(int rc, const std::string& value,

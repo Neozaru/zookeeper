@@ -53,7 +53,7 @@ class zk_hashtable {
  * if the server returns a success code (ZOK). However in the case when zoo_exists() 
  * returns a ZNONODE code the watcher should be activated nevertheless.
  */
-typedef zk_hashtable *(*result_checker_fn)(zhandle_t *, int rc);
+typedef zk_hashtable *(*result_checker_fn)(zhandle_t *, ReturnCode::type rc);
 
 /**
  * A watcher object gets temporarily stored with the completion entry until 
@@ -74,7 +74,8 @@ void collectKeys(zk_hashtable *ht, std::vector<std::string>& keys);
  * with it. If it does, move the watcher object to the map of
  * active watchers (only if the checker allows to do so)
  */
-void activateWatcher(zhandle_t *zh, watcher_registration_t* reg, int rc);
+void activateWatcher(zhandle_t *zh, watcher_registration_t* reg,
+                     ReturnCode::type rc);
 void collectWatchers(zhandle_t *zh, int type, const std::string& path,
                      std::list<watcher_object_t*>& watches);
 void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,

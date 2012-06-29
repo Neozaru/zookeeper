@@ -208,7 +208,8 @@ void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
   }
 }
 
-void activateWatcher(zhandle_t* zh, watcher_registration_t* reg, int rc) {
+void activateWatcher(zhandle_t* zh, watcher_registration_t* reg,
+                     ReturnCode::type rc) {
   if (reg != NULL) {
     // This code is executed by the IO thread
     zk_hashtable *ht = reg->checker(zh, rc);

@@ -182,12 +182,12 @@ class zhandle_t {
 
 int adaptor_init(zhandle_t *zh);
 int adaptor_send_queue(zhandle_t *zh, int timeout);
-int process_completions(zhandle_t *zh);
-int flush_send_queue(zhandle_t*zh, int timeout);
+ReturnCode::type process_completions(zhandle_t *zh);
+ReturnCode::type flush_send_queue(zhandle_t*zh, int timeout);
 std::string stripChroot(const std::string& path, const std::string& chroot);
 void free_duplicate_path(const char* free_path, const char* path);
 int32_t get_xid();
-int wakeup_io_thread(zhandle_t *zh);
+ReturnCode::type wakeup_io_thread(zhandle_t *zh);
 void free_completions(zhandle_t *zh, int reason);
 
 #ifdef __cplusplus
