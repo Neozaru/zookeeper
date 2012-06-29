@@ -607,10 +607,10 @@ void free_buffers(buffer_list_t *list)
 void free_completions(zhandle_t *zh, int reason) {
   {
     boost::lock_guard<boost::mutex> lock(*(zh->sent_requests.lock));
-    while (zh->sent_requests.head) {
-      completion_list_t *cptr = zh->sent_requests.head;
+    while (!zh->sent_requests.completions.empty()) {
+      completion_list_t *cptr = zh->sent_requests.completions.front();
+      zh->sent_requests.completions.pop();
 
-      zh->sent_requests.head = cptr->next;
       if (cptr == &zhandle_t::completionOfDeath) {
         LOG_DEBUG("Packet of death! do somethign");
       } if(cptr->xid == PING_XID){
@@ -621,6 +621,7 @@ void free_completions(zhandle_t *zh, int reason) {
         hadoop::IBinArchive iarchive(stream);
         deserialize_response(cptr->c.type, cptr->xid,
             (ReturnCode::type)reason, cptr, iarchive, zh->chroot);
+        destroy_completion_entry(cptr);
       } else {
         // Fake the response
         LOG_DEBUG(boost::format("Enqueueing a fake response: xid=%#08x") %
@@ -637,8 +638,6 @@ void free_completions(zhandle_t *zh, int reason) {
         queue_completion(&zh->completions_to_process, cptr);
       }
     }
-    zh->sent_requests.head = 0;
-    zh->sent_requests.last = 0;
     (*(zh->sent_requests.cond)).notify_all();
   }
   {
@@ -962,7 +961,7 @@ int zookeeper_interest(zhandle_t *zh, int *fd, int *interest,
         // a PING
         if (zh->state==SessionState::Connected) {
             send_to = zh->recv_timeout/3 - idle_send;
-            if (send_to <= 0 && zh->sent_requests.head==0) {
+            if (send_to <= 0 && zh->sent_requests.completions.empty()) {
 //                LOG_DEBUG(("Sending PING to %s (exceeded idle by %dms)",
 //                                format_current_endpoint_info(zh),-send_to));
                 int rc=send_ping(zh);
@@ -1117,24 +1116,16 @@ static int queue_session_event(zhandle_t *zh, SessionState::type state) {
   return ZOK;
 }
 
-completion_list_t *dequeue_completion(completion_head_t *list)
-{
-    completion_list_t *cptr;
-    {
-        boost::lock_guard<boost::mutex> lock(*(list->lock));
-        cptr = list->head;
-        if (cptr) {
-            assert(list);
-            assert(cptr);
-            list->head = cptr->next;
-            if (!list->head) {
-                assert(list->last == cptr);
-                list->last = 0;
-            }
-        }
-        list->cond->notify_all();
-    }
-    return cptr;
+completion_list_t*
+dequeue_completion(completion_head_t* list) {
+  boost::lock_guard<boost::mutex> lock(*(list->lock));
+  completion_list_t *cptr = NULL;
+  if (!list->completions.empty()) {
+    cptr = list->completions.front();
+    list->completions.pop();
+  }
+  list->cond->notify_all();
+  return cptr;
 }
 
 static int
@@ -1523,19 +1514,7 @@ static void destroy_completion_entry(completion_list_t* c) {
 static void
 queue_completion(completion_head_t *list, completion_list_t *c) {
   boost::lock_guard<boost::mutex> lock(*(list->lock));
-  c->next = 0;
-  /* appending a new entry to the back of the list */
-  if (list->last) {
-    assert(list->head);
-    // List is not empty
-    list->last->next = c;
-    list->last = c;
-  } else {
-    // List is empty
-    assert(!list->head);
-    list->head = c;
-    list->last = c;
-  }
+  list->completions.push(c);
   list->cond->notify_all();
 }
 

@@ -23,6 +23,7 @@
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/condition.hpp>
 #include <boost/ptr_container/ptr_list.hpp>
+#include <queue>
 #include <zookeeper/zookeeper_const.hh>
 #include "zookeeper.h"
 #include "zk_hashtable.h"
@@ -97,8 +98,7 @@ class completion_list_t {
 
 class completion_head_t {
   public:
-    completion_list_t* volatile head;
-    completion_list_t* last;
+    std::queue<completion_list_t*> completions;
     boost::shared_ptr<boost::condition_variable> cond;
     boost::shared_ptr<boost::mutex> lock;
 };

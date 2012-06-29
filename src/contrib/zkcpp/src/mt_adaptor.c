@@ -165,7 +165,8 @@ do_completion(zhandle_t* zh) {
   int rc = ZOK;
   while(rc != ZCLOSING) {
     boost::unique_lock<boost::mutex> lock(*(zh->completions_to_process.lock));
-    while(!zh->completions_to_process.head && !zh->close_requested) {
+    while(zh->completions_to_process.completions.empty() &&
+          !zh->close_requested) {
       (*(zh->completions_to_process.cond)).wait(lock);
     }
     lock.unlock();
