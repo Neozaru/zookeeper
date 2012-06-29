@@ -1,5 +1,9 @@
 # Zookeeper C++ client library
 
+## API Documentation
+
+http://m1ch1.github.com/zkcpp/3.5.0/
+
 ## Requirements
 
 - cmake
