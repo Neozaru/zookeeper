@@ -153,18 +153,6 @@ extern ZOOAPI const int ZOO_SEQUENCE;
 class zhandle_t;
 
 /**
- * \brief client id structure.
- * 
- * This structure holds the id and password for the session. This structure
- * should be treated as opaque. It is received from the server when a session
- * is established and needs to be sent back as-is when reconnecting a session.
- */
-typedef struct {
-    int64_t client_id;
-    char passwd[16];
-} clientid_t;
-
-/**
  * \brief signature of a watch function.
  * 
  * There are two ways to receive watch notifications: legacy and watcher object.
@@ -222,7 +210,7 @@ typedef void (*watcher_fn)(zhandle_t *zh, int type,
  * indicates the reason.
  */
 ZOOAPI zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
-  int recv_timeout, const clientid_t *clientid, int flags);
+  int recv_timeout, int flags);
 
 /**
  * \brief close the zookeeper handle and free up any resources.
@@ -247,12 +235,6 @@ ZOOAPI zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watc
  * ZSYSTEMERROR -- a system (OS) error occured; it's worth checking errno to get details
  */
 ZOOAPI int zookeeper_close(zhandle_t *zh);
-
-/**
- * \brief return the client session id, only valid if the connections
- * is currently connected (ie. last watcher state is ZOO_CONNECTED_STATE)
- */
-ZOOAPI const clientid_t *zoo_client_id(zhandle_t *zh);
 
 /**
  * \brief return the timeout for this session, only valid if the connections

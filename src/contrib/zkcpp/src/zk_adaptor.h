@@ -154,7 +154,8 @@ class zhandle_t {
     completion_head_t sent_requests; /* The outstanding requests */
     completion_head_t completions_to_process; /* completions that are ready to run */
     int connect_index; /* The index of the address to connect to */
-    clientid_t client_id;
+    int64_t sessionId;
+    std::string sessionPassword;
     long long last_zxid;
     proto::ConnectResponse connectResponse;
     SessionState::type state;

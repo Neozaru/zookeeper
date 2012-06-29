@@ -366,11 +366,6 @@ fail:
     return rc;
   }
 
-const clientid_t *zoo_client_id(zhandle_t *zh)
-{
-    return &zh->client_id;
-}
-
 struct sockaddr* zookeeper_get_connected_host(zhandle_t *zh,
                  struct sockaddr *addr, socklen_t *addr_len)
 {
@@ -392,7 +387,7 @@ static void log_env() {
  * Create a zookeeper handle associated with the given host and port.
  */
 zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
-  int recv_timeout, const clientid_t *clientid, int flags)
+  int recv_timeout, int flags)
 {
     int errnosave = 0;
     zhandle_t *zh = NULL;
@@ -401,11 +396,8 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
     log_env();
     LOG_INFO(
       boost::format("Initiating client connection, host=%s sessionTimeout=%d "
-                    "watcher=%p sessionId=%#llx sessionPasswd=%s flags=%d") %
-                    host % recv_timeout % watch %
-                    (clientid == 0 ? 0 : clientid->client_id) %
-                    ((clientid == 0) || (clientid->passwd[0] == 0) ?
-                     "<null>" : "<hidden>") % flags);
+                    "watcher=%p flags=%d") %
+                    host % recv_timeout % watch % flags);
 
     zh = new zhandle_t();
     zh->sent_requests.lock.reset(new boost::mutex());
@@ -447,11 +439,8 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
         goto abort;
     }
     zh->connect_index = 0;
-    if (clientid) {
-        memcpy(&zh->client_id, clientid, sizeof(zh->client_id));
-    } else {
-        memset(&zh->client_id, 0, sizeof(zh->client_id));
-    }
+    zh->sessionId = 0;
+    zh->sessionPassword = "";
     zh->last_zxid = 0;
     zh->next_deadline.tv_sec=zh->next_deadline.tv_usec=0;
     zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
@@ -810,9 +799,8 @@ static int sendConnectRequest(zhandle_t *zh) {
   request.setprotocolVersion(0);
   request.settimeOut(zh->recv_timeout);
   request.setlastZxidSeen(zh->last_zxid);
-  request.setsessionId(zh->client_id.client_id);
-  request.getpasswd() = std::string(zh->client_id.passwd,
-      sizeof(zh->client_id.passwd));
+  request.setsessionId(zh->sessionId);
+  request.getpasswd() = zh->sessionPassword;
   request.serialize(oarchive, "connect");
   uint32_t len = htonl(serialized.size());
   rc=zookeeper_send(zh->fd, &len, sizeof(len));
@@ -1053,7 +1041,7 @@ static int check_events(zhandle_t *zh, int events)
 
                 /* We are processing the connect response , so we need to finish
                  * the connection handshake */
-                oldid = zh->client_id.client_id;
+                oldid = zh->sessionId;
                 newid = zh->connectResponse.getsessionId();
                 delete zh->input_buffer;
                 zh->input_buffer = NULL;
@@ -1064,10 +1052,8 @@ static int check_events(zhandle_t *zh, int events)
                     "");
                 } else {
                     zh->recv_timeout = zh->connectResponse.gettimeOut();
-                    zh->client_id.client_id = newid;
-
-                    memcpy(zh->client_id.passwd, zh->connectResponse.getpasswd().c_str(),
-                           sizeof(zh->client_id.passwd));
+                    zh->sessionId = newid;
+                    zh->sessionPassword = zh->connectResponse.getpasswd();
                     zh->state = SessionState::Connected;
                     LOG_INFO(
                       boost::format("session establishment complete on server [%s], sessionId=%#llx, negotiated timeout=%d") %
@@ -1614,7 +1600,7 @@ zookeeper_close(zhandle_t *zh) {
     header.settype(OpCode::CloseSession);
     header.serialize(oarchive, "header");
     LOG_INFO(boost::format("Closing zookeeper sessionId=%#llx to [%s]\n") %
-        zh->client_id.client_id % format_current_endpoint_info(zh));
+        zh->sessionId % format_current_endpoint_info(zh));
     {
       boost::lock_guard<boost::mutex> lock(zh->mutex);
       queue_buffer(&zh->to_send, buffer);

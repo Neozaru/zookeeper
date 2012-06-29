@@ -427,8 +427,7 @@ ZooKeeperImpl::
 ReturnCode::type ZooKeeperImpl::
 init(const std::string& hosts, int32_t sessionTimeoutMs,
      boost::shared_ptr<Watch> watch) {
-  handle_ = zookeeper_init(hosts.c_str(), watch, sessionTimeoutMs,
-                           NULL, 0);
+  handle_ = zookeeper_init(hosts.c_str(), watch, sessionTimeoutMs, 0);
   if (handle_ == NULL) {
     return ReturnCode::Error;
   }
