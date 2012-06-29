@@ -92,17 +92,6 @@ extern ZOOAPI const int ZOOKEEPER_READ;
 // @}
 
 /**
- * @name Create Flags
- * 
- * These flags are used by zoo_create to affect node create. They may
- * be ORed together to combine effects.
- */
-// @{
-extern ZOOAPI const int ZOO_EPHEMERAL;
-extern ZOOAPI const int ZOO_SEQUENCE;
-// @}
-
-/**
  * \brief ZooKeeper handle.
  *
  * This is the handle that represents a connection to the ZooKeeper service.

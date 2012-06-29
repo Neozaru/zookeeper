@@ -95,28 +95,12 @@ class completion_head_t {
     boost::shared_ptr<boost::mutex> lock;
 };
 
-void lock_completion_list(completion_head_t *l);
-void unlock_completion_list(completion_head_t *l);
-
 class auth_info {
   public:
-    int state; /* 0=>inactive, >0 => active */
     std::string scheme;
     std::string auth;
     void_completion_t completion;
     const char* data;
-};
-
-/* the size of connect request */
-#define HANDSHAKE_REQ_SIZE 44
-/* connect request */
-struct connect_req {
-    int32_t protocolVersion;
-    int64_t lastZxidSeen;
-    int32_t timeOut;
-    int64_t sessionId;
-    int32_t passwd_len;
-    char passwd[16];
 };
 
 /* this is used by mt_adaptor internally for thread management */
@@ -133,7 +117,6 @@ class adaptor_threads {
 /**
  * This structure represents the connection to zookeeper.
  */
-
 class zhandle_t {
   public:
     ~zhandle_t();
@@ -159,18 +142,9 @@ class zhandle_t {
     long long last_zxid;
     proto::ConnectResponse connectResponse;
     SessionState::type state;
-    void *context;
     boost::ptr_list<auth_info> authList_; /* authentication data list */
-    /* zookeeper_close is not reentrant because it de-allocates the zhandler. 
-     * This guard variable is used to defer the destruction of zhandle till 
-     * right before top-level API call returns to the caller */
-    uint32_t ref_counter;
     volatile int close_requested;
     adaptor_threads threads;
-    /* Used for debugging only: non-zero value indicates the time when the zookeeper_process
-     * call returned while there was at least one unprocessed server response 
-     * available in the socket recv buffer */
-    struct timeval socket_readable;
     zk_hashtable active_node_watchers;
     zk_hashtable active_exist_watchers;
     zk_hashtable active_child_watchers;
@@ -184,8 +158,6 @@ int adaptor_init(zhandle_t *zh);
 int adaptor_send_queue(zhandle_t *zh, int timeout);
 ReturnCode::type process_completions(zhandle_t *zh);
 ReturnCode::type flush_send_queue(zhandle_t*zh, int timeout);
-std::string stripChroot(const std::string& path, const std::string& chroot);
-void free_duplicate_path(const char* free_path, const char* path);
 int32_t get_xid();
 ReturnCode::type wakeup_io_thread(zhandle_t *zh);
 void free_completions(zhandle_t *zh, int reason);

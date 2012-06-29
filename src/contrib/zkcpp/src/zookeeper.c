@@ -73,9 +73,6 @@ completion_list_t zhandle_t::completionOfDeath;
 const int ZOOKEEPER_WRITE = 1 << 0;
 const int ZOOKEEPER_READ = 1 << 1;
 
-const int ZOO_EPHEMERAL = 1 << 0;
-const int ZOO_SEQUENCE = 1 << 1;
-
 #define COMPLETION_WATCH -1
 #define COMPLETION_VOID 0
 #define COMPLETION_STAT 1
@@ -121,18 +118,6 @@ static ssize_t zookeeper_send(int s, const void* buf, size_t len)
 #else
   return send(s, buf, len, 0);
 #endif
-}
-
-const void *zoo_get_context(zhandle_t *zh)
-{
-    return zh->context;
-}
-
-void zoo_set_context(zhandle_t *zh, void *context)
-{
-    if (zh != NULL) {
-        zh->context = context;
-    }
 }
 
 int zoo_recv_timeout(zhandle_t *zh)
@@ -404,7 +389,6 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
     zh->completions_to_process.lock.reset(new boost::mutex());
     zh->completions_to_process.cond.reset(new boost::condition_variable());
 
-    zh->ref_counter = 0;
     zh->fd = -1;
     zh->state = SessionState::Connecting;
     zh->recv_timeout = recv_timeout;
@@ -442,7 +426,6 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
     zh->sessionPassword = "";
     zh->last_zxid = 0;
     zh->next_deadline.tv_sec=zh->next_deadline.tv_usec=0;
-    zh->socket_readable.tv_sec=zh->socket_readable.tv_usec=0;
 
     if (adaptor_init(zh) == -1) {
         goto abort;
@@ -456,16 +439,6 @@ abort:
     delete zh;
     errno=errnosave;
     return 0;
-}
-
-/**
- * deallocated the free_path only its beeen allocated
- * and not equal to path
- */
-void free_duplicate_path(const char *free_path, const char* path) {
-    if (free_path != path) {
-        free((void*)free_path);
-    }
 }
 
 static buffer_t *dequeue_buffer(buffer_list_t *list) {
@@ -692,7 +665,6 @@ static void auth_completion_func(int rc, zhandle_t* zh) {
         " succeeded.");
     //change state for all auths
     BOOST_FOREACH(auth_info& info, zh->authList_) {
-      info.state = 1;
       if (info.completion) {
         info.completion(rc, info.data);
         info.completion = NULL;
@@ -702,6 +674,9 @@ static void auth_completion_func(int rc, zhandle_t* zh) {
   }
 }
 
+/**
+ * The caller must acquire zh->mutex before calling this function.
+ */
 static int send_info_packet(zhandle_t *zh, auth_info* auth) {
   int rc = 0;
   buffer_t* buffer = new buffer_t();
@@ -719,7 +694,6 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
   req.getauth() = auth->auth;
   req.serialize(oarchive, "req");
 
-  /* add this buffer to the head of the send queue */
   queue_buffer(&zh->to_send, buffer);
   adaptor_send_queue(zh, 0);
   return rc;
@@ -778,13 +752,11 @@ send_set_watches(zhandle_t *zh) {
   header.serialize(oarchive, "header");
   req.serialize(oarchive, "req");
 
-  /* add this buffer to the head of the send queue */
-  queue_buffer(&zh->to_send, buffer);
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
-    adaptor_send_queue(zh, 0);
+    queue_buffer(&zh->to_send, buffer);
   }
-
+  adaptor_send_queue(zh, 0);
   LOG_DEBUG("Sending SetWatches request to " << format_current_endpoint_info(zh));
 }
 
@@ -1373,6 +1345,7 @@ zookeeper_process(zhandle_t *zh, int events) {
         return ReturnCode::AuthFailed;
       }
     } else {
+      rc = (ReturnCode::type)header.geterr();
       /* Find the request corresponding to the response */
       completion_list_t *cptr = dequeue_completion(&zh->sent_requests);
 
@@ -1393,7 +1366,9 @@ zookeeper_process(zhandle_t *zh, int events) {
         return handle_socket_error_msg(zh, __LINE__,ReturnCode::RuntimeInconsistency,
             "");
       }
-
+      LOG_DEBUG(boost::format("Checking whether the watch should be registered:"
+            " xid=%#08x path=%s, rc=%s") % header.getxid() %
+            cptr->watcher->path % ReturnCode::toString(rc));
       activateWatcher(zh, cptr->watcher, rc);
       if (header.getxid() == PING_XID) {
         int elapsed = 0;
