@@ -1366,9 +1366,11 @@ zookeeper_process(zhandle_t *zh, int events) {
         return handle_socket_error_msg(zh, __LINE__,ReturnCode::RuntimeInconsistency,
             "");
       }
-      LOG_DEBUG(boost::format("Checking whether the watch should be registered:"
-            " xid=%#08x path=%s, rc=%s") % header.getxid() %
+      if (cptr->watcher != NULL) {
+        LOG_DEBUG(boost::format("Checking whether the watch should be registered:"
+              " xid=%#08x path=%s, rc=%s") % header.getxid() %
             cptr->watcher->path % ReturnCode::toString(rc));
+      }
       activateWatcher(zh, cptr->watcher, rc);
       if (header.getxid() == PING_XID) {
         int elapsed = 0;
