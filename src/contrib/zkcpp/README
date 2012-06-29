@@ -5,7 +5,7 @@
 - cmake
 - boost
 - log4cxx
-- cppunit
+- googletest
 
 # How to Build
 
@@ -19,11 +19,12 @@
 
     $ ./zktest
 
-   You can run an individual test suite. For example, to run TestCppClient, do:
+   You can run an individual test. For example, to run all the test cases in
+   CppClient, do:
 
-    $ ./zktest TestCppClient
+    $ ./zktest --gtest_filter=CppClient.*
 
    You can also specify an individual test case like this:
 
-    $ ./zktest TestCppClient::testCreate
+    $ ./zktest --gtest_filter=CppClient.testCreate
 
