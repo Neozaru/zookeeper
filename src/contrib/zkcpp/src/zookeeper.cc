@@ -257,14 +257,14 @@ const std::string toString(type eventType) {
   switch (eventType) {
     case SessionStateChanged:
       return "SessionStateChanged";
-    case NodeCreated:
-      return "NodeCreated";
-    case NodeDeleted:
-      return "NodeDeleted";
-    case NodeDataChanged:
-      return "NodeDataChanged";
-    case NodeChildrenChanged:
-      return "NodeChildrenChanged";
+    case ZnodeCreated:
+      return "ZnodeCreated";
+    case ZnodeRemoved:
+      return "ZnodeRemoved";
+    case ZnodeDataChanged:
+      return "ZnodeDataChanged";
+    case ZnodeChildrenChanged:
+      return "ZnodeChildrenChanged";
   }
   LOG_ERROR("Unknown watch event: " << eventType);
   return str(boost::format("UnknownWatchEvent(%d)") % eventType);

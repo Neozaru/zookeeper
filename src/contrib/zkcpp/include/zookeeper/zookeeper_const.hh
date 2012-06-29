@@ -188,30 +188,30 @@ namespace WatchEvent {
     SessionStateChanged = -1,
 
     /**
-     * Node has been created.
+     * Znode has been created.
      *
      * This event is triggered for watches that were set using
      * ZooKeeper::exists(), but not for those that were set using
      * ZooKeeper::get() or ZooKeeper::getChildren().
      */
-    NodeCreated = 1,
+    ZnodeCreated = 1,
 
     /**
-     * Node has been deleted.
+     * Znode has been removed.
      *
      * This event is triggered for watches that were set using any of
      * ZooKeeper::exists(), ZooKeeper::get(), or ZooKeeper::getChildren().
      */
-    NodeDeleted = 2,
+    ZnodeRemoved = 2,
 
     /**
-     * Node data has changed.
+     * Znode data has changed.
      *
      * This event is triggered for watches that were set using
      * ZooKeeper::exists() or ZooKeeper::get(), but not for those that were
      * set using ZooKeeper::getChildren().
      */
-    NodeDataChanged = 3,
+    ZnodeDataChanged = 3,
 
     /**
      * A change has occurred in the list of children.
@@ -220,7 +220,7 @@ namespace WatchEvent {
      * ZooKeeper::getChildren(), but not for those that were set using
      * ZooKeeper::get() or ZooKeeper::exists().
      */
-    NodeChildrenChanged = 4,
+    ZnodeChildrenChanged = 4,
   };
 
   /**

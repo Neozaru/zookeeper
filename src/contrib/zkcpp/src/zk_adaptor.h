@@ -36,14 +36,6 @@ using namespace org::apache::zookeeper;
 #define AUTH_XID -4
 #define SET_WATCHES_XID -8
 
-/* zookeeper event type constants */
-#define CREATED_EVENT_DEF 1
-#define DELETED_EVENT_DEF 2
-#define CHANGED_EVENT_DEF 3
-#define CHILD_EVENT_DEF 4
-#define SESSION_EVENT_DEF -1
-#define NOTWATCHING_EVENT_DEF -2
-
 #ifdef __cplusplus
 extern "C" {
 #endif

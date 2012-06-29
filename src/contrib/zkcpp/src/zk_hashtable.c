@@ -170,17 +170,17 @@ void collectWatchers(zhandle_t *zh, int type, const std::string& path,
     return;
   }
   switch(type){
-    case CREATED_EVENT_DEF:
-    case CHANGED_EVENT_DEF:
+    case WatchEvent::ZnodeCreated:
+    case WatchEvent::ZnodeDataChanged:
       // look up the watchers for the path and move them to a delivery list
       add_for_event(&zh->active_node_watchers, path, watches);
       add_for_event(&zh->active_exist_watchers, path, watches);
       break;
-    case CHILD_EVENT_DEF:
+    case WatchEvent::ZnodeChildrenChanged:
       // look up the watchers for the path and move them to a delivery list
       add_for_event(&zh->active_child_watchers, path, watches);
       break;
-    case DELETED_EVENT_DEF:
+    case WatchEvent::ZnodeRemoved:
       // look up the watchers for the path and move them to a delivery list
       add_for_event(&zh->active_node_watchers, path, watches);
       add_for_event(&zh->active_exist_watchers, path, watches);
