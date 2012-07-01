@@ -48,6 +48,8 @@ class WatchManager {
     void getGetDataPaths(std::vector<std::string>& paths);
     void getGetChildrenPaths(std::vector<std::string>& paths);
   private:
+    void moveWatches(watch_map& from, const std::string&path,
+        std::list<boost::shared_ptr<Watch> >& to);
     void addWatch(watch_map& watches, const std::string& path,
                   boost::shared_ptr<Watch> watch);
     void getPaths(const watch_map& watches, std::vector<std::string>& paths);

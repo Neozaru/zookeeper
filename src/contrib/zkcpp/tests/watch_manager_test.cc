@@ -19,6 +19,7 @@
 #include <zookeeper/logging.hh>
 ENABLE_LOGGING;
 
+#include <algorithm>
 #include "watch_manager.hh"
 #include "zk_server.hh"
 
@@ -59,28 +60,136 @@ TEST(WatchManager, negative) {
   EXPECT_TRUE(paths.empty());
 }
 
+class EmptyWatch : public Watch {
+  void process(WatchEvent::type event, SessionState::type state,
+               const std::string& path) {};
+};
+
 TEST(WatchManager, activate) {
   std::vector<std::string> paths;
   shared_ptr<WatchManager> manager(new WatchManager());
-  ExistsWatchRegistration exists(manager, "/path", shared_ptr<Watch>());
+  manager->setDefaultWatch(boost::shared_ptr<Watch>(new EmptyWatch()));
 
-  // This should get added to getDataWatches_.
-  EXPECT_TRUE(exists.activate(ReturnCode::Ok));
+  // GetWatches should return the default watch for session events.
+  std::list<boost::shared_ptr<Watch> > watches;
+  manager->getWatches(WatchEvent::SessionStateChanged, SessionState::Connected,
+                      "", watches);
+  EXPECT_EQ(1, watches.size());
 
-  // This should get added to existsWatches_.
-  EXPECT_TRUE(exists.activate(ReturnCode::NoNode));
+  for (int i = 0; i < 10; i++) {
+    // 10 watches for /exists{i}
+    std::string path = str(boost::format("/exists%d") % i);
+    for (int j = 0; j < 10; j++) {
+      ExistsWatchRegistration exists(manager, path, shared_ptr<Watch>());
+      EXPECT_TRUE(exists.activate(ReturnCode::NoNode));
+    }
 
-  // getDataPaths should contain 1 path.
-  manager->getGetDataPaths(paths);
-  EXPECT_EQ(1, paths.size());
-  EXPECT_EQ("/path", paths[0]);
+    // 10 watches for /data{i}
+    path = str(boost::format("/data%d") % i);
+    for (int j = 0; j < 10; j++) {
+      GetDataWatchRegistration data(manager, path, shared_ptr<Watch>());
+      EXPECT_TRUE(data.activate(ReturnCode::Ok));
+    }
 
-  // existsPaths should contain 1 path.
+    // 10 watches for /children{i}
+    path = str(boost::format("/children%d") % i);
+    for (int j = 0; j < 10; j++) {
+      GetChildrenWatchRegistration children(manager, path, shared_ptr<Watch>());
+      EXPECT_TRUE(children.activate(ReturnCode::Ok));
+    }
+  }
+
+  // existsPaths should contain 10 paths.
   manager->getExistsPaths(paths);
-  EXPECT_EQ(1, paths.size());
-  EXPECT_EQ("/path", paths[0]);
+  EXPECT_EQ(10, paths.size());
+  for (int i = 0; i < 10; i++) {
+    std::string path = str(boost::format("/exists%d") % i);
+    EXPECT_NE(paths.end(), find(paths.begin(), paths.end(), path));
+  }
 
-  // getChildrenPaths should be empty.
+  // getDataPaths should contain 10 paths.
+  manager->getGetDataPaths(paths);
+  EXPECT_EQ(10, paths.size());
+  for (int i = 0; i < 10; i++) {
+    std::string path = str(boost::format("/data%d") % i);
+    EXPECT_NE(paths.end(), find(paths.begin(), paths.end(), path));
+  }
+
+  // getChildrenPaths should contain 10 paths
+  manager->getGetChildrenPaths(paths);
+  EXPECT_EQ(10, paths.size());
+  for (int i = 0; i < 10; i++) {
+    std::string path = str(boost::format("/children%d") % i);
+    EXPECT_NE(paths.end(), find(paths.begin(), paths.end(), path));
+  }
+
+  // GetWatches should return all the watches for session events, including the
+  // default watch.
+  manager->getWatches(WatchEvent::SessionStateChanged, SessionState::Connected,
+                      "", watches);
+  EXPECT_EQ(301, watches.size());
+
+  // Non-existent path.
+  manager->getWatches(WatchEvent::ZnodeCreated, SessionState::Connected,
+                      "/nonexistent", watches);
+  EXPECT_EQ(0, watches.size());
+  manager->getWatches(WatchEvent::ZnodeRemoved, SessionState::Connected,
+                      "/nonexistent", watches);
+  EXPECT_EQ(0, watches.size());
+  manager->getWatches(WatchEvent::ZnodeDataChanged, SessionState::Connected,
+                      "/nonexistent", watches);
+  EXPECT_EQ(0, watches.size());
+  manager->getWatches(WatchEvent::ZnodeChildrenChanged, SessionState::Connected,
+                      "/nonexistent", watches);
+  EXPECT_EQ(0, watches.size());
+
+  // exists watches can be triggered by ZnodeCreated.
+  for (int i = 0; i < 10; i++) {
+    std::string path = str(boost::format("/exists%d") % i);
+    manager->getWatches(WatchEvent::ZnodeCreated,
+                        SessionState::Connected, path, watches);
+    EXPECT_EQ(10, watches.size());
+  }
+
+  // data watches can be triggered by ZnodeDataChanged or ZnodeRemoved.
+  for (int i = 0; i < 5; i++) {
+    std::string path = str(boost::format("/data%d") % i);
+    manager->getWatches(WatchEvent::ZnodeDataChanged,
+                        SessionState::Connected, path, watches);
+    EXPECT_EQ(10, watches.size());
+  }
+  for (int i = 5; i < 10; i++) {
+    std::string path = str(boost::format("/data%d") % i);
+    manager->getWatches(WatchEvent::ZnodeRemoved,
+                        SessionState::Connected, path, watches);
+    EXPECT_EQ(10, watches.size());
+  }
+
+  // children watches can be triggered by ZnodeChildrenChanged or ZnodeRemoved.
+  for (int i = 0; i < 5; i++) {
+    std::string path = str(boost::format("/children%d") % i);
+    manager->getWatches(WatchEvent::ZnodeChildrenChanged,
+                        SessionState::Connected, path, watches);
+    EXPECT_EQ(10, watches.size());
+  }
+  for (int i = 5; i < 10; i++) {
+    std::string path = str(boost::format("/children%d") % i);
+    manager->getWatches(WatchEvent::ZnodeRemoved,
+                        SessionState::Connected, path, watches);
+    EXPECT_EQ(10, watches.size());
+  }
+
+  // Now all the watches have been triggered.
+  manager->getExistsPaths(paths);
+  EXPECT_TRUE(paths.empty());
+  manager->getGetDataPaths(paths);
+  EXPECT_TRUE(paths.empty());
   manager->getGetChildrenPaths(paths);
   EXPECT_TRUE(paths.empty());
+
+  // getWatches still returns the default watch.
+  manager->getWatches(WatchEvent::SessionStateChanged, SessionState::Connected,
+                      "", watches);
+  EXPECT_EQ(1, watches.size());
 }
+

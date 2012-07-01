@@ -17,6 +17,8 @@
  */
 #include "watch_manager.hh"
 #include <boost/foreach.hpp>
+#include <zookeeper/logging.hh>
+ENABLE_LOGGING;
 
 namespace org {
 namespace apache {
@@ -25,14 +27,54 @@ namespace apache {
 namespace zookeeper {
 
 void WatchManager::
+moveWatches(watch_map& from, const std::string&path,
+            std::list<boost::shared_ptr<Watch> >& to) {
+  watch_map::iterator itr = from.find(path);
+  if (itr != from.end()) {
+    to.insert(to.end(), itr->second.begin(), itr->second.end());
+    from.erase(itr);
+  }
+}
+
+void WatchManager::
 getWatches(WatchEvent::type event,
-           SessionState::type state,
-           const std::string& path,
-           std::list<boost::shared_ptr<Watch> >& waches) {
+    SessionState::type state,
+    const std::string& path,
+    std::list<boost::shared_ptr<Watch> >& watches) {
+  watches.clear();
+
+  switch (event) {
+    case WatchEvent::SessionStateChanged:
+      if (defaultWatch_.get() != NULL) {
+        watches.push_back(defaultWatch_);
+      }
+      BOOST_FOREACH(const watch_map::value_type& pair, existsWatches_) {
+        watches.insert(watches.end(), pair.second.begin(), pair.second.end());
+      }
+      BOOST_FOREACH(const watch_map::value_type& pair, getDataWatches_) {
+        watches.insert(watches.end(), pair.second.begin(), pair.second.end());
+      }
+      BOOST_FOREACH(const watch_map::value_type& pair, getChildrenWatches_) {
+        watches.insert(watches.end(), pair.second.begin(), pair.second.end());
+      }
+      break;
+    case WatchEvent::ZnodeCreated:
+      moveWatches(existsWatches_, path, watches);
+    case WatchEvent::ZnodeDataChanged:
+      moveWatches(getDataWatches_, path, watches);
+    case WatchEvent::ZnodeChildrenChanged:
+      moveWatches(getChildrenWatches_, path, watches);
+      break;
+    case WatchEvent::ZnodeRemoved:
+      moveWatches(getDataWatches_, path, watches);
+      moveWatches(getChildrenWatches_, path, watches);
+      break;
+  }
 }
 
 void WatchManager::
 setDefaultWatch(boost::shared_ptr<Watch> watch) {
+  defaultWatch_ = watch;
 }
 
 void WatchManager::
