@@ -565,7 +565,7 @@ void free_completions(zhandle_t *zh, int reason) {
 
       if (cptr == &zhandle_t::completionOfDeath) {
         LOG_DEBUG("Packet of death! do somethign");
-      } if(cptr->xid == PING_XID){
+      } else if(cptr->xid == PING_XID){
         // Nothing to do with a ping response
         destroy_completion_entry(cptr);
       } else if (cptr->c.isSynchronous) {
@@ -1363,8 +1363,6 @@ zookeeper_process(zhandle_t *zh, int events) {
         LOG_DEBUG(boost::format("Checking whether the watch should be registered:"
               " xid=%#08x path=%s, rc=%s") % header.getxid() %
             "FIXME" % ReturnCode::toString(rc));
-      }
-      if (cptr->watch.get() != NULL) {
         cptr->watch->activate(rc);
       }
       if (header.getxid() == PING_XID) {
