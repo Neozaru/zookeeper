@@ -37,7 +37,6 @@
 #include "zookeeper/zookeeper.hh"
 #include "zookeeper/logging.hh"
 ENABLE_LOGGING;
-#include "zk_hashtable.h"
 #include "path_utils.hh"
 
 #include <stdlib.h>
@@ -98,10 +97,10 @@ static int deserialize_multi(int xid, completion_list_t *cptr,
 
 /* completion routine forward declarations */
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
-        const void *dc, const void *data, watcher_registration_t* wo,
+        const void *dc, const void *data, WatchRegistration* wo,
         boost::ptr_vector<OpResult>* results, bool isSynchronous);
 static completion_list_t* create_completion_entry(int xid, int completion_type,
-        const void *dc, const void *data, watcher_registration_t* wo,
+        const void *dc, const void *data, WatchRegistration* wo,
         boost::ptr_vector<OpResult>* results, bool isSynchronous);
 static void destroy_completion_entry(completion_list_t* c);
 static void queue_completion(completion_head_t *list, completion_list_t *c);
@@ -110,6 +109,18 @@ static ReturnCode::type handle_socket_error_msg(zhandle_t *zh, int line, ReturnC
 static void cleanup_bufs(zhandle_t *zh, int rc);
 
 static int disable_conn_permute=0; // permute enabled by default
+
+static void deliverWatchers(zhandle_t *zh, int type, int state, const char *path,
+                     std::list<boost::shared_ptr<Watch> >& watches) {
+  // session event's don't have paths
+  std::string client_path =
+    type == WatchEvent::SessionStateChanged ? path :
+                                              PathUtils::stripChroot(path, zh->chroot);
+  BOOST_FOREACH(boost::shared_ptr<Watch>& watch, watches) {
+    watch->process((WatchEvent::type)type,
+        (SessionState::type)state, client_path);
+  }
+}
 
 static ssize_t zookeeper_send(int s, const void* buf, size_t len)
 {
@@ -127,26 +138,6 @@ int zoo_recv_timeout(zhandle_t *zh)
 
 bool is_unrecoverable(zhandle_t *zh) {
   return zh->state < 0;
-}
-
-zk_hashtable*
-exists_result_checker(zhandle_t *zh, ReturnCode::type rc) {
-  if (rc == ReturnCode::Ok) {
-    return &zh->active_node_watchers;
-  } else if (rc == ReturnCode::NoNode) {
-    return &zh->active_exist_watchers;
-  }
-  return 0;
-}
-
-zk_hashtable*
-data_result_checker(zhandle_t *zh, ReturnCode::type rc) {
-  return rc == ReturnCode::Ok ? &zh->active_node_watchers : 0;
-}
-
-zk_hashtable*
-child_result_checker(zhandle_t *zh, ReturnCode::type rc) {
-  return rc == ReturnCode::Ok ? &zh->active_child_watchers : 0;
 }
 
 zhandle_t::
@@ -392,7 +383,8 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
     zh->fd = -1;
     zh->state = SessionState::Connecting;
     zh->recv_timeout = recv_timeout;
-    zh->watch = watch;
+    zh->watchManager = boost::shared_ptr<WatchManager>(new WatchManager());
+    zh->watchManager->setDefaultWatch(watch);
     if (host == 0 || *host == 0) { // what we shouldn't dup
         errno=EINVAL;
         goto abort;
@@ -643,9 +635,9 @@ static void handle_error(zhandle_t *zh, ReturnCode::type rc)
 static ReturnCode::type handle_socket_error_msg(zhandle_t *zh, int line, ReturnCode::type rc,
         const std::string& message)
 {
-    LOG_ERROR(boost::format("%s:%d Socket [%s] zk retcode=%d, errno=%d(%s): %s") %
+    LOG_ERROR(boost::format("%s:%d Socket [%s] zk retcode=%s, errno=%d(%s): %s") %
             __func__ % line % format_current_endpoint_info(zh) %
-            rc % errno % strerror(errno) % message);
+            ReturnCode::toString(rc) % errno % strerror(errno) % message);
     handle_error(zh,rc);
     return rc;
 }
@@ -728,9 +720,9 @@ static int send_last_auth_info(zhandle_t *zh) {
 static void
 send_set_watches(zhandle_t *zh) {
   proto::SetWatches req;
-  collectKeys(&zh->active_node_watchers, req.getdataWatches());
-  collectKeys(&zh->active_exist_watchers, req.getexistWatches());
-  collectKeys(&zh->active_child_watchers, req.getchildWatches());
+  zh->watchManager->getExistsPaths(req.getexistWatches());
+  zh->watchManager->getGetChildrenPaths(req.getchildWatches());
+  zh->watchManager->getGetDataPaths(req.getdataWatches());
 
   // return if there are no pending watches
   if (req.getdataWatches().empty() && req.getexistWatches().empty() &&
@@ -1069,8 +1061,8 @@ static int queue_session_event(zhandle_t *zh, SessionState::type state) {
 
   cptr->buffer = buffer;
   cptr->buffer->offset = buffer->buffer.size();
-  collectWatchers(zh, WatchEvent::SessionStateChanged, "",
-                  cptr->c.watcher_result);
+  zh->watchManager->getWatches(WatchEvent::SessionStateChanged,
+      zh->state, "", cptr->c.watches);
   queue_completion(&zh->completions_to_process, cptr);
   return ReturnCode::Ok;
 }
@@ -1289,7 +1281,7 @@ ReturnCode::type process_completions(zhandle_t *zh) {
       LOG_DEBUG(boost::format("Calling a watcher for node [%s], type = %d event=%s") %
           event.getpath() % cptr->c.type %
           WatchEvent::toString((WatchEvent::type)type));
-      deliverWatchers(zh,type,state,event.getpath().c_str(), cptr->c.watcher_result);
+      deliverWatchers(zh,type,state,event.getpath().c_str(), cptr->c.watches);
     } else {
       deserialize_response(cptr->c.type, header.getxid(),
           (ReturnCode::type)header.geterr(), cptr, iarchive, zh->chroot);
@@ -1329,7 +1321,8 @@ zookeeper_process(zhandle_t *zh, int events) {
       completion_list_t* c =
         create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0, false);
       c->buffer = bptr;
-      collectWatchers(zh, event.gettype(), event.getpath(), c->c.watcher_result);
+      zh->watchManager->getWatches((WatchEvent::type)event.gettype(),
+                                   zh->state, event.getpath(), c->c.watches);
       queue_completion(&zh->completions_to_process, c);
     } else if (header.getxid() == SET_WATCHES_XID) {
       LOG_DEBUG("Processing SET_WATCHES");
@@ -1366,12 +1359,14 @@ zookeeper_process(zhandle_t *zh, int events) {
         return handle_socket_error_msg(zh, __LINE__,ReturnCode::RuntimeInconsistency,
             "");
       }
-      if (cptr->watcher != NULL) {
+      if (cptr->watch.get() != NULL) {
         LOG_DEBUG(boost::format("Checking whether the watch should be registered:"
               " xid=%#08x path=%s, rc=%s") % header.getxid() %
-            cptr->watcher->path % ReturnCode::toString(rc));
+            "FIXME" % ReturnCode::toString(rc));
       }
-      activateWatcher(zh, cptr->watcher, rc);
+      if (cptr->watch.get() != NULL) {
+        cptr->watch->activate(rc);
+      }
       if (header.getxid() == PING_XID) {
         int elapsed = 0;
         struct timeval now;
@@ -1406,28 +1401,8 @@ SessionState::type zoo_state(zhandle_t *zh)
   return zh->state;
 }
 
-static watcher_registration_t* create_watcher_registration(
-    const std::string& path, result_checker_fn checker,
-    boost::shared_ptr<Watch> watcher) {
-  watcher_registration_t* wo;
-  if(watcher==0)
-    return 0;
-  wo= new watcher_registration_t();
-  wo->path = path;
-  wo->watch = watcher;
-  wo->checker=checker;
-  return wo;
-}
-
-static void
-destroy_watcher_registration(watcher_registration_t* wo) {
-  if (wo != NULL) {
-    delete wo;
-  }
-}
-
 static completion_list_t* create_completion_entry(int xid, int completion_type,
-    const void *dc, const void *data,watcher_registration_t* wo,
+    const void *dc, const void *data, WatchRegistration* wo,
     boost::ptr_vector<OpResult>* results, bool isSynchronous) {
   completion_list_t *c = new completion_list_t();
   c->c.type = completion_type;
@@ -1461,14 +1436,13 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
       break;
   }
   c->xid = xid;
-  c->watcher = wo;
+  c->watch.reset(wo);
   c->c.isSynchronous = isSynchronous;
   return c;
 }
 
 static void destroy_completion_entry(completion_list_t* c) {
   if(c != NULL) {
-    destroy_watcher_registration(c->watcher);
     if(c->buffer != NULL)
       delete c->buffer;
     delete c;
@@ -1483,7 +1457,7 @@ queue_completion(completion_head_t *list, completion_list_t *c) {
 }
 
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
-    const void *dc, const void *data, watcher_registration_t* wo,
+    const void *dc, const void *data, WatchRegistration* wo,
     boost::ptr_vector<OpResult>* results, bool isSynchronous) {
   completion_list_t *c =create_completion_entry(xid, completion_type, dc, data,
                                                 wo, results, isSynchronous);
@@ -1502,19 +1476,20 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
 }
 
 static int add_data_completion(zhandle_t *zh, int xid, data_completion_t dc,
-        const void *data,watcher_registration_t* wo, bool isSynchronous)
+        const void *data, WatchRegistration* wo, bool isSynchronous)
 {
     return add_completion(zh, xid, COMPLETION_DATA, (const void*)dc, data, wo, 0, isSynchronous);
 }
 
 static int add_stat_completion(zhandle_t *zh, int xid, stat_completion_t dc,
-        const void *data,watcher_registration_t* wo, bool isSynchronous)
+        const void *data, WatchRegistration* wo, bool isSynchronous)
 {
     return add_completion(zh, xid, COMPLETION_STAT, (const void*)dc, data, wo, 0, isSynchronous);
 }
 
 static int add_strings_stat_completion(zhandle_t *zh, int xid,
-        strings_stat_completion_t dc, const void *data,watcher_registration_t* wo, bool isSynchronous)
+        strings_stat_completion_t dc, const void *data,
+        WatchRegistration* wo, bool isSynchronous)
 {
     return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, (const void*)dc, data, wo, 0, isSynchronous);
 }
@@ -1551,8 +1526,8 @@ zookeeper_close(zhandle_t *zh) {
     return ReturnCode::Ok;
   }
   zh->close_requested = 1;
+  LOG_DEBUG("Enqueueing the completion of death");
   queue_completion(&zh->completions_to_process, &zhandle_t::completionOfDeath);
-  LOG_DEBUG("Enqueued the completion of death");
   if (boost::this_thread::get_id() == zh->threads.completion.get_id()) {
     // completion thread
     wakeup_io_thread(zh);
@@ -1631,7 +1606,7 @@ int zoo_awget(zhandle_t *zh, const std::string& path,
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
-        create_watcher_registration(pathStr,data_result_checker,watch),
+        new GetDataWatchRegistration(zh->watchManager, pathStr, watch),
         isSynchronous);
     queue_buffer(&zh->to_send, buffer);
   }
@@ -1792,8 +1767,7 @@ int zoo_awexists(zhandle_t *zh, const std::string& path,
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
-        create_watcher_registration(req.getpath(), exists_result_checker,
-          watch), isSynchronous);
+        new ExistsWatchRegistration(zh->watchManager, req.getpath(), watch), false);
     queue_buffer(&zh->to_send, buffer);
   }
 
@@ -1831,7 +1805,7 @@ int zoo_awget_children2(zhandle_t *zh, const std::string& path,
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
-        create_watcher_registration(req.getpath(),child_result_checker,watch), false);
+        new GetChildrenWatchRegistration(zh->watchManager, req.getpath(), watch), false);
     queue_buffer(&zh->to_send, buffer);
   }
 

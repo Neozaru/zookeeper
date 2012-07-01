@@ -26,7 +26,7 @@
 #include <queue>
 #include <zookeeper/zookeeper_const.hh>
 #include "zookeeper.h"
-#include "zk_hashtable.h"
+#include "watch_manager.hh"
 
 using namespace org::apache::zookeeper;
 
@@ -73,7 +73,7 @@ class completion_t {
         string_completion_t string_result;
         multi_completion_t multi_result;
     };
-    std::list<watcher_object_t*> watcher_result;
+    std::list<boost::shared_ptr<Watch> > watches;
     boost::scoped_ptr<boost::ptr_vector<OpResult> > results; /* For multi-op */
     bool isSynchronous;
 };
@@ -85,7 +85,7 @@ class completion_list_t {
     const void *data;
     buffer_t *buffer;
     completion_list_t* next;
-    watcher_registration_t* watcher;
+    boost::scoped_ptr<WatchRegistration> watch;
 };
 
 class completion_head_t {
@@ -124,7 +124,6 @@ class zhandle_t {
     char *hostname; /* the hostname of zookeeper */
     struct sockaddr_storage *addrs; /* the addresses that correspond to the hostname */
     int addrs_count; /* The number of addresses in the addrs array */
-    boost::shared_ptr<Watch> watch; /* the registered watcher */
     struct timeval last_recv; /* The time that the last message was received */
     struct timeval last_send; /* The time that the last message was sent */
     struct timeval last_ping; /* The time that the last PING was sent */
@@ -145,9 +144,7 @@ class zhandle_t {
     boost::ptr_list<auth_info> authList_; /* authentication data list */
     volatile int close_requested;
     adaptor_threads threads;
-    zk_hashtable active_node_watchers;
-    zk_hashtable active_exist_watchers;
-    zk_hashtable active_child_watchers;
+    boost::shared_ptr<WatchManager> watchManager;
     /** used for chroot path at the client side **/
     std::string chroot;
     boost::mutex mutex; // critical section lock
