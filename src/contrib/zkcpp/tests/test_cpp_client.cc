@@ -574,6 +574,125 @@ TEST(CppClient, testBadHost) {
   }
 }
 
+class ChrootWatch : public Watch {
+  public:
+    ChrootWatch(const std::string& pathExpected) :
+      pathExpected_(pathExpected), watchTriggered_(false) {
+      }
+    void process(WatchEvent::type event, SessionState::type state,
+        const std::string& path) {
+      EXPECT_EQ(pathExpected_, path);
+      watchTriggered_ = true;
+    }
+    std::string pathExpected_;
+    bool watchTriggered_;
+};
+
+TEST(CppClient, testChroot) {
+  ZooKeeper zk, zkChroot;
+  std::string path, pathOut, dataOut;
+  zk.init("127.0.0.1:22181", 10000, boost::shared_ptr<Watch>());
+  zkChroot.init("127.0.0.1:22181/test/chroot", 10000,
+      boost::shared_ptr<Watch>());
+  data::Stat statOut;
+  std::string data = "hello";
+  std::vector<data::ACL> openAcl;
+  data::ACL allPerm;
+  allPerm.getid().getscheme() = "world";
+  allPerm.getid().getid() = "anyone";
+  allPerm.setperms(Permission::All);
+  openAcl.push_back(allPerm);
+
+
+  EXPECT_EQ(ReturnCode::Ok,
+      zk.create("/test", "", openAcl, CreateMode::Persistent, pathOut));
+  EXPECT_EQ(ReturnCode::Ok,
+      zk.create("/test/chroot", data, openAcl, CreateMode::Persistent,
+        pathOut));
+
+  // get
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.get("/", boost::shared_ptr<Watch>(), dataOut, statOut));
+  EXPECT_EQ(data, dataOut);
+
+  //check for watches
+  path = "/hello";
+  zkChroot.exists(path, boost::shared_ptr<Watch>(new ChrootWatch(path)),
+      statOut);
+
+  //check create
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.create(path, "", openAcl, CreateMode::Persistent, pathOut));
+  EXPECT_EQ(path, pathOut);
+
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.create("/hello/child", "", openAcl, CreateMode::Persistent,
+        pathOut));
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.exists("/hello/child", boost::shared_ptr<Watch>(), statOut));
+  EXPECT_EQ(ReturnCode::Ok,
+      zk.exists("/test/chroot/hello/child", boost::shared_ptr<Watch>(),
+        statOut));
+
+  EXPECT_EQ(ReturnCode::Ok, zkChroot.remove("/hello/child", -1));
+  EXPECT_EQ(ReturnCode::NoNode,
+      zkChroot.exists("/hello/child", boost::shared_ptr<Watch>(), statOut));
+  EXPECT_EQ(ReturnCode::NoNode,
+      zk.exists("/test/chroot/hello/child", boost::shared_ptr<Watch>(),
+        statOut));
+
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.get("/hello", shared_ptr<Watch>(new ChrootWatch("/hello")),
+        dataOut, statOut));
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.set("/hello", "new data", -1, statOut));
+
+  // check for getchildren
+  std::vector<std::string> children;
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.getChildren("/", boost::shared_ptr<Watch>(), children,
+        statOut));
+  EXPECT_EQ(1, (int)children.size());
+  EXPECT_EQ(std::string("hello"), children[0]);
+
+  // check for get/set acl
+  std::vector<data::ACL> acl;
+  EXPECT_EQ(ReturnCode::Ok, zkChroot.getAcl("/", acl, statOut));
+  EXPECT_EQ(1, (int)acl.size());
+  EXPECT_EQ((int)Permission::All, (int)acl[0].getperms());
+
+  // set acl
+  acl.clear();
+  data::ACL readPerm;
+  readPerm.getid().getscheme() = "world";
+  readPerm.getid().getid() = "anyone";
+  readPerm.setperms(Permission::Read);
+  acl.push_back(readPerm);
+  EXPECT_EQ(ReturnCode::Ok, zkChroot.setAcl("/hello", -1, acl));
+  // see if you add children
+  EXPECT_EQ(ReturnCode::NoAuth,
+      zkChroot.create("/hello/child1", "", openAcl, CreateMode::Persistent,
+        pathOut));
+
+  //add wget children test
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.getChildren("/", shared_ptr<Watch>(new ChrootWatch("/")),
+        children, statOut));
+  EXPECT_EQ(1, (int)children.size());
+  EXPECT_EQ(std::string("hello"), children[0]);
+
+  //now create a node
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.create("/child2", "", openAcl, CreateMode::Persistent,
+        pathOut));
+
+  //ZOOKEEPER-1027 correctly return path_buffer without prefixed chroot
+  path = "/zookeeper1027";
+  EXPECT_EQ(ReturnCode::Ok,
+      zkChroot.create(path, "", openAcl, CreateMode::Persistent, pathOut));
+  EXPECT_EQ(path, pathOut);
+}
+
 #if 0
 TEST(CppClient, testIPV6) {
   ZooKeeper zk;
@@ -611,101 +730,4 @@ void testAcl() {
   CPPUNIT_ASSERT_EQUAL((int)Permission::Read, readPerm.getperms());
 }
 
-void testChroot() {
-  ZooKeeper zk, zkChroot;
-  std::string path, pathOut, dataOut;
-  zk.init("127.0.0.1:22181", 10000, boost::shared_ptr<Watch>());
-  zkChroot.init("127.0.0.1:22181/test/chroot", 10000,
-      boost::shared_ptr<Watch>());
-  data::Stat statOut;
-  std::string data = "hello";
-
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zk.create("/test", "", openAcl, CreateMode::Persistent, pathOut));
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zk.create("/test/chroot", data, openAcl, CreateMode::Persistent,
-        pathOut));
-
-  // get
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.get("/", boost::shared_ptr<Watch>(), dataOut, statOut));
-  CPPUNIT_ASSERT_EQUAL(data, dataOut);
-
-  //check for watches
-  path = "/hello";
-  zkChroot.exists(path, boost::shared_ptr<Watch>(new ChrootWatch(path)),
-      statOut);
-
-  //check create
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.create(path, "", openAcl, CreateMode::Persistent, pathOut));
-  CPPUNIT_ASSERT_EQUAL(path, pathOut);
-
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.create("/hello/child", "", openAcl, CreateMode::Persistent,
-        pathOut));
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.exists("/hello/child", boost::shared_ptr<Watch>(), statOut));
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zk.exists("/test/chroot/hello/child", boost::shared_ptr<Watch>(),
-        statOut));
-
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zkChroot.remove("/hello/child", -1));
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
-      zkChroot.exists("/hello/child", boost::shared_ptr<Watch>(), statOut));
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::NoNode,
-      zk.exists("/test/chroot/hello/child", boost::shared_ptr<Watch>(),
-        statOut));
-
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.get("/hello", shared_ptr<Watch>(new ChrootWatch("/hello")),
-        dataOut, statOut));
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.set("/hello", "new data", -1, statOut));
-
-  // check for getchildren
-  std::vector<std::string> children;
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.getChildren("/", boost::shared_ptr<Watch>(), children,
-        statOut));
-  CPPUNIT_ASSERT_EQUAL(1, (int)children.size());
-  CPPUNIT_ASSERT_EQUAL(std::string("hello"), children[0]);
-
-  // check for get/set acl
-  std::vector<data::ACL> acl;
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zkChroot.getAcl("/", acl, statOut));
-  CPPUNIT_ASSERT_EQUAL(1, (int)acl.size());
-  CPPUNIT_ASSERT_EQUAL((int)Permission::All, (int)acl[0].getperms());
-
-  // set acl
-  acl.clear();
-  data::ACL readPerm;
-  readPerm.getid().getscheme() = "world";
-  readPerm.getid().getid() = "anyone";
-  readPerm.setperms(Permission::Read);
-  acl.push_back(readPerm);
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok, zkChroot.setAcl("/hello", -1, acl));
-  // see if you add children
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::NoAuth,
-      zkChroot.create("/hello/child1", "", openAcl, CreateMode::Persistent,
-        pathOut));
-
-  //add wget children test
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.getChildren("/", shared_ptr<Watch>(new ChrootWatch("/")),
-        children, statOut));
-  CPPUNIT_ASSERT_EQUAL(1, (int)children.size());
-  CPPUNIT_ASSERT_EQUAL(std::string("hello"), children[0]);
-
-  //now create a node
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.create("/child2", "", openAcl, CreateMode::Persistent,
-        pathOut));
-
-  //ZOOKEEPER-1027 correctly return path_buffer without prefixed chroot
-  path = "/zookeeper1027";
-  CPPUNIT_ASSERT_EQUAL(ReturnCode::Ok,
-      zkChroot.create(path, "", openAcl, CreateMode::Persistent, pathOut));
-  CPPUNIT_ASSERT_EQUAL(path, pathOut);
-}
 #endif

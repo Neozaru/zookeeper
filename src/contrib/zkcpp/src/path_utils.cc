@@ -24,6 +24,15 @@ namespace org {
 namespace apache {
 namespace zookeeper {
 
+std::string PathUtils::
+prependChroot(const std::string& path, const std::string& chroot) {
+  if (path == "/") {
+    return chroot;
+  }
+  return chroot + path;
+}
+
+
 /**
  * Strips off the chroot string from the path.
  *

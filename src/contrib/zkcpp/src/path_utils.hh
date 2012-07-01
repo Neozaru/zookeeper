@@ -28,6 +28,8 @@ namespace zookeeper {
 
 class PathUtils {
   public:
+    static std::string prependChroot(const std::string& path,
+                                     const std::string& chroot);
     static std::string stripChroot(const std::string& path,
                                    const std::string& chroot);
 };

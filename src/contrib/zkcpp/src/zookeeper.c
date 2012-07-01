@@ -398,6 +398,7 @@ zhandle_t *zookeeper_init(const char *host, boost::shared_ptr<Watch> watch,
         if (zh->chroot == "/") {
           zh->chroot = "";
         }
+        LOG_DEBUG("Using chroot: " << zh->chroot);
         // cannot use strndup so allocate and strcpy
         zh->hostname = (char *) malloc(index_chroot - host + 1);
         zh->hostname = strncpy(zh->hostname, host, (index_chroot - host));
@@ -1570,7 +1571,8 @@ static ReturnCode::type getRealString(zhandle_t *zh, int flags, const std::strin
   if (zh == NULL) {
     return ReturnCode::BadArguments;
   }
-  pathStr = zh->chroot + path;
+  pathStr = PathUtils::prependChroot(path, zh->chroot);
+  LOG_DEBUG("Real request path: " << pathStr);
   return ReturnCode::Ok;
 }
 
@@ -1601,16 +1603,19 @@ int zoo_awget(zhandle_t *zh, const std::string& path,
   req.setwatch(watch.get() != NULL);
   req.serialize(oarchive, "req");
 
+  WatchRegistration* reg = NULL;
+  if (watch.get() != NULL) {
+    reg = new GetDataWatchRegistration(zh->watchManager, pathStr, watch);
+  }
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
     rc = rc < 0 ? rc : add_data_completion(zh, header.getxid(), dc, data,
-        new GetDataWatchRegistration(zh->watchManager, pathStr, watch),
-        isSynchronous);
+        reg, isSynchronous);
     queue_buffer(&zh->to_send, buffer);
   }
 
-  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-      header.getxid() % path % format_current_endpoint_info(zh));
+  LOG_DEBUG(boost::format("Sending a get request xid=%#08x for path [%s] to %s") %
+      header.getxid() % pathStr % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
   return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
@@ -1762,10 +1767,14 @@ int zoo_awexists(zhandle_t *zh, const std::string& path,
   req.setwatch(watch.get() != NULL);
   req.serialize(oarchive, "req");
 
+  WatchRegistration* reg = NULL;
+  if (watch.get() != NULL) {
+    new ExistsWatchRegistration(zh->watchManager, req.getpath(), watch);
+  }
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
-    rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion, data,
-        new ExistsWatchRegistration(zh->watchManager, req.getpath(), watch), false);
+    rc = rc < 0 ? rc : add_stat_completion(zh, header.getxid(), completion,
+        data, reg, isSynchronous);
     queue_buffer(&zh->to_send, buffer);
   }
 
@@ -1800,10 +1809,14 @@ int zoo_awget_children2(zhandle_t *zh, const std::string& path,
   req.setwatch(watch.get() != NULL);
   req.serialize(oarchive, "req");
 
+  WatchRegistration* reg = NULL;
+  if (watch.get() != NULL) {
+    new GetChildrenWatchRegistration(zh->watchManager, req.getpath(), watch);
+  }
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
-    rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc, data,
-        new GetChildrenWatchRegistration(zh->watchManager, req.getpath(), watch), false);
+    rc = rc < 0 ? rc : add_strings_stat_completion(zh, header.getxid(), ssc,
+        data, reg, isSynchronous);
     queue_buffer(&zh->to_send, buffer);
   }
 
