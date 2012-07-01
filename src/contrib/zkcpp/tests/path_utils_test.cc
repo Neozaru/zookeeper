@@ -20,6 +20,17 @@
 
 using namespace org::apache::zookeeper;
 
+TEST(PathUtilsTest, prependChroot) {
+  // Basic test.
+  EXPECT_EQ("/chroot/hello", PathUtils::prependChroot("/hello", "/chroot"));
+
+  // It should return the original path if chroot is empty.
+  EXPECT_EQ("/hello", PathUtils::prependChroot("/hello", ""));
+
+  // It should return the chroot itself if the path is "/".
+  EXPECT_EQ("/chroot", PathUtils::prependChroot("/", "/chroot"));
+}
+
 TEST(PathUtilsTest, stripChroot) {
   // Basic test.
   EXPECT_EQ("/hello", PathUtils::stripChroot("/chroot/hello", "/chroot"));

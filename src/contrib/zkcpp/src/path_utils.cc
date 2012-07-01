@@ -26,10 +26,13 @@ namespace zookeeper {
 
 std::string PathUtils::
 prependChroot(const std::string& path, const std::string& chroot) {
-  if (path == "/") {
+  if (chroot.empty()) {
+    return path;
+  } else if (path == "/") {
     return chroot;
+  } else {
+    return chroot + path;
   }
-  return chroot + path;
 }
 
 

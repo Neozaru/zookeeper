@@ -70,6 +70,9 @@ getWatches(WatchEvent::type event,
       moveWatches(getChildrenWatches_, path, watches);
       break;
   }
+  LOG_DEBUG(boost::format("Got %d watch(es): event=%s, state=%s, path=%s") %
+            watches.size() % WatchEvent::toString(event) %
+            SessionState::toString(state) % path);
 }
 
 void WatchManager::

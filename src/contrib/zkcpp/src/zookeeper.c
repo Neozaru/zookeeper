@@ -117,6 +117,7 @@ static void deliverWatchers(zhandle_t *zh, int type, int state, const char *path
     type == WatchEvent::SessionStateChanged ? path :
                                               PathUtils::stripChroot(path, zh->chroot);
   BOOST_FOREACH(boost::shared_ptr<Watch>& watch, watches) {
+    LOG_DEBUG("Calling watch");
     watch->process((WatchEvent::type)type,
         (SessionState::type)state, client_path);
   }
@@ -1769,7 +1770,8 @@ int zoo_awexists(zhandle_t *zh, const std::string& path,
 
   WatchRegistration* reg = NULL;
   if (watch.get() != NULL) {
-    new ExistsWatchRegistration(zh->watchManager, req.getpath(), watch);
+    LOG_DEBUG(boost::format("Adding an exists watch: %#08x") % header.getxid());
+    reg = new ExistsWatchRegistration(zh->watchManager, req.getpath(), watch);
   }
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
@@ -1811,7 +1813,8 @@ int zoo_awget_children2(zhandle_t *zh, const std::string& path,
 
   WatchRegistration* reg = NULL;
   if (watch.get() != NULL) {
-    new GetChildrenWatchRegistration(zh->watchManager, req.getpath(), watch);
+    reg = new GetChildrenWatchRegistration(zh->watchManager, req.getpath(),
+                                           watch);
   }
   {
     boost::lock_guard<boost::mutex> lock(zh->mutex);
@@ -1928,8 +1931,8 @@ int zoo_aset_acl(zhandle_t *zh, const std::string& path, int version,
     queue_buffer(&zh->to_send, buffer);
   }
 
-  LOG_DEBUG(boost::format("Sending request xid=%#08x for path [%s] to %s") %
-      header.getxid() % path % format_current_endpoint_info(zh));
+  LOG_DEBUG(boost::format("Sending a set acl request xid=%#08x for path [%s] to %s") %
+      header.getxid() % pathStr % format_current_endpoint_info(zh));
   /* make a best (non-blocking) effort to send the requests asap */
   adaptor_send_queue(zh, 0);
   return (rc < 0)?ReturnCode::MarshallingError:ReturnCode::Ok;
