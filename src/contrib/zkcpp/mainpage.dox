@@ -1,5 +1,7 @@
 /**
 
+\example examples/zk_hello_world.cc
+
 @mainpage
 
 \section quick Quickstart
