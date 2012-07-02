@@ -19,6 +19,8 @@
 #ifndef SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_CONST_H_
 #define SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_CONST_H_
 
+#include <string>
+
 namespace org {
 namespace apache {
 
@@ -161,6 +163,7 @@ namespace SessionState {
      * The session is connected to a ZooKeeper server.
      */
     Connected = 3,
+
     /*
      * TODO REMOVE
      */
@@ -324,7 +327,6 @@ namespace OpCode {
 
   const std::string toString(OpCode::type code);
 };
-
 }}}
 
 #endif  // SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_CONST_H_

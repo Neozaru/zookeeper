@@ -84,7 +84,6 @@ class completion_list_t {
     completion_t c;
     const void *data;
     buffer_t *buffer;
-    completion_list_t* next;
     boost::scoped_ptr<WatchRegistration> watch;
 };
 

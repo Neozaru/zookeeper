@@ -19,6 +19,7 @@
 #define SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_MULTI_H_
 
 #include <string>
+#include <vector>
 #include "zookeeper.jute.hh"
 #include "zookeeper_const.hh"
 
@@ -161,7 +162,6 @@ class OpResult::Error : public OpResult {
     Error();
     virtual ~Error();
 };
-
 }}}
 
-#endif  //SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_MULTI_H_
+#endif  // SRC_CONTRIB_ZKCPP_INCLUDE_ZOOKEEPER_MULTI_H_

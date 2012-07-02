@@ -114,6 +114,13 @@ target_link_libraries(zktest
 
 # Add "make lint" target
 add_custom_target(lint ${PROJECT_SOURCE_DIR}/cpplint.py ${testsrc} ${header})
+
+# Add "make check" target
+add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/zktest)
+
+# Add "make valcheck" target
+add_custom_target(valcheck valgrind --leak-check=full ${CMAKE_CURRENT_BINARY_DIR}/zktest)
+
 file(COPY ${PROJECT_SOURCE_DIR}/tests/log4cxx.properties DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 # For "make install" target
