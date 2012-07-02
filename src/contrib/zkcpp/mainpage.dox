@@ -15,13 +15,15 @@ Install all the dependencies:
 - boost-thread
 - boost-system
 
+\subsection build Building and Installing
+
 Clone the git repository:
 
 \verbatim
 git://github.com/m1ch1/zookeeper.git
 \endverbatim
 
-This will create a local repository under zookeeper/ directory. 
+This will create a local repository under zookeeper/ directory.
 
 \verbatim
 cd zookeeper/
@@ -43,6 +45,19 @@ sudo make install
 This will install a shared library \p libzkcpp.so under \p /usr/local/lib and include
 headers under \p /usr/local/include/zookeeper.
 
+\subsection server Starting a ZooKeeper Server in Standalone mode
+
+\verbatim
+cp $ZKHOME/conf/zoo_sample.cfg $ZKHOME/conf/zoo.cfg
+$ZKHOME/bin/zkServer.sh start
+echo ruok | nc localhost 2181
+\endverbatim
+
+You can find more information about the standalone mode in
+<a href="http://zookeeper.apache.org/doc/r3.1.2/zookeeperStarted.html#sc_InstallingSingleMode">
+ZooKeeper Getting Started Guide</a>.
+
+\subsection hello Hello, world!
 
 \section model Data Model
 \section async Asynchronous and Synchronous APIs
