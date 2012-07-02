@@ -29,8 +29,10 @@
 #include "zookeeper_const.hh"
 #include "zookeeper_multi.hh"
 
+/** Org namespace. */
 namespace org {
 
+/** Apache namespace. */
 namespace apache {
 
 /** ZooKeeper namespace. */
@@ -514,9 +516,15 @@ class ZooKeeper : boost::noncopyable {
     ReturnCode::type sync(const std::string& path,
                     boost::shared_ptr<SyncCallback> callback);
 
+    /**
+     * Atomically executes multiple operations.
+     */
     ReturnCode::type multi(const boost::ptr_vector<Op>& ops,
                            boost::shared_ptr<MultiCallback> callback);
 
+    /**
+     * Synchronous version of multi.
+     */
     ReturnCode::type multi(const boost::ptr_vector<Op>& ops,
                            boost::ptr_vector<OpResult>& results);
 
