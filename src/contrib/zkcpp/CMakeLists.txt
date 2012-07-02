@@ -112,6 +112,15 @@ target_link_libraries(zktest
   ${GTEST_LIBRARY}
 )
 
+# Examples
+add_executable(zk_hello_world
+  ${PROJECT_SOURCE_DIR}/examples/zk_hello_world.cc
+)
+target_link_libraries(zk_hello_world
+  zkcpp
+)
+
+
 # Add "make lint" target
 add_custom_target(lint ${PROJECT_SOURCE_DIR}/cpplint.py ${testsrc} ${header})
 
